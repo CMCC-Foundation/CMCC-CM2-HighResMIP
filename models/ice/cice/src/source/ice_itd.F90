@@ -1612,7 +1612,12 @@
                               aice0,       aice,       &
                               trcr_depend, fresh,      &
                               fsalt,       fhocn,      &
-                              fsoot,       tr_aero,    &
+                              fsoot,                   &
+#if defined NEMO_IN_CCSM
+                              fresh_nemo,  fsalt_nemo, &
+                              fhocn_nemo,              &
+#endif
+                              tr_aero,                 &
                               heat_capacity, l_stop,   &
                               istop,         jstop,    &
                               limit_aice_in)
@@ -1685,6 +1690,14 @@
          fsalt    , & ! salt flux to ocean        (kg/m^2/s)
          fhocn        ! net heat flux to ocean     (W/m^2)
 
+#if defined NEMO_IN_CCSM
+      real (kind=dbl_kind), dimension (nx_block,ny_block), &
+         intent(inout), optional :: &
+         fresh_nemo , & ! fresh water flux to ocean (kg/m^2/s)
+         fsalt_nemo , & ! salt flux to ocean        (kg/m^2/s)
+         fhocn_nemo     ! net heat flux to ocean     (W/m^2)
+#endif
+
       real (kind=dbl_kind), dimension (nx_block,ny_block,n_aeromx), &
          intent(inout), optional :: &
          fsoot        ! soot flux to ocean        (kg/m^2/s)
@@ -1707,6 +1720,13 @@
          dfresh   , & ! zapped fresh water flux (kg/m^2/s)
          dfsalt   , & ! zapped salt flux   (kg/m^2/s)
          dfhocn       ! zapped energy flux ( W/m^2)
+
+#if defined NEMO_IN_CCSM
+      real (kind=dbl_kind), dimension (nx_block,ny_block) :: &
+         dfresh_nemo , & ! zapped fresh water flux (kg/m^2/s)
+         dfsalt_nemo , & ! zapped salt flux   (kg/m^2/s)
+         dfhocn_nemo       ! zapped energy flux ( W/m^2)
+#endif
 
       real (kind=dbl_kind), dimension (nx_block,ny_block,n_aeromx) :: &
          dfsoot    ! zapped soot flux   (kg/m^2/s)
@@ -1810,6 +1830,10 @@
                                eicen(:,:,:), esnon(:,:,:),   &
                                dfresh,       dfsalt,         &
                                dfhocn,       dfsoot,         &
+#if defined NEMO_IN_CCSM
+                               dfresh_nemo,  dfsalt_nemo,    &
+                               dfhocn_nemo,                  &
+#endif
                                tr_aero,                      &
                                l_stop,                       &
                                istop,        jstop)
@@ -1828,6 +1852,14 @@
            fhocn     (:,:) = fhocn(:,:)      + dfhocn(:,:)
       if (present(fsoot)) &
            fsoot   (:,:,:) = fsoot(:,:,:)    + dfsoot(:,:,:)
+#if defined NEMO_IN_CCSM
+      if (present(fresh_nemo)) &
+           fresh_nemo (:,:) = fresh_nemo(:,:) + dfresh_nemo(:,:) 
+      if (present(fsalt_nemo)) &
+           fsalt_nemo (:,:) = fsalt_nemo(:,:) + dfsalt_nemo(:,:)
+      if (present(fhocn_nemo)) &
+           fhocn_nemo (:,:) = fhocn_nemo(:,:) + dfhocn_nemo(:,:)
+#endif
 
       !----------------------------------------------------------------
       ! If using zero-layer model (no heat capacity), check that the 
@@ -1864,6 +1896,10 @@
                                   eicen,    esnon,    &
                                   dfresh,   dfsalt,   &
                                   dfhocn,   dfsoot,   &
+#if defined NEMO_IN_CCSM
+                                  dfresh_nemo,  dfsalt_nemo,    &
+                                  dfhocn_nemo,                  &
+#endif
                                   tr_aero,            &
                                   l_stop,             &
                                   istop,    jstop)
@@ -1920,6 +1956,14 @@
          dfsalt   , & ! zapped salt flux   (kg/m^2/s)
          dfhocn       ! zapped energy flux ( W/m^2)
 
+#if defined NEMO_IN_CCSM
+      real (kind=dbl_kind), dimension (nx_block,ny_block), &
+         intent(out) :: &
+         dfresh_nemo , & ! zapped fresh water flux (kg/m^2/s)
+         dfsalt_nemo , & ! zapped salt flux   (kg/m^2/s)
+         dfhocn_nemo     ! zapped energy flux ( W/m^2)
+#endif
+
       real (kind=dbl_kind), dimension (nx_block,ny_block,n_aeromx), &
          intent(out) :: &
          dfsoot    ! zapped soot flux   (kg/m^2/s)
@@ -1958,6 +2002,11 @@
       dfsalt(:,:) = c0
       dfhocn(:,:) = c0
       dfsoot(:,:,:) = c0
+#if defined NEMO_IN_CCSM
+      dfresh_nemo(:,:) = c0
+      dfsalt_nemo(:,:) = c0
+      dfhocn_nemo(:,:) = c0
+#endif
 
       !-----------------------------------------------------------------
       ! Zap categories with very small areas.
@@ -2003,6 +2052,9 @@
 
                xtmp = eicen(i,j,ilyr1(n)+k-1) / dt ! < 0
                dfhocn(i,j) = dfhocn(i,j) + xtmp
+#if defined NEMO_IN_CCSM
+               dfhocn_nemo(i,j) = dfhocn_nemo(i,j) + xtmp
+#endif
                eicen(i,j,ilyr1(n)+k-1) = c0
 
             enddo               ! ij
@@ -2022,6 +2074,9 @@
 
                xtmp = esnon(i,j,slyr1(n)+k-1) / dt ! < 0
                dfhocn(i,j) = dfhocn(i,j) + xtmp
+#if defined NEMO_IN_CCSM
+               dfhocn_nemo(i,j) = dfhocn_nemo(i,j) + xtmp
+#endif
                esnon(i,j,slyr1(n)+k-1) = c0
 
             enddo               ! ij
@@ -2040,9 +2095,18 @@
 
             xtmp = (rhoi*vicen(i,j,n) + rhos*vsnon(i,j,n)) / dt
             dfresh(i,j) = dfresh(i,j) + xtmp
+#ifdef NEMO_IN_CCSM
+            xtmp = rhos*vsnon(i,j,n) / dt
+            dfresh_nemo(i,j) = dfresh_nemo(i,j) + xtmp
+#endif
 
             xtmp = rhoi*vicen(i,j,n)*ice_ref_salinity*p001 / dt
             dfsalt(i,j) = dfsalt(i,j) + xtmp
+#ifdef NEMO_IN_CCSM
+            xtmp = -rhoi*vicen(i,j,n)*(ocn_ref_salinity - &
+                   ice_ref_salinity) / dt
+            dfsalt_nemo(i,j) = dfsalt_nemo(i,j) + xtmp
+#endif
 
             aice0(i,j) = aice0(i,j) + aicen(i,j,n)
             aicen(i,j,n) = c0
@@ -2128,6 +2192,9 @@
                xtmp = eicen(i,j,ilyr1(n)+k-1)  &
                     * (aice(i,j)-c1)/aice(i,j) / dt ! < 0 
                dfhocn(i,j) = dfhocn(i,j) + xtmp 
+#if defined NEMO_IN_CCSM
+               dfhocn_nemo(i,j) = dfhocn_nemo(i,j) + xtmp 
+#endif
                eicen(i,j,ilyr1(n)+k-1) = eicen(i,j,ilyr1(n)+k-1) &
                                         * (c1/aice(i,j))
  
@@ -2149,6 +2216,9 @@
                xtmp = esnon(i,j,slyr1(n)+k-1)  &
                     * (aice(i,j)-c1)/aice(i,j) / dt ! < 0 
                dfhocn(i,j) = dfhocn(i,j) + xtmp 
+#if defined NEMO_IN_CCSM
+               dfhocn_nemo(i,j) = dfhocn_nemo(i,j) + xtmp 
+#endif
                esnon(i,j,slyr1(n)+k-1) = esnon(i,j,slyr1(n)+k-1) &
                                         *(c1/aice(i,j))
  
@@ -2169,10 +2239,21 @@
             xtmp = (rhoi*vicen(i,j,n) + rhos*vsnon(i,j,n)) &
                  * (aice(i,j)-c1)/aice(i,j) / dt 
             dfresh(i,j) = dfresh(i,j) + xtmp 
+#ifdef NEMO_IN_CCSM
+            xtmp = rhos*vsnon(i,j,n) &
+                 * (aice(i,j)-c1)/aice(i,j) / dt 
+            dfresh_nemo(i,j) = dfresh_nemo(i,j) + xtmp 
+#endif
  
             xtmp = rhoi*vicen(i,j,n)*ice_ref_salinity*p001 &
                  * (aice(i,j)-c1)/aice(i,j) / dt
             dfsalt(i,j) = dfsalt(i,j) + xtmp 
+#ifdef NEMO_IN_CCSM
+            xtmp = -rhoi*vicen(i,j,n)*(ocn_ref_salinity - &
+                   ice_ref_salinity) &
+                 * (aice(i,j)-c1)/aice(i,j) / dt
+            dfsalt_nemo(i,j) = dfsalt_nemo(i,j) + xtmp 
+#endif
  
             aicen(i,j,n) = aicen(i,j,n) * (c1/aice(i,j)) 
             vicen(i,j,n) = vicen(i,j,n) * (c1/aice(i,j)) 

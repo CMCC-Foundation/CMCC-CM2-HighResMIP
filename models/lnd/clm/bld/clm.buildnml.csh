@@ -112,8 +112,14 @@ if ($RUN_STARTDATE =~ *-01-01* || $RUN_STARTDATE =~ *-09-01*) then
   set ignore = "-ignore_ic_year"
 endif
 
+if ( $COMP_OCN  == "nemo" ) then
+   set omask = "-mask $OCN_GRID"
+else
+   set omask = ""
+endif
+
 $CODEROOT/lnd/clm/bld/build-namelist -infile $CASEBUILD/clmconf/cesm_namelist \
-    -csmdata $DIN_LOC_ROOT  \
+    -csmdata $DIN_LOC_ROOT $omask \
     -inputdata $CASEBUILD/clm.input_data_list $ignore \
     -namelist "&clm_inparm start_ymd = $start_ymd $CLM_NAMELIST_OPTS /" $usecase $glc_opts \
     -res $RESOLUTION $clmusr -clm_start_type $START_TYPE \

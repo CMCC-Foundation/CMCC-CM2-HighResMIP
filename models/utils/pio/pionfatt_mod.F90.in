@@ -167,7 +167,7 @@ contains
 
        end select
     endif
-    call check_netcdf(File, ierr,__PIO_FILE__,__LINE__)
+    call check_netcdf(File, ierr,subName//__PIO_FILE__,__LINE__)
   end function put_att_{TYPE}
 
 !pl The next line is needed by genf90.pl, do not remove it.
@@ -259,7 +259,7 @@ contains
 
        end select
     endif
-    call check_netcdf(File, ierr,__PIO_FILE__,__LINE__)
+    call check_netcdf(File, ierr,subName//__PIO_FILE__,__LINE__)
   end function put_att_1d_{TYPE}
 
 !>
@@ -432,7 +432,7 @@ contains
 
        end select
     endif
-    call check_netcdf(File, ierr,__PIO_FILE__,__LINE__)
+    call check_netcdf(File, ierr,subName//__PIO_FILE__,__LINE__)
     if(ios%async_interface .or. ios%num_tasks>ios%num_iotasks) then
        call MPI_BCAST(value, clen, {MPITYPE},Ios%iomaster,Ios%my_comm, mpierr)
        call CheckMPIReturn(subName, mpierr)
@@ -511,7 +511,7 @@ contains
 
        end select
     endif
-    call check_netcdf(File, ierr,__PIO_FILE__,__LINE__)
+    call check_netcdf(File, ierr,subName//__PIO_FILE__,__LINE__)
     if(ios%async_interface .or. ios%num_tasks>ios%num_iotasks) then
        call MPI_BCAST(value, clen, {MPITYPE},Ios%iomaster,Ios%my_comm, mpierr)
        call CheckMPIReturn(subName, mpierr)

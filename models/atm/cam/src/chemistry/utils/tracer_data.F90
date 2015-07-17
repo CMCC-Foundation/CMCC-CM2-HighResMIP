@@ -1840,6 +1840,7 @@ contains
     integer :: dateid,secid
     integer, allocatable , dimension(:) :: dates, datesecs
     integer :: astat, ierr
+    logical :: need_first_ndx
 
     if (len_trim(path) == 0) then
        filepath = trim(fname)
@@ -1891,6 +1892,7 @@ contains
     end if
 
     ierr =  pio_get_var( piofile, dateid, dates )
+    need_first_ndx=.true.
 
     do i=1,timesize
        year = dates(i) / 10000
@@ -1899,8 +1901,9 @@ contains
        call set_time_float_from_date( times(i), year, month, day, datesecs(i) )
        if ( present(cyc_yr) ) then
           if ( year == cyc_yr ) then
-             if ( present(cyc_ndx_beg) .and. (cyc_ndx_beg < 0) ) then
+             if ( present(cyc_ndx_beg) .and. need_first_ndx ) then
                 cyc_ndx_beg = i
+                need_first_ndx = .false.
              endif
              if ( present(cyc_ndx_end) ) then
                 cyc_ndx_end = i

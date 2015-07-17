@@ -64,6 +64,9 @@ if($#fp != $#filepath){
 }
 
 my $multiinst_cppdefs = "$xmlvars{USER_CPPDEFS}"; 
+if ($xmlvars{COMP_OCN} eq "nemo"){
+    $multiinst_cppdefs = "$multiinst_cppdefs -DNEMO_IN_CCSM"
+}
 $multiinst_cppdefs = "$multiinst_cppdefs -DNUM_COMP_INST_ATM=$xmlvars{NINST_ATM}";
 $multiinst_cppdefs = "$multiinst_cppdefs -DNUM_COMP_INST_LND=$xmlvars{NINST_LND}";
 $multiinst_cppdefs = "$multiinst_cppdefs -DNUM_COMP_INST_OCN=$xmlvars{NINST_OCN}"; 

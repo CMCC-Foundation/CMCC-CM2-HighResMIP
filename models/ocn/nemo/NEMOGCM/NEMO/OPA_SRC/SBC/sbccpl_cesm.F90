@@ -1,0 +1,323 @@
+MODULE sbccpl_cesm
+   !!======================================================================
+   !!                       ***  MODULE  sbccpl_cesm  ***
+   !! Surface Boundary Condition :  momentum, heat and freshwater fluxes in
+   !!                               NCAR CESM infrastructure
+   !!======================================================================
+   !! History :  3.3  ! 2012 (P.G. Fogli, CMCC) Original code
+   !!----------------------------------------------------------------------
+#if defined CCSMCOUPLED
+   !!----------------------------------------------------------------------
+   !!   'CCSMCOUPLED'    CESM coupled formulation
+   !!----------------------------------------------------------------------
+   !!   sbc_cpl_cesm_init  : allocate space for the received fields
+   !!   sbc_cpl_cesm_rcv   : receive fields from the atmosphere/sea ice over the ocean
+   !!   sbc_cpl_cesm_finalize: deallocate space for the received fields
+   !!
+   USE par_kind
+   USE par_oce
+   USE dom_oce         ! ocean space and time domain
+   USE sbc_oce         ! SBC variables
+   USE sbcrnf
+   USE phycst          ! physical constants
+   USE lib_mpp         ! distribued memory computing library
+   USE lbclnk          ! ocean lateral boundary conditions (or mpp link)
+   USE geo2ocean       ! 
+   USE in_out_manager
+   USE lib_fortran
+   !!
+   IMPLICIT NONE
+   PRIVATE
+
+   LOGICAL, PARAMETER, PUBLIC :: lk_cesm = .true.
+
+   ! all fields received from the atmosphere / sea ice
+   REAL(wp), ALLOCATABLE, SAVE, PUBLIC, DIMENSION(:,:) :: taux_x2o
+   REAL(wp), ALLOCATABLE, SAVE, PUBLIC, DIMENSION(:,:) :: tauy_x2o
+   REAL(wp), ALLOCATABLE, SAVE, PUBLIC, DIMENSION(:,:) :: evap_x2o
+   REAL(wp), ALLOCATABLE, SAVE, PUBLIC, DIMENSION(:,:) :: rain_x2o
+   REAL(wp), ALLOCATABLE, SAVE, PUBLIC, DIMENSION(:,:) :: snow_x2o
+   REAL(wp), ALLOCATABLE, SAVE, PUBLIC, DIMENSION(:,:) :: roff_x2o
+   REAL(wp), ALLOCATABLE, SAVE, PUBLIC, DIMENSION(:,:) :: ioff_x2o
+   REAL(wp), ALLOCATABLE, SAVE, PUBLIC, DIMENSION(:,:) :: meltw_x2o
+   REAL(wp), ALLOCATABLE, SAVE, PUBLIC, DIMENSION(:,:) :: salt_x2o
+   REAL(wp), ALLOCATABLE, SAVE, PUBLIC, DIMENSION(:,:) :: swnet_x2o
+   REAL(wp), ALLOCATABLE, SAVE, PUBLIC, DIMENSION(:,:) :: sen_x2o
+   REAL(wp), ALLOCATABLE, SAVE, PUBLIC, DIMENSION(:,:) :: lat_x2o
+   REAL(wp), ALLOCATABLE, SAVE, PUBLIC, DIMENSION(:,:) :: lwup_x2o
+   REAL(wp), ALLOCATABLE, SAVE, PUBLIC, DIMENSION(:,:) :: lwdn_x2o
+   REAL(wp), ALLOCATABLE, SAVE, PUBLIC, DIMENSION(:,:) :: melth_x2o
+   REAL(wp), ALLOCATABLE, SAVE, PUBLIC, DIMENSION(:,:) :: ifrac_x2o
+   REAL(wp), ALLOCATABLE, SAVE, PUBLIC, DIMENSION(:,:) :: pslv_x2o
+   REAL(wp), ALLOCATABLE, SAVE, PUBLIC, DIMENSION(:,:) :: duu10n_x2o
+   REAL(wp), ALLOCATABLE, SAVE, PUBLIC, DIMENSION(:,:) :: co2_x2o
+
+   LOGICAL, SAVE, PUBLIC :: lrecv
+
+   PUBLIC   sbc_cpl_cesm_init      ! routine called by ocn_init_mct (ocn_comp_mct.F90)
+   PUBLIC   sbc_cpl_cesm_rcv       ! routine called by sbc (sbcmod.F90)
+   PUBLIC   sbc_cpl_cesm_finalize  ! routine called by ocn_final_mct (ocn_comp_mct.F90)
+   
+   REAL(wp), SAVE :: garea
+
+#  include "vectopt_loop_substitute.h90"
+
+CONTAINS
+
+   SUBROUTINE sbc_cpl_cesm_init
+
+      INTEGER :: istat, ierr(2)
+      !!----------------------------------------------------------------------
+      ierr(:) = 0
+      !
+      ALLOCATE( taux_x2o(jpi,jpj),  tauy_x2o(jpi,jpj),                       &
+                evap_x2o(jpi,jpj),  rain_x2o(jpi,jpj),  snow_x2o(jpi,jpj),   &
+                roff_x2o(jpi,jpj),  ioff_x2o(jpi,jpj),  meltw_x2o(jpi,jpj),  &
+                salt_x2o(jpi,jpj),  swnet_x2o(jpi,jpj), sen_x2o(jpi,jpj),    &
+                lat_x2o(jpi,jpj),   lwup_x2o(jpi,jpj),  lwdn_x2o(jpi,jpj),   &
+                melth_x2o(jpi,jpj), ifrac_x2o(jpi,jpj), pslv_x2o(jpi,jpj),   &
+                duu10n_x2o(jpi,jpj), &
+                STAT=ierr(1) )
+      !
+#if defined key_cpl_carbon_cycle
+      ALLOCATE( co2_x2o(jpi,jpj), STAT=ierr(2) )
+#endif
+      istat = MAXVAL( ierr )
+      IF( lk_mpp    )   CALL mpp_sum ( istat )
+      IF( istat > 0 )   CALL ctl_stop('sbc_cpl_cesm_init: allocation of arrays failed')
+
+      ! Initialization
+
+      garea = glob_sum(e1e2t(:,:))
+
+      taux_x2o   = 0.0_wp
+      tauy_x2o   = 0.0_wp
+      evap_x2o   = 0.0_wp
+      rain_x2o   = 0.0_wp
+      snow_x2o   = 0.0_wp
+      roff_x2o   = 0.0_wp
+      ioff_x2o   = 0.0_wp
+      meltw_x2o  = 0.0_wp
+      salt_x2o   = 0.0_wp
+      swnet_x2o  = 0.0_wp
+      sen_x2o    = 0.0_wp
+      lat_x2o    = 0.0_wp
+      lwup_x2o   = 0.0_wp
+      lwdn_x2o   = 0.0_wp
+      melth_x2o  = 0.0_wp
+      ifrac_x2o  = 0.0_wp
+      pslv_x2o   = 0.0_wp
+      duu10n_x2o = 0.0_wp
+#if defined key_cpl_carbon_cycle
+      co2_x2o    = 0.0_wp
+#endif
+
+      IF (.NOT. ln_rstart) THEN
+         utau(:,:) = 0.0_wp
+         vtau(:,:) = 0.0_wp
+         taum(:,:) = 0.0_wp
+         emp(:,:)  = 0.0_wp
+         emps(:,:) = 0.0_wp
+         rnf(:,:)  = 0.0_wp
+         qsr(:,:)  = 0.0_wp
+         qns(:,:)  = 0.0_wp
+         fr_i(:,:) = 0.0_wp
+         wndm(:,:) = 0.0_wp
+#if defined key_cpl_carbon_cycle
+         atm_co2(:,:) = 0.0_wp
+#endif
+      END IF
+
+   END SUBROUTINE sbc_cpl_cesm_init
+
+   SUBROUTINE sbc_cpl_cesm_rcv( kt, k_fsbc, k_ice )     
+   
+      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
+      USE wrk_nemo, ONLY:   ztx => wrk_2d_1 , zty => wrk_2d_2
+      !!
+
+      INTEGER, INTENT(in) ::   kt       ! ocean model time step index
+      INTEGER, INTENT(in) ::   k_fsbc   ! frequency of sbc (-> ice model) computation 
+      INTEGER, INTENT(in) ::   k_ice    ! ice management in the sbc (=0/1/2/3)
+      !!
+      ! local data
+      REAL(wp) :: zrnfex   ! excess runoff to be redistributed over E-P
+      INTEGER  :: i, j     ! dummy loop index
+
+!      IF (lwp) WRITE(numout,*) 'sbc_cpl_rcv: called ', kt, lrecv
+
+      ! Return if this isn't a coupling time step
+      IF (.NOT. lrecv) RETURN
+
+      IF( wrk_in_use(2, 1,2) ) THEN
+         CALL ctl_stop('sbc_cpl_cesm_rcv: requested workspace arrays unavailable')   ;   RETURN
+      ENDIF
+
+      !  1. distribute wind stress
+      !     rotate components to local coordinates
+      !     shift from T points to U,V points
+
+      taux_x2o(:,:) = taux_x2o(:,:)*tmask(:,:,1)
+      tauy_x2o(:,:) = tauy_x2o(:,:)*tmask(:,:,1)
+
+      ! rotate true zonal/meridional wind stress into local coordinates
+      call rot_rep(taux_x2o(:,:), tauy_x2o(:,:), 'T', 'en->i', ztx(:,:))
+      call rot_rep(taux_x2o(:,:), tauy_x2o(:,:), 'T', 'en->j', zty(:,:))
+
+      ! LBC (halo) update
+      call lbc_lnk(ztx(:,:), 'T', -1._wp)
+      call lbc_lnk(zty(:,:), 'T', -1._wp)
+
+      ! and shift T to U,V grid
+      utau(:,:) = 0.0_wp
+      vtau(:,:) = 0.0_wp
+      DO j = 1, jpjm1                                          ! T ==> (U,V)
+         DO i = 1, jpim1   ! vector opt.
+            IF ((tmask(i+1,j,1)+tmask(i,j,1))/=0.0_wp) THEN
+               utau(i,j) = (ztx(i+1,j)*tmask(i+1,j,1)+ztx(i,j)*tmask(i,j,1)) / &
+                           (tmask(i+1,j,1)+tmask(i,j,1))
+            ENDIF
+            IF ((tmask(i,j+1,1)+tmask(i,j,1))/=0.0_wp) THEN
+               vtau(i,j) = (zty(i,j+1)*tmask(i,j+1,1)+zty(i,j)*tmask(i,j,1)) / &
+                           (tmask(i,j+1,1)+tmask(i,j,1))
+            ENDIF
+         END DO
+      END DO
+      utau(:,:) = utau(:,:)*umask(:,:,1)
+      vtau(:,:) = vtau(:,:)*vmask(:,:,1)
+      ! LBC (halo) update
+      call lbc_lnk( utau(:,:), 'U',  -1._wp )
+      call lbc_lnk( vtau(:,:), 'V',  -1._wp )
+
+      ! Compute wind stress module at T points
+      taum(:,:) = SQRT( ztx(:,:)*ztx(:,:) + zty(:,:)*zty(:,:) )
+
+!     2. distribute fresh water, salt and heat fluxes
+
+      ! Water budget (E-P-R)
+      ! NEMO: emp>0 ==> d(SSH)/dt<0 (evaporative water budget ==> ocean loses water)
+      !       Sign convention: positive upward
+      !       Unit system: MKS
+
+      ! Put runoff in rnf so it's taken into account in sbc_rnf_div
+      ! when ln_rnf_cpl = .TRUE.
+      rnf(:,:) = (roff_x2o(:,:)+ioff_x2o(:,:)) * tmask(:,:,1)
+      ! Set a threshold on the runoff (rn_rnf_bnd) and redistribute excess
+      ! runoff on the global E-P to avoid SSS<0.0 near river mouths
+      zrnfex = 0.0_wp
+      IF (rn_rnf_bnd>0.0_wp) THEN
+         ! Compute excess runoff
+         ztx(:,:) = max(rnf(:,:)-rn_rnf_bnd,0.0_wp)
+         rnf(:,:) = min(rnf(:,:),rn_rnf_bnd)
+         zrnfex   = glob_sum(ztx(:,:)*e1e2t(:,:))
+      END IF
+
+      IF (ln_rnf_cpl) THEN
+         emp(:,:) = -(evap_x2o(:,:)+rain_x2o(:,:)+snow_x2o(:,:)+meltw_x2o(:,:))
+      ELSE
+!         emp(:,:) = emp(:,:)-rnf(:,:)
+         emp(:,:) = -(evap_x2o(:,:)+rain_x2o(:,:)+snow_x2o(:,:)+meltw_x2o(:,:)+ &
+                      roff_x2o(:,:)+ioff_x2o(:,:))
+         rnf(:,:) = 0._wp
+      ENDIF
+      emps(:,:) = emp(:,:)
+      !
+      IF (zrnfex>0.0_wp) THEN
+         ! Redistribute excess runoff on the global E-P
+         zrnfex    = zrnfex/garea
+         emp(:,:)  = emp(:,:) -zrnfex
+         emps(:,:) = emps(:,:)-zrnfex
+!         IF (lwp) WRITE(numout,*) ' RNF REDIST ',zrnfex
+      END IF
+
+      !
+      WHERE (sss_m(:,:)>0.0_wp)
+        emps(:,:) = emps(:,:) + salt_x2o(:,:)/sss_m(:,:)
+      END WHERE
+
+      ! Heat budget
+      ! NEMO: [qsr, qns]>0 ==> d(SST)/dt>0
+      !       Sign convention: positive downward
+      !       Units: MKS
+
+      qsr(:,:)  = swnet_x2o(:,:)
+!      qns(:,:)  = lwup_x2o(:,:)+lwdn_x2o(:,:)+sen_x2o(:,:)+evap_x2o(:,:)*cevap+         &
+!                  melth_x2o(:,:)-(snow_x2o(:,:)+ioff_x2o(:,:))*lfus
+      qns(:,:)  = lwup_x2o(:,:)+lwdn_x2o(:,:)+sen_x2o(:,:)+lat_x2o(:,:)+         &
+                  melth_x2o(:,:)-(snow_x2o(:,:)+ioff_x2o(:,:))*lfus
+
+      emp(:,:)  = emp(:,:)*tmask(:,:,1)
+      emps(:,:) = emps(:,:)*tmask(:,:,1)
+      qsr(:,:)  = qsr(:,:)*tmask(:,:,1)
+      qns(:,:)  = qns(:,:)*tmask(:,:,1)
+
+!     update ghost cells for fluxes received from the coupler
+      IF (ln_rnf_cpl) call lbc_lnk(rnf(:,:),  'T', 1._wp)
+      call lbc_lnk(emp(:,:),  'T', 1._wp)
+      call lbc_lnk(emps(:,:), 'T', 1._wp)
+      call lbc_lnk(qsr(:,:),  'T', 1._wp)
+      call lbc_lnk(qns(:,:),  'T', 1._wp)
+
+!     3. distribute ice cover, wind speed module
+
+      fr_i(:,:) = ifrac_x2o(:,:)*tmask(:,:,1)
+      ! m2/s2 -> m/s
+      wndm(:,:) = 0.0_wp
+      WHERE (duu10n_x2o(:,:) > 0.0_wp)
+        wndm(:,:) = SQRT(duu10n_x2o(:,:))
+      END WHERE
+      wndm(:,:) = wndm(:,:)*tmask(:,:,1)
+#if defined key_cpl_carbon_cycle
+!     4. distribute atmospheric co2
+      atm_co2(:,:) = co2_x2o(:,:)*tmask(:,:,1)
+#endif
+
+!     update ghost cells for fluxes received from the coupler
+      call lbc_lnk(fr_i(:,:), 'T', 1._wp)
+      call lbc_lnk(wndm(:,:), 'T', 1._wp)
+#if defined key_cpl_carbon_cycle
+      call lbc_lnk(atm_co2(:,:), 'T', 1._wp)
+#endif
+
+      IF( wrk_not_released(2, 1,2) )   CALL ctl_stop('sbc_cpl_cesm_rcv: failed to release workspace arrays')
+
+      ! Reset coupling time step flag
+      lrecv = .FALSE.
+
+   END SUBROUTINE sbc_cpl_cesm_rcv
+
+   SUBROUTINE sbc_cpl_cesm_finalize
+
+   IF (ALLOCATED(taux_x2o))   DEALLOCATE(taux_x2o)
+   IF (ALLOCATED(tauy_x2o))   DEALLOCATE(tauy_x2o)
+   IF (ALLOCATED(evap_x2o))   DEALLOCATE(evap_x2o)
+   IF (ALLOCATED(rain_x2o))   DEALLOCATE(rain_x2o)
+   IF (ALLOCATED(snow_x2o))   DEALLOCATE(snow_x2o)
+   IF (ALLOCATED(roff_x2o))   DEALLOCATE(roff_x2o)
+   IF (ALLOCATED(ioff_x2o))   DEALLOCATE(ioff_x2o)
+   IF (ALLOCATED(meltw_x2o))  DEALLOCATE(meltw_x2o)
+   IF (ALLOCATED(salt_x2o))   DEALLOCATE(salt_x2o)
+   IF (ALLOCATED(swnet_x2o))  DEALLOCATE(swnet_x2o)
+   IF (ALLOCATED(lat_x2o))    DEALLOCATE(lat_x2o)
+   IF (ALLOCATED(sen_x2o))    DEALLOCATE(sen_x2o)
+   IF (ALLOCATED(lwup_x2o))   DEALLOCATE(lwup_x2o)
+   IF (ALLOCATED(lwdn_x2o))   DEALLOCATE(lwdn_x2o)
+   IF (ALLOCATED(melth_x2o))  DEALLOCATE(melth_x2o)
+   IF (ALLOCATED(ifrac_x2o))  DEALLOCATE(ifrac_x2o)
+   IF (ALLOCATED(pslv_x2o))   DEALLOCATE(pslv_x2o)
+   IF (ALLOCATED(duu10n_x2o)) DEALLOCATE(duu10n_x2o)
+#if defined key_cpl_carbon_cycle
+   IF (ALLOCATED(co2_x2o))    DEALLOCATE(co2_x2o)
+#endif
+
+   END SUBROUTINE sbc_cpl_cesm_finalize
+
+#else
+   IMPLICIT NONE
+   PRIVATE
+
+   LOGICAL, PARAMETER, PUBLIC :: lk_cesm = .false.
+#endif
+
+   !!======================================================================
+END MODULE sbccpl_cesm

@@ -60,7 +60,9 @@
          Timelt    = SHR_CONST_TKFRZ-SHR_CONST_TKFRZ,&! melting temp. ice top surface  (C)
          Tsmelt    = SHR_CONST_TKFRZ-SHR_CONST_TKFRZ,&! melting temp. snow top surface (C)
          ice_ref_salinity = SHR_CONST_ICE_REF_SAL ,&! (psu)
-!        ocn_ref_salinity = SHR_CONST_OCN_REF_SAL ,&! (psu)
+#ifdef NEMO_IN_CCSM
+         ocn_ref_salinity = SHR_CONST_OCN_REF_SAL ,&! (psu)
+#endif
          albocn = 0.06_dbl_kind                   ,&! ocean albedo
          dragio = 0.00536_dbl_kind                ,&! ice-ocn drag coefficient
 !        rho_air   = SHR_CONST_RHODAIR,&! ambient air density (kg/m^3)

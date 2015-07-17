@@ -1818,16 +1818,16 @@ end subroutine box_rearrange_io2comp_int
        endif
     enddo
     k=0
-    loop_ioproc: do while(.not. found.and.k<1004)
+    loop_ioproc: do while(.not. found.and.k<5004)
        k=k+1
        do j=1,ndim
           if ( gcoord(j) < lb(j,i) ) then
              i = max(1,i-decompstep(j))
-             if(k>1000) print *,__FILE__,__LINE__,i,gcoord(:),lb(:,i),ub(:,i)
+             if(k>5000) print *,__FILE__,__LINE__,i,gcoord(:),lb(:,i),ub(:,i)
              cycle loop_ioproc
           else  if(gcoord(j) >= ub(j,i) ) then
              i = min(nioproc,i+decompstep(j))
-             if(k>1000) print *,__FILE__,__LINE__,i,gcoord(:),lb(:,i),ub(:,i)
+             if(k>5000) print *,__FILE__,__LINE__,i,gcoord(:),lb(:,i),ub(:,i)
              cycle loop_ioproc
           endif
        end do

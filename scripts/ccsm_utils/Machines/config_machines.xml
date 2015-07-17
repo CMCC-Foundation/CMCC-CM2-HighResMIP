@@ -526,6 +526,28 @@
         <PES_PER_NODE>16</PES_PER_NODE>
 </machine>
 
+<machine MACH="athena">
+        <DESC>CMCC IBM iDataPlex, os is Linux, 16 pes/node, batch system is LSF</DESC>
+        <OS>LINUX</OS>
+        <COMPILERS>intel</COMPILERS>
+        <MPILIBS>mpich2,mpi-serial</MPILIBS>
+	<CESMSCRATCHROOT>/work/$CCSMUSER/CESM</CESMSCRATCHROOT>
+        <RUNDIR>$CESMSCRATCHROOT/$CASE/run</RUNDIR>
+        <EXEROOT>$CESMSCRATCHROOT/$CASE/bld</EXEROOT>
+        <DIN_LOC_ROOT>$ENV{CESMDATAROOT}/inputdata</DIN_LOC_ROOT>
+        <DIN_LOC_ROOT_CLMFORC>$ENV{CESMROOT}/lmwg</DIN_LOC_ROOT_CLMFORC>
+        <DOUT_S_ROOT>$CESMSCRATCHROOT/archive/$CASE</DOUT_S_ROOT>
+        <DOUT_L_MSROOT>csm/$CASE</DOUT_L_MSROOT>              
+        <CCSM_BASELINE>$ENV{CESMDATAROOT}/ccsm_baselines</CCSM_BASELINE>                   
+        <CCSM_CPRNC>$ENV{CESMDATAROOT}/tools/cprnc/cprnc</CCSM_CPRNC>
+        <BATCHQUERY>bjobs -w</BATCHQUERY>                                                                     
+        <BATCHSUBMIT>bsub &lt;</BATCHSUBMIT>
+        <SUPPORTED_BY>piergiuseppe.fogli -at- cmcc.it</SUPPORTED_BY>
+        <GMAKE_J>8</GMAKE_J>
+        <MAX_TASKS_PER_NODE>30</MAX_TASKS_PER_NODE>
+        <PES_PER_NODE>16</PES_PER_NODE>
+</machine>
+
 <machine MACH="pronghorn">
         <DESC>NCAR IBM, os is Linux, 16 pes/node, batch system is LSF</DESC>
         <OS>LINUX</OS>

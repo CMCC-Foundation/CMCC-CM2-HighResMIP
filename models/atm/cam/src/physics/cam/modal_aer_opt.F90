@@ -1187,10 +1187,10 @@ subroutine read_water_refindex(infilename)
 
    ! set complex representation of refractive indices as module data
    do i = 1, nswbands
-      crefwsw(i)  = cmplx(refrwsw(i), abs(refiwsw(i)))
+      crefwsw(i)  = cmplx(refrwsw(i), abs(refiwsw(i)), r8)
    end do
    do i = 1, nlwbands
-      crefwlw(i)  = cmplx(refrwlw(i), abs(refiwlw(i)))
+      crefwlw(i)  = cmplx(refrwlw(i), abs(refiwlw(i)), r8)
    end do
 
    call pio_closefile(ncid)

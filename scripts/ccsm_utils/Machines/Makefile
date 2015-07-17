@@ -308,7 +308,7 @@ INCLDIR += -I$(SHAREDPATH)/include -I$(CODEROOT)/csm_share/shr
 CFLAGS+=$(CPPDEFS)
 CXXFLAGS := $(CFLAGS)
 
-CONFIG_ARGS +=  CC="$(SCC)" FC="$(SFC)" MPICC="$(MPICC)" \
+CONFIG_ARGS +=  CC="$(CC)" FC="$(FC)" MPICC="$(MPICC)" \
                 MPIFC="$(MPIFC)" FCFLAGS="$(FFLAGS) $(FREEFLAGS) $(INCLDIR)" \
                 CPPDEFS="$(CPPDEFS)" CFLAGS="$(CFLAGS) -I.. $(INCLDIR)" \
                 NETCDF_PATH=$(NETCDF_PATH) LDFLAGS="$(LDFLAGS)" \
@@ -514,6 +514,10 @@ OBJS    := $(addsuffix .o, $(BASENAMES))
 INCS    := $(foreach dir,$(cpp_dirs),-I$(dir)) 
 
 CURDIR := $(shell pwd)
+
+ifeq ($(MODEL),nemo)
+  USER_MKDEPENDS_OPTS := -p $(CPPDEFS) $(INCLDIR) $(INCS)
+endif
 
 $(CURDIR)/Depends: $(CURDIR)/Srcfiles $(CURDIR)/Deppath
 	$(CASETOOLS)/mkDepends $(USER_MKDEPENDS_OPTS) Deppath Srcfiles > $@

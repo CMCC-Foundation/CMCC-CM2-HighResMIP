@@ -1,0 +1,25 @@
+#! /bin/bash
+
+function template() 
+{
+  echo ${1}
+  sed "s/#TYPE#/${1}/g" vector_def.template > vector_${1}_def.inc
+  sed "s/#TYPE#/${1}/g" vector_contains.template > vector_${1}_contains.inc
+}
+
+
+template field
+template field_group
+template axis
+template axis_group
+template node
+template domain
+template grid
+template grid_group
+template file
+template file_group
+template field_dep
+template file_dep
+template field_out
+template context
+template zoom

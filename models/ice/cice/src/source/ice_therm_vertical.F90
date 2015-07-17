@@ -114,6 +114,9 @@
                                   fswabsn,     flwoutn,   &
                                   evapn,       freshn,    &
                                   fsaltn,      fhocnn,    &
+#ifdef NEMO_IN_CCSM
+                                  freshn_nemo, fsaltn_nemo, &
+#endif
                                   meltt,       melts,     &
                                   meltb,                  &
                                   congel,      snoice,    &
@@ -212,6 +215,12 @@
          fsaltn  , & ! salt flux to ocean (kg/m^2/s)
          fhocnn      ! net heat flux to ocean (W/m^2) 
 
+#ifdef NEMO_IN_CCSM
+      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(out):: &
+         freshn_nemo , & ! fresh water flux to ocean (kg/m^2/s)
+         fsaltn_nemo     ! rejected salt flux to ocean (kg/m^2/s)
+#endif
+
       ! diagnostic fields
       real (kind=dbl_kind), dimension(nx_block,ny_block), &
          intent(inout):: &
@@ -278,6 +287,13 @@
          Tsfcn, & ! temperature of ice/snow top surface  (C)
          iage     ! ice age (s)
 
+#ifdef NEMO_IN_CCSM
+      real (kind=dbl_kind), dimension (icells) :: &
+         evapin,  &  ! ice subl/cond water flux (kg/m^2/s) 
+         snomlt,  &  ! snow melt + snow ice water flux (kg/m^2/s) 
+         icemlt      ! ice melt water flux (kg/m^2/s) 
+#endif
+
       !-----------------------------------------------------------------
       ! Initialize
       !-----------------------------------------------------------------
@@ -296,6 +312,10 @@
          freshn (i,j) = c0
          fsaltn (i,j) = c0
          fhocnn (i,j) = c0
+#ifdef NEMO_IN_CCSM
+         freshn_nemo (i,j) = c0
+         fsaltn_nemo (i,j) = c0
+#endif
 
          meltt  (i,j) = c0
          meltb  (i,j) = c0
@@ -344,6 +364,12 @@
          ! Save initial ice and snow thickness (for fresh and fsalt)
          worki(ij) = hin(ij)
          works(ij) = hsn(ij)
+#ifdef NEMO_IN_CCSM
+         ! Initialize
+         evapin (ij) = c0
+         snomlt (ij) = c0
+         icemlt (ij) = c0
+#endif
       enddo
    
       !-----------------------------------------------------------------
@@ -433,6 +459,10 @@
                              fcondtopn,    fcondbot, &
                              fsnow,        hsn_new,  &
                              fhocnn,       evapn,    &
+#ifdef NEMO_IN_CCSM
+                             evapin,       snomlt,   &
+                             icemlt,                 &
+#endif
                              meltt,        melts,    &
                              meltb,        iage,     &
                              congel,       snoice,   &
@@ -481,6 +511,14 @@
          dhi = hin(ij) - worki(ij)
          dhs = hsn(ij) - works(ij)
                
+#ifdef NEMO_IN_CCSM
+         ! Tartinville et al. 2001, modified to take into account ice
+         ! sublimation/condensation in freshn
+         freshn_nemo(i,j) = evapin(ij) + &
+                       rhos*snomlt(ij) / dt
+         fsaltn_nemo(i,j) = -rhoi*icemlt(ij)*(ocn_ref_salinity - &
+                       ice_ref_salinity)/dt
+#endif
          freshn(i,j) = evapn(i,j) - &
                        (rhoi*dhi + rhos*(dhs-hsn_new(ij))) / dt
          fsaltn(i,j) = -rhoi*dhi*ice_ref_salinity*p001/dt
@@ -3531,6 +3569,10 @@
                                     fcondtopn, fcondbot, &
                                     fsnow,     hsn_new,  &
                                     fhocnn,    evapn,    &
+#ifdef NEMO_IN_CCSM
+                                    evapin,    snomlt,   &
+                                    icemlt,              &
+#endif
                                     meltt,     melts,    &
                                     meltb,     iage,     &
                                     congel,    snoice,   &  
@@ -3599,6 +3641,13 @@
          fhocnn      , & ! fbot, corrected for any surplus energy (W m-2)
          evapn           ! ice/snow mass sublimated/condensed (kg m-2 s-1)
 
+#ifdef NEMO_IN_CCSM
+      real (kind=dbl_kind), dimension (icells), intent(out):: &
+         evapin,       &  ! ice sublimated/condensed flux (kg m-2 s-1)
+         snomlt,       &  ! snow melt+snow ice flux (kg m-2 s-1)
+         icemlt           ! ice melt flux (kg m-2 s-1)
+#endif
+
       real (kind=dbl_kind), dimension (icells), intent(out):: &
          hsn_new         ! thickness of new snow (m)
 !
@@ -3618,6 +3667,12 @@
          etop_mlt    , & ! energy for top melting, > 0    (J m-2)
          ebot_mlt    , & ! energy for bottom melting, > 0 (J m-2)
          ebot_gro        ! energy for bottom growth, < 0  (J m-2)
+
+#ifdef NEMO_IN_CCSM
+      real (kind=dbl_kind), dimension (icells) :: &
+         work1       , & ! work array
+         work2           ! work array
+#endif
 
       real (kind=dbl_kind) :: &
          dhi         , & ! change in ice thickness
@@ -3729,6 +3784,11 @@
          !--------------------------------------------------------------
 
          evapn   (i,j) = c0          ! initialize
+#ifdef NEMO_IN_CCSM
+         evapin  (ij) = c0          ! initialize
+         snomlt  (ij) = c0          ! initialize
+         icemlt  (ij) = c0          ! initialize
+#endif
 
          if (hsn(ij) > puny) then    ! add snow with enthalpy qsn(ij,1)
             dhs = econ(ij) / (qsn(ij,1) - rhos*Lvap) ! econ < 0, dhs > 0
@@ -3738,6 +3798,10 @@
             dhi = econ(ij) / (qin(ij,1) - rhoi*Lvap) ! econ < 0, dhi > 0
             dzi(ij,1) = dzi(ij,1) + dhi
             evapn(i,j) = evapn(i,j) + dhi*rhoi
+#ifdef NEMO_IN_CCSM
+            evapin(ij) = evapin(ij) + dhi*rhoi
+            icemlt(ij) = icemlt(ij) - dhi  ! dhi > 0
+#endif
          endif
 
          !--------------------------------------------------------------
@@ -3770,6 +3834,10 @@
          congel(i,j) = congel(i,j) + dhi
          if (dhi > puny .and. frz_onset(i,j) < puny) &
                  frz_onset(i,j) = yday
+
+#ifdef NEMO_IN_CCSM
+         icemlt(ij) = icemlt(ij) - dhi  ! dhi > 0
+#endif
 
       enddo                     ! ij
 
@@ -3805,6 +3873,9 @@
             if (dhs < -puny .and. mlt_onset(i,j) < puny) &
                mlt_onset(i,j) = yday
             melts(i,j) = melts(i,j) - dhs
+#ifdef NEMO_IN_CCSM
+            snomlt(ij) = snomlt(ij) - dhs   ! snow melt -> dhs<0
+#endif
 
          enddo                  ! ij
       enddo                     ! nslyr
@@ -3827,6 +3898,10 @@
             esub(ij) = esub(ij) - dhi*qsub
             esub(ij) = max(esub(ij), c0)
             evapn(i,j) = evapn(i,j) + dhi*rhoi
+#ifdef NEMO_IN_CCSM
+            evapin(ij) = evapin(ij) + dhi*rhoi
+            icemlt(ij) = icemlt(ij) - dhi  ! dhi < 0
+#endif
 
          !--------------------------------------------------------------
          ! Melt ice (top)
@@ -3841,6 +3916,9 @@
             if (dhi < -puny .and. mlt_onset(i,j) < puny) &
                  mlt_onset(i,j) = yday
             meltt(i,j) = meltt(i,j) - dhi
+#ifdef NEMO_IN_CCSM
+            icemlt(ij) = icemlt(ij) - dhi  ! dhi < 0
+#endif
 
          enddo                  ! ij
       enddo                     ! nilyr
@@ -3865,6 +3943,10 @@
             ! history diagnostics
             meltb(i,j) = meltb(i,j) - dhi
 
+#ifdef NEMO_IN_CCSM
+            icemlt(ij) = icemlt(ij) - dhi  ! dhi < 0
+#endif
+
          enddo                  ! ij
       enddo                     ! nilyr
 
@@ -3882,6 +3964,9 @@
             dzs(ij,k) = dzs(ij,k) + dhs         ! qsn < 0, dhs < 0
             ebot_mlt(ij) = ebot_mlt(ij) - dhs*qsn(ij,k)
             ebot_mlt(ij) = max(ebot_mlt(ij), c0)
+#ifdef NEMO_IN_CCSM
+            snomlt(ij) = snomlt(ij) - dhs   ! snow melt -> dhs<0
+#endif
 
          enddo                  ! ij
       enddo                     ! nslyr
@@ -3961,6 +4046,12 @@
     ! Convert snow to ice if snow lies below freeboard.
     !-------------------------------------------------------------------
 
+#ifdef NEMO_IN_CCSM
+      ! Save snow & ice before freeboard computation
+      work1(:) = hsn(:)
+      work2(:) = hin(:)
+#endif
+
       call freeboard (nx_block, ny_block, &
                       icells,             &
                       indxi,    indxj,    &
@@ -3970,6 +4061,13 @@
                       hin,      hsn,      &
                       qin,      qsn,      &
                       dzi,      dzs)
+
+#ifdef NEMO_IN_CCSM
+      ! Add to snomlt the snow converted to snow ice
+      snomlt(:) = snomlt(:) - hsn(:) + work1(:)
+      ! Add to icemlt the newly formed snow ice
+      icemlt(:) = icemlt(:) - hin(:) + work2(:)
+#endif
 
 !---!-------------------------------------------------------------------
 !---! Repartition the ice and snow into equal-thickness layers,
@@ -4088,6 +4186,9 @@
          j = indxj(ij)
          efinal(ij) = -evapn(i,j)*Lvap
          evapn(i,j) =  evapn(i,j)/dt
+#ifdef NEMO_IN_CCSM
+         evapin(ij) = evapin(ij)/dt
+#endif
       enddo
 
       do k = 1, nslyr

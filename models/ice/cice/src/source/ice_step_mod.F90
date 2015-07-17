@@ -421,6 +421,10 @@
       do i = 1, nx_block
          fresh     (i,j,iblk) = fresh(i,j,iblk)       &
               + frain(i,j,iblk)*aice(i,j,iblk)
+#if defined NEMO_IN_CCSM
+         fresh_nemo (i,j,iblk) = fresh_nemo(i,j,iblk)       &
+              + frain(i,j,iblk)*aice(i,j,iblk)
+#endif
       enddo
       enddo
 
@@ -520,6 +524,10 @@
                         frz_onset(:,:,  iblk), yday,     &
                         fresh    (:,:,  iblk),           &
                         fsalt    (:,:,  iblk),           &
+#if defined NEMO_IN_CCSM
+                        fresh_nemo (:,:,  iblk),           &
+                        fsalt_nemo (:,:,  iblk),           &
+#endif
                         Tf       (:,:,  iblk), l_stop,   &
                         istop, jstop)
 
@@ -544,6 +552,11 @@
                          fsalt     (:,:,  iblk), &    
                          fhocn     (:,:,  iblk), &
                          fsoot     (:,:,:,iblk), &
+#if defined NEMO_IN_CCSM
+                         fresh_nemo (:,:,  iblk), &
+                         fsalt_nemo (:,:,  iblk), &    
+                         fhocn_nemo (:,:,  iblk), &
+#endif
                          rside     (:,:,  iblk), &
                          meltl     (:,:,  iblk), &
                          aicen     (:,:,:,iblk), &
@@ -585,6 +598,11 @@
                         trcr_depend,                                &
                         fresh   (:,:,  iblk), fsalt   (:,:,  iblk), &
                         fhocn   (:,:,  iblk), fsoot   (:,:,:,iblk), &
+#if defined NEMO_IN_CCSM
+                        fresh_nemo (:,:,  iblk),  &
+                        fsalt_nemo (:,:,  iblk),  &
+                        fhocn_nemo (:,:,  iblk),  &
+#endif
                         tr_aero,                                    &
                         heat_capacity,        l_stop,               &
                         istop,                jstop)
@@ -737,7 +755,11 @@
                          dardg1dt(:,:,iblk),   dardg2dt  (:,:,iblk),     &
                          dvirdgdt(:,:,iblk),   opening   (:,:,iblk),     &
                          fresh   (:,:,iblk),   fhocn     (:,:,iblk),     &
-                         fsoot   (:,:,:,iblk))
+                         fsoot   (:,:,:,iblk)                            &
+#if defined NEMO_IN_CCSM
+                         , fresh_nemo (:,:,iblk), fhocn_nemo (:,:,iblk)  &
+#endif
+                         )
 
          if (l_stop) then
             write (nu_diag,*) 'istep1, my_task, iblk =', &
@@ -785,6 +807,11 @@
                            trcr_depend,                                &
                            fresh   (:,:,  iblk), fsalt   (:,:,  iblk), &
                            fhocn   (:,:,  iblk), fsoot   (:,:,:,iblk), &
+#if defined NEMO_IN_CCSM
+                           fresh_nemo (:,:,  iblk),  &
+                           fsalt_nemo (:,:,  iblk),  &
+                           fhocn_nemo (:,:,  iblk),  &
+#endif
                            tr_aero,                                    &
                            heat_capacity,        l_stop,               &
                            istop,                jstop)

@@ -1,0 +1,8 @@
+ifeq  ($(strip $(MODEL)),cam)
+ifeq  ($(strip $(COMPILER)),intel)
+# Disable Intel compiler -O2 optimization level for prim_advection_mod.F90
+# as it cause model abort with Intel Compiler version 13.0.0 on Athena
+prim_advection_mod.o: prim_advection_mod.F90
+	$(FC) -c $(INCLDIR) $(INCS) $(FFLAGS) $(FREEFLAGS) -O1 $<
+endif
+endif

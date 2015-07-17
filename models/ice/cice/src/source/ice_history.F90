@@ -153,6 +153,10 @@
            f_fresh     = 'mxxxx', f_fresh_ai   = 'mxxxx', &
            f_fsalt     = 'mxxxx', f_fsalt_ai   = 'mxxxx', &
            f_fhocn     = 'mxxxx', f_fhocn_ai   = 'mxxxx', &
+#ifdef NEMO_IN_CCSM
+           f_fresh_nemo = 'mxxxx', f_fsalt_nemo = 'mxxxx', &
+           f_fhocn_nemo = 'mxxxx', &
+#endif
            f_fswthru   = 'mxxxx', f_fswthru_ai = 'mxxxx', &
            f_strairx   = 'mxxxx', f_strairy    = 'mxxxx', &
            f_strtltx   = 'mxxxx', f_strtlty    = 'mxxxx', &
@@ -227,6 +231,11 @@
            f_fresh,     f_fresh_ai , &  
            f_fsalt,     f_fsalt_ai , &
            f_fhocn,     f_fhocn_ai , &
+#ifdef NEMO_IN_CCSM
+           f_fresh_nemo,  &  
+           f_fsalt_nemo,  &
+           f_fhocn_nemo,  &
+#endif
            f_fswthru,   f_fswthru_ai,&
 #if (defined AEROFRC) || (defined CCSM3FRC) || (defined PONDFRC)
            f_fswsfc_ai, f_fswint_ai ,&
@@ -533,6 +542,11 @@
       call broadcast_scalar (f_fsalt_ai, master_task)
       call broadcast_scalar (f_fhocn, master_task)
       call broadcast_scalar (f_fhocn_ai, master_task)
+#ifdef NEMO_IN_CCSM
+      call broadcast_scalar (f_fresh_nemo, master_task)
+      call broadcast_scalar (f_fsalt_nemo, master_task)
+      call broadcast_scalar (f_fhocn_nemo, master_task)
+#endif
       call broadcast_scalar (f_fswthru, master_task)
       call broadcast_scalar (f_fswthru_ai, master_task)
       call broadcast_scalar (f_strairx, master_task)
@@ -1182,6 +1196,30 @@
              "weighted by ice area", c1, c0,                               &
              ns1, f_fhocn_ai)
       
+#ifdef NEMO_IN_CCSM
+      if (f_fresh_nemo(1:1) /= 'x') &
+         call define_hist_field(n_fresh_nemo,"fresh_nemo",             &
+             "cm/day",tstr, tcstr,                                     &
+             "freshwtr flx ice to nemo ocn (cpl)",                     &
+             "if positive, nemo ocean gains fresh water",              &
+             mps_to_cmpdy/rhofresh, c0,                                &
+             ns1, f_fresh_nemo)
+      
+      if (f_fsalt_nemo(1:1) /= 'x') &
+         call define_hist_field(n_fsalt_nemo,"fsalt_nemo",             &
+             "psu*kg/m^2/day",tstr, tcstr,                                 &
+             "rejected salt flux ice to nemo ocn (cpl)",               &
+             "if negative, nemo ocean gains salt", secday, c0,         &
+             ns1, f_fsalt_nemo)
+      
+      if (f_fhocn_nemo(1:1) /= 'x') &
+         call define_hist_field(n_fhocn_nemo,"fhocn_nemo",             &
+             "W/m^2",tstr, tcstr,                                      &
+             "heat flux ice to nemo ocn (cpl)",                        &
+             "if positive, nemo ocean gains heat", c1, c0,             &
+             ns1, f_fhocn_nemo)
+#endif
+
       if (f_fswthru(1:1) /= 'x') &
          call define_hist_field(n_fswthru,"fswthru","W/m^2",tstr, tcstr, &
              "SW thru ice to ocean (cpl)",                               &
@@ -1966,6 +2004,14 @@
             call accum_hist_field(n_fhocn, iblk, fhocn(:,:,iblk))
          if (f_fhocn_ai(1:1) /= 'x') &
             call accum_hist_field(n_fhocn_ai,iblk, fhocn_gbm(:,:,iblk))
+#ifdef NEMO_IN_CCSM
+         if (f_fresh_nemo(1:1) /= 'x') &
+            call accum_hist_field(n_fresh_nemo, iblk, fresh_nemo(:,:,iblk))
+         if (f_fsalt_nemo(1:1) /= 'x') &
+            call accum_hist_field(n_fsalt_nemo, iblk, fsalt_nemo(:,:,iblk))
+         if (f_fhocn_nemo(1:1) /= 'x') &
+            call accum_hist_field(n_fhocn_nemo, iblk, fhocn_nemo(:,:,iblk))
+#endif
          if (f_fswthru(1:1) /= 'x') &
             call accum_hist_field(n_fswthru, iblk, fswthru(:,:,iblk))
          if (f_fswthru_ai(1:1) /= 'x') &

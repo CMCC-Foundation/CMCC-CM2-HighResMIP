@@ -181,6 +181,13 @@
          Trefn       , & ! air tmp reference level            (K)
          Qrefn           ! air sp hum reference level         (kg/kg)
 
+#ifdef NEMO_IN_CCSM
+      real (kind=dbl_kind), dimension (nx_block,ny_block) :: &
+         freshn_nemo , & ! flux of water, ice to ocean (kg/m^2/s)
+         fsaltn_nemo !, & ! flux of salt, ice to ocean (kg/m^2/s)
+         !fhocnn_nemo      ! fbot corrected for leftover energy (W/m^2)
+#endif
+
       ! other local variables
       real (kind=dbl_kind), dimension (nx_block,ny_block) :: &
          Tbot        , & ! ice bottom surface temperature (deg C)
@@ -391,6 +398,9 @@
                           fswabsn,             flwoutn,             &
                           evapn,               freshn,              &
                           fsaltn,              fhocnn,              &
+#ifdef NEMO_IN_CCSM
+                          freshn_nemo,         fsaltn_nemo,         &
+#endif
                           melttn,              meltsn,              &
                           meltbn,                                   &
                           congeln,             snoicen,             &
@@ -492,6 +502,10 @@
                             Trefn,              Qrefn,                &
                             freshn,             fsaltn,               &
                             fhocnn,             fswthrun(:,:,n,iblk), &
+#ifdef NEMO_IN_CCSM
+                            freshn_nemo,        fsaltn_nemo,          &
+                            fhocnn,                                   &
+#endif
                             strairxT(:,:,iblk), strairyT  (:,:,iblk), &
                             fsurf   (:,:,iblk), fcondtop  (:,:,iblk), &
                             fsens   (:,:,iblk), flat      (:,:,iblk), &
@@ -516,6 +530,10 @@
                             Tref    (:,:,iblk), Qref      (:,:,iblk), &
                             fresh   (:,:,iblk), fsalt   (:,:,iblk),   &
                             fhocn   (:,:,iblk), fswthru (:,:,iblk),   &
+#ifdef NEMO_IN_CCSM
+                            fresh_nemo(:,:,iblk), fsalt_nemo (:,:,iblk),   &
+                            fhocn_nemo(:,:,iblk),                     &
+#endif
                             melttn, meltsn, meltbn, congeln, snoicen, &
                             meltt   (:,:,iblk),  melts   (:,:,iblk),  &
                             meltb   (:,:,iblk),                       &
@@ -777,6 +795,10 @@
                             Tref     (:,:,iblk), Qref    (:,:,iblk), &
                             fresh    (:,:,iblk), fsalt   (:,:,iblk), &
                             fhocn    (:,:,iblk), fswthru (:,:,iblk), &
+#ifdef NEMO_IN_CCSM
+                            fresh_nemo(:,:,iblk), fsalt_nemo (:,:,iblk), &
+                            fhocn_nemo(:,:,iblk),                    &
+#endif
                             fsoot    (:,:,:,iblk),                   &
                             alvdr    (:,:,iblk), alidr   (:,:,iblk), &
                             alvdf    (:,:,iblk), alidf   (:,:,iblk))

@@ -23,10 +23,18 @@
 
 <grid_type hgrid="tx0.1v2"  >'tripole'      </grid_type> 
 <grid_type hgrid="tx1v1"    >'tripole'      </grid_type> 
+<grid_type hgrid="tn2v1"    >'tripole'      </grid_type> 
+<grid_type hgrid="tn1v1"    >'tripole'      </grid_type> 
+<grid_type hgrid="tn0.5v1"  >'tripole'      </grid_type>
+<grid_type hgrid="tn0.25v1" >'tripole'      </grid_type>
 <grid_type                  >'displaced_pole'</grid_type> 
 
 <grid_format hgrid="tx0.1v2">'bin'</grid_format> 
 <grid_format hgrid="tx1v1"  >'bin'</grid_format> 
+<grid_format hgrid="tn2v1"   >'nc'</grid_format> 
+<grid_format hgrid="tn1v1"   >'nc'</grid_format> 
+<grid_format hgrid="tn0.5v1" >'nc'</grid_format>
+<grid_format hgrid="tn0.25v1">'nc'</grid_format>
 <grid_format                >'bin'</grid_format> 
 
 <grid_file hgrid="gx1v6"    >'ocn/pop/gx1v6/grid/horiz_grid_20010402.ieeer8'</grid_file> 
@@ -35,6 +43,9 @@
 <grid_file hgrid="gx3v7"    >'ocn/pop/gx3v7/grid/horiz_grid_20030806.ieeer8'</grid_file> 
 <grid_file hgrid="tx0.1v2"  >'ocn/pop/tx0.1v2/grid/horiz_grid_200709.ieeer8'</grid_file> 
 <grid_file hgrid="tx1v1"    >'ocn/pop/tx1v1/grid/horiz_grid_20050510.ieeer8'</grid_file>
+<grid_file hgrid="tn2v1"    >'ice/cice/global_tn2v1_grid_20131031.nc'</grid_file>
+<grid_file hgrid="tn1v1"    >'ice/cice/global_tn1v1_grid_20121127.nc'</grid_file>
+<grid_file hgrid="tn0.25v1" >'ice/cice/global_tn0.25v1_grid_20130622.nc'</grid_file>
 
 <grid_file hgrid="ar9v1"     >'ice/cice/ar9v1_20090521.grid'       </grid_file>
 <grid_file hgrid="ar9v2"     >'ice/cice/ar9v1_20090521.grid'       </grid_file>
@@ -48,6 +59,9 @@
 <kmt_file hgrid="gx3v7"     >'ocn/pop/gx3v7/grid/topography_20100105.ieeei4'</kmt_file> 
 <kmt_file hgrid="tx0.1v2"   >'ocn/pop/tx0.1v2/grid/topography_200709.ieeei4'</kmt_file> 
 <kmt_file hgrid="tx1v1"     >'ocn/pop/tx1v1/grid/topography_20050510.ieeei4'</kmt_file>
+<kmt_file hgrid="tn2v1"     >'ice/cice/global_tn2v1_kmt_20131031.nc'</kmt_file>
+<kmt_file hgrid="tn1v1"     >'ice/cice/global_tn1v1_kmt_20121127.nc'</kmt_file>
+<kmt_file hgrid="tn0.25v1"  >'ice/cice/global_tn0.25v1_kmt_20140422.nc'</kmt_file>
 
 <kmt_file hgrid="ar9v1"     >'ice/cice/ar9v1_20090520.kmt'       </kmt_file>
 <kmt_file hgrid="ar9v2"     >'ice/cice/ar9v1_20090520.kmt'       </kmt_file>
@@ -181,6 +195,10 @@
 
 <ns_boundary_type hgrid ='tx0.1v2' >'tripole'</ns_boundary_type>
 <ns_boundary_type hgrid ='tx1v1'   >'tripole'</ns_boundary_type>
+<ns_boundary_type hgrid ='tn2v1'   >'tripoleT'</ns_boundary_type>
+<ns_boundary_type hgrid ='tn1v1'   >'tripole'</ns_boundary_type>
+<ns_boundary_type hgrid ='tn0.5v1' >'tripole'</ns_boundary_type>
+<ns_boundary_type hgrid ='tn0.25v1'>'tripoleT'</ns_boundary_type>
 <ns_boundary_type                  >'open'   </ns_boundary_type>
 
 <!-------------------------------------------------------------->

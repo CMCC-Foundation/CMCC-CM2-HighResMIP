@@ -114,6 +114,13 @@
          bm     , & ! cice block mask (T-cell)
          uvm        ! land/boundary mask, velocity (U-cell)
 
+#ifdef NEMO_IN_CCSM
+      ! Land/sea mask for NEMO tripole grid
+      ! Used only to exchange fields with the coupler
+      real (kind=dbl_kind), dimension (nx_block,ny_block,max_blocks), save :: &
+         hm_i       ! land/boundary mask for interior domain (T-cell)
+#endif
+
       real (kind=dbl_kind), dimension (nx_block,ny_block,max_blocks), save :: &
          ocn_gridcell_frac   ! only relevant for lat-lon grids
                              ! gridcell value of [1 - (land fraction)] (T-cell)
@@ -124,6 +131,12 @@
          umask  , & ! land/boundary mask, velocity (U-cell)
          lmask_n, & ! northern hemisphere mask
          lmask_s    ! southern hemisphere mask
+
+#ifdef NEMO_IN_CCSM
+      logical (kind=log_kind), &
+         dimension (nx_block,ny_block,max_blocks), save :: &
+         tmask_i    ! land/boundary mask for interior domain (T-cell)
+#endif
 
       ! grid dimensions for rectangular grid
       real (kind=dbl_kind), parameter ::  &
@@ -478,7 +491,10 @@
 
       call makemask          ! velocity mask, hemisphere masks
 
+#ifndef NEMO_IN_CCSM
+      ! lat, lon on NEMO tripole grid are read from file
       call Tlatlon           ! get lat, lon on the T grid
+#endif
 
       !----------------------------------------------------------------
       ! Corner coordinates for CF compliant history files
@@ -616,17 +632,76 @@
       call scatter_global(ANGLE, work_g1, master_task, distrb_info, &
                           field_loc_NEcorner, field_type_angle)
 
+#ifdef NEMO_IN_CCSM
+      ! lat, lon on NEMO tripole grid are read from file
+      call ice_read_global(nu_grid,8,work_g1,'rda8',.true.)   ! TLAT
+      call scatter_global(TLAT, work_g1, master_task, distrb_info, &
+                          field_loc_center, field_type_scalar)
+      call ice_HaloExtrapolate(TLAT, distrb_info, &
+                               ew_boundary_type, ns_boundary_type)
+
+      call ice_read_global(nu_grid,9,work_g1,'rda8',.true.)   ! TLON
+      call scatter_global(TLON, work_g1, master_task, distrb_info, &
+                          field_loc_center, field_type_scalar)
+      call ice_HaloExtrapolate(TLON, distrb_info, &
+                               ew_boundary_type, ns_boundary_type)
+
+      hm_i(:,:,:) = c0
+      if (ns_boundary_type == 'tripoleT') then
+        call gather_global(work_g1,hm,master_task,distrb_info)
+        if (my_task == master_task)  &
+           work_g1(nx_global/2+2:nx_global,ny_global) = c0
+        call scatter_global(hm_i,work_g1,master_task,distrb_info, &
+                          field_loc_center, field_type_scalar)
+      else
+        hm_i = hm
+      endif
+#endif
+
       !-----------------------------------------------------------------
       ! cell dimensions
       ! calculate derived quantities from global arrays to preserve 
       ! information on boundaries
       !-----------------------------------------------------------------
 
+#ifdef NEMO_IN_CCSM
+      ! cell dimensions for the NEMO tripole grid are read from file
+      call ice_read_global(nu_grid,3,work_g1,'rda8',.true.)   ! HTN
+      if (my_task == master_task) work_g1 = work_g1 * cm_to_m
+      call scatter_global(HTN, work_g1, master_task, distrb_info, &
+                          field_loc_Nface, field_type_scalar)
+
+      call ice_read_global(nu_grid,4,work_g1,'rda8',.true.)   ! HTE
+      if (my_task == master_task) work_g1 = work_g1 * cm_to_m
+      call scatter_global(HTE, work_g1, master_task, distrb_info, &
+                          field_loc_Eface, field_type_scalar)
+
+      call ice_read_global(nu_grid,10,work_g1,'rda8',.true.) ! dxu
+      if (my_task == master_task) work_g1 = work_g1 * cm_to_m
+      call scatter_global(dxu, work_g1, master_task, distrb_info, &
+                          field_loc_NEcorner, field_type_scalar)
+
+      call ice_read_global(nu_grid,11,work_g1,'rda8',.true.) ! dyu
+      if (my_task == master_task) work_g1 = work_g1 * cm_to_m
+      call scatter_global(dyu, work_g1, master_task, distrb_info, &
+                          field_loc_NEcorner, field_type_scalar)
+
+      call ice_read_global(nu_grid,12,work_g1,'rda8',.true.) ! dxt
+      if (my_task == master_task) work_g1 = work_g1 * cm_to_m
+      call scatter_global(dxt, work_g1, master_task, distrb_info, &
+                          field_loc_center, field_type_scalar)
+
+      call ice_read_global(nu_grid,13,work_g1,'rda8',.true.) ! dyt
+      if (my_task == master_task) work_g1 = work_g1 * cm_to_m
+      call scatter_global(dyt, work_g1, master_task, distrb_info, &
+                          field_loc_center, field_type_scalar)
+#else
       call ice_read_global(nu_grid,3,work_g1,'rda8',.true.)   ! HTN
       call primary_grid_lengths_HTN(work_g1)                  ! dxu, dxt
 
       call ice_read_global(nu_grid,4,work_g1,'rda8',.true.)   ! HTE
       call primary_grid_lengths_HTE(work_g1)                  ! dyu, dyt
+#endif
 
       deallocate(work_g1)
 
@@ -751,6 +826,22 @@
       call ice_HaloExtrapolate(ULON, distrb_info, &
                                ew_boundary_type, ns_boundary_type)
 
+#ifdef NEMO_IN_CCSM
+      ! lat, lon on NEMO T grid are read from file
+      fieldname='tlat'
+      call ice_read_global_nc(fid_grid,8,fieldname,work_g1,diag) ! TLAT
+      call scatter_global(TLAT, work_g1, master_task, distrb_info, &
+                          field_loc_center, field_type_scalar)
+      call ice_HaloExtrapolate(TLAT, distrb_info, &
+                               ew_boundary_type, ns_boundary_type)
+
+      fieldname='tlon'
+      call ice_read_global_nc(fid_grid,9,fieldname,work_g1,diag) ! TLON
+      call scatter_global(TLON, work_g1, master_task, distrb_info, &
+                          field_loc_center, field_type_scalar)
+      call ice_HaloExtrapolate(TLON, distrb_info, &
+                               ew_boundary_type, ns_boundary_type)
+#endif
       fieldname='angle'
       call ice_read_global_nc(fid_grid,7,fieldname,work_g1,diag) ! ANGLE    
       call scatter_global(ANGLE, work_g1, master_task, distrb_info, &
@@ -766,6 +857,55 @@
       ! information on boundaries
       !-----------------------------------------------------------------
 
+#ifdef NEMO_IN_CCSM
+      ! cell dimensions for the NEMO tripole grid are read from file
+      fieldname='htn'
+      call ice_read_global_nc(fid_grid,3,fieldname,work_g1,diag) ! HTN
+      if (my_task == master_task) work_g1 = work_g1 * cm_to_m
+      call scatter_global(HTN, work_g1, master_task, distrb_info, &
+                          field_loc_Nface, field_type_scalar)
+
+      fieldname='hte'
+      call ice_read_global_nc(fid_grid,4,fieldname,work_g1,diag) ! HTE
+      if (my_task == master_task) work_g1 = work_g1 * cm_to_m
+      call scatter_global(HTE, work_g1, master_task, distrb_info, &
+                          field_loc_Eface, field_type_scalar)
+
+      fieldname='dxu'
+      call ice_read_global_nc(fid_grid,10,fieldname,work_g1,diag) ! dxu
+      if (my_task == master_task) work_g1 = work_g1 * cm_to_m
+      call scatter_global(dxu, work_g1, master_task, distrb_info, &
+                          field_loc_NEcorner, field_type_scalar)
+
+      fieldname='dyu'
+      call ice_read_global_nc(fid_grid,11,fieldname,work_g1,diag) ! dyu
+      if (my_task == master_task) work_g1 = work_g1 * cm_to_m
+      call scatter_global(dyu, work_g1, master_task, distrb_info, &
+                          field_loc_NEcorner, field_type_scalar)
+
+      fieldname='dxt'
+      call ice_read_global_nc(fid_grid,12,fieldname,work_g1,diag) ! dxt
+      if (my_task == master_task) work_g1 = work_g1 * cm_to_m
+      call scatter_global(dxt, work_g1, master_task, distrb_info, &
+                          field_loc_center, field_type_scalar)
+
+      fieldname='dyt'
+      call ice_read_global_nc(fid_grid,13,fieldname,work_g1,diag) ! dyt
+      if (my_task == master_task) work_g1 = work_g1 * cm_to_m
+      call scatter_global(dyt, work_g1, master_task, distrb_info, &
+                          field_loc_center, field_type_scalar)
+
+      hm_i(:,:,:) = c0
+      if (ns_boundary_type == 'tripoleT') then
+        call gather_global(work_g1,hm,master_task,distrb_info)
+        if (my_task == master_task)  &
+           work_g1(nx_global/2+2:nx_global,ny_global) = c0
+        call scatter_global(hm_i,work_g1,master_task,distrb_info, &
+                          field_loc_center, field_type_scalar)
+      else
+        hm_i = hm
+      endif
+#else
       fieldname='htn'
       call ice_read_global_nc(fid_grid,3,fieldname,work_g1,diag) ! HTN
       call primary_grid_lengths_HTN(work_g1)                  ! dxu, dxt
@@ -773,6 +913,7 @@
       fieldname='hte'
       call ice_read_global_nc(fid_grid,4,fieldname,work_g1,diag) ! HTE
       call primary_grid_lengths_HTE(work_g1)                  ! dyu, dyt
+#endif
 
       deallocate(work_g1)
 
@@ -1615,6 +1756,10 @@
             umask(i,j,iblk) = .false.
             if ( hm(i,j,iblk) > p5) tmask(i,j,iblk) = .true.
             if (uvm(i,j,iblk) > p5) umask(i,j,iblk) = .true.
+#ifdef NEMO_IN_CCSM
+            tmask_i(i,j,iblk) = .false.
+            if ( hm_i(i,j,iblk) > p5) tmask_i(i,j,iblk) = .true.
+#endif
          enddo
          enddo
 

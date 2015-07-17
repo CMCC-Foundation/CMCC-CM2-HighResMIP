@@ -922,6 +922,10 @@ foreach my $comp (@comps)  {
 		$sysmod = "cp $ccsmroot/models/ocn/pop2/bld/pop_decomp.xml $buildconf/."; 
 		system($sysmod) == 0 or die "ERROR: $sysmod failed: $?\n";
 	    } 
+	    if ($component eq 'nemo') {
+		$sysmod = "cp -f $ccsmroot/models/ocn/nemo/bld/mkDepends $caseroot/Tools/.";
+		system($sysmod) == 0 or die "ERROR: $sysmod failed: $?\n";
+	    }
 	}
     }
 }

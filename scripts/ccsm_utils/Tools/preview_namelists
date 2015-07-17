@@ -61,6 +61,13 @@ cp -p *.stxt                            $docdir/ >& /dev/null
 cp -p *maps.rc                      $docdir/ >& /dev/null
 cp -p cism.config*                 $docdir/ >& /dev/null
 
+if ( "$COMP_OCN" == "nemo" ) then
+  cp -p namelist*   $docdir/ >& /dev/null
+  cp -p iodef.xml   $docdir/ >& /dev/null
+  cp -p xmlio_server.def  $docdir/ >& /dev/null
+  cp -p $CASEBUILD/${COMP_OCN}.build*.csh $docdir/ >& /dev/null
+endif
+
 # copy over chemistry mechanism docs if they exist
 if ( -e $CASEBUILD/camconf ) then
   cp -p $CASEBUILD/camconf/chem_mech.* $docdir/ >& /dev/null

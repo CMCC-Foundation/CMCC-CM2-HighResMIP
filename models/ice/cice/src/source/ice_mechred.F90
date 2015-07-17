@@ -130,7 +130,11 @@
                             dardg1dt,    dardg2dt,   &
                             dvirdgdt,    opening,    &
                             fresh,       fhocn,      &
-                            fsoot)
+                            fsoot                    &
+#if defined NEMO_IN_CCSM
+                            , fresh_nemo, fhocn_nemo &
+#endif
+                            )
 !
 ! !USES:
 !
@@ -193,6 +197,13 @@
          opening   , & ! rate of opening due to divergence/shear (1/s)
          fresh     , & ! fresh water flux to ocean (kg/m^2/s)
          fhocn         ! net heat flux to ocean (W/m^2)
+
+#if defined NEMO_IN_CCSM
+      real (kind=dbl_kind), dimension(nx_block,ny_block), &
+         intent(inout), optional :: &
+         fresh_nemo , & ! fresh water flux to ocean (kg/m^2/s)
+         fhocn_nemo     ! net heat flux to ocean (W/m^2)
+#endif
 
       real (kind=dbl_kind), dimension(nx_block,ny_block,n_aeromx), &
          intent(inout), optional :: &
@@ -529,6 +540,22 @@
             fhocn(i,j) = fhocn(i,j) + esnow_mlt(ij)*dti
          enddo
       endif
+#if defined NEMO_IN_CCSM
+      if (present(fresh_nemo)) then
+         do ij = 1, icells
+            i = indxi(ij)
+            j = indxj(ij)
+            fresh_nemo(i,j) = fresh_nemo(i,j) + msnow_mlt(ij)*dti
+         enddo
+      endif
+      if (present(fhocn_nemo)) then
+         do ij = 1, icells
+            i = indxi(ij)
+            j = indxj(ij)
+            fhocn_nemo(i,j) = fhocn_nemo(i,j) + esnow_mlt(ij)*dti
+         enddo
+      endif
+#endif
 
       !-----------------------------------------------------------------
       ! Check for fractional ice area > 1.

@@ -41,7 +41,11 @@ MODULE shr_const_mod
    real(R8),parameter :: SHR_CONST_RHODAIR = &               ! density of dry air at STP  ~ kg/m^3
                          SHR_CONST_PSTD/(SHR_CONST_RDAIR*SHR_CONST_TKFRZ)
    real(R8),parameter :: SHR_CONST_RHOFW   = 1.000e3_R8      ! density of fresh water     ~ kg/m^3
+#ifdef NEMO_IN_CCSM
+   real(R8),parameter :: SHR_CONST_RHOSW   = 1.035e3_R8      ! density of sea water (NEMO) ~ kg/m^3
+#else
    real(R8),parameter :: SHR_CONST_RHOSW   = 1.026e3_R8      ! density of sea water       ~ kg/m^3
+#endif
    real(R8),parameter :: SHR_CONST_RHOICE  = 0.917e3_R8      ! density of ice             ~ kg/m^3
    real(R8),parameter :: SHR_CONST_CPDAIR  = 1.00464e3_R8    ! specific heat of dry air   ~ J/kg/K
    real(R8),parameter :: SHR_CONST_CPWV    = 1.810e3_R8      ! specific heat of water vap ~ J/kg/K

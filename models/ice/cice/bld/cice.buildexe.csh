@@ -29,6 +29,13 @@ endif
 #-------------------------------------------------------
 set cicedefs = "`cat $CASEBUILD/ciceconf/CICE_cppdefs`"
 set cicedefs = "$cicedefs -DBLCKX=$CICE_BLCKX -DBLCKY=$CICE_BLCKY -DMXBLCKS=$CICE_MXBLCKS"        
+switch ($ICE_GRID)
+case tn[012]*:
+  set cicedefs = "$cicedefs -DNEMO_IN_CCSM"
+  breaksw
+default:
+  breaksw
+endsw
 gmake complib -j $GMAKE_J MODEL=cice COMPLIB=$LIBROOT/libice.a MACFILE=$CASEROOT/Macros.$MACH USER_CPPDEFS="$cicedefs" -f $CASETOOLS/Makefile || exit 2
 
 mv $objdir/iceres.new $objdir/iceres.old

@@ -274,6 +274,9 @@ for mct, etc.
   <CXX_LINKER>FORTRAN</CXX_LINKER>
   <CXX_LDFLAGS> -cxxlib </CXX_LDFLAGS>
   <SUPPORTS_CXX>TRUE</SUPPORTS_CXX>
+  <ADD_SLIBS MPILIB="mpich2"> -mkl=cluster </ADD_SLIBS>
+  <ADD_SLIBS MPILIB="mpi-serial"> -mkl </ADD_SLIBS>
+  <ADD_FFLAGS MPILIB="mpi-serial"> -mcmodel medium </ADD_FFLAGS>
 </compiler>
 
 <compiler COMPILER="intel14">
@@ -542,6 +545,31 @@ for mct, etc.
   <NETCDF_PATH>$(NETCDF)</NETCDF_PATH>
   <PNETCDF_PATH>$(PNETCDF)</PNETCDF_PATH>
   <ADD_CPPDEFS> -DHAVE_NANOTIME </ADD_CPPDEFS>
+</compiler>
+
+
+<compiler MACH="athena" COMPILER="intel">
+  <MPICC>mpiicc</MPICC>
+  <MPICXX>mpiicpc</MPICXX>
+  <MPIFC>mpiifort</MPIFC>
+  <AR>xiar</AR>
+  <ADD_FFLAGS MPILIB="mpich2"> -xHost -mkl=cluster </ADD_FFLAGS>
+  <ADD_FFLAGS MPILIB="mpi-serial"> -xHost -mkl </ADD_FFLAGS>
+  <ADD_CFLAGS MPILIB="mpich2"> -xHost -mkl=cluster </ADD_CFLAGS>
+  <ADD_CFLAGS MPILIB="mpi-serial"> -xHost -mkl </ADD_CFLAGS>
+  <ADD_LDFLAGS MPILIB="mpich2"> -mkl=cluster </ADD_LDFLAGS>
+  <ADD_LDFLAGS MPILIB="mpi-serial"> -mkl </ADD_LDFLAGS>
+  <TRILINOS_PATH>/users/home/opt/trilinos/trilinos_11.6.1</TRILINOS_PATH>
+</compiler>
+
+<compiler MACH="athena">
+  <PIO_FILESYSTEM_HINTS>gpfs</PIO_FILESYSTEM_HINTS>
+  <NETCDF_PATH>$(NETCDF)</NETCDF_PATH>
+  <PNETCDF_PATH>$(PNETCDF)</PNETCDF_PATH>
+  <ADD_FFLAGS MODEL="nemo"> $(FC_AUTO_R8) </ADD_FFLAGS>
+  <ADD_SLIBS> $(shell $(NETCDF)/bin/nc-config --flibs) </ADD_SLIBS>
+  <ADD_CPPDEFS> -DHAVE_NANOTIME </ADD_CPPDEFS>
+  <ESMFMKFILE> $(ESMFMKFILE) </ESMFMKFILE>
 </compiler>
 
 

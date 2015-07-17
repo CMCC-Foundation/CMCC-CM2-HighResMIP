@@ -431,7 +431,7 @@ CONTAINS
     type(physics_buffer_hdr), pointer :: hdrbuffer
 
     hdrbuffer => hdrbuffertop
-    do i=1,index
+    do i=2,index
        hdrbuffer=>hdrbuffer%nexthdr
     end do
     pbuf_get_field_name = hdrbuffer%name

@@ -661,7 +661,7 @@ end subroutine modal_aero_wateruptake_sub
                      crad(imx), cy(imx), czero
 
 
-      czero=cmplx(0.0_r8,0.0_r8)
+      czero=cmplx(0.0_r8,0.0_r8,r8)
       third=1._r8/3._r8
 
       do 10 i=1,im

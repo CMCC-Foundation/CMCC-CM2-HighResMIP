@@ -185,6 +185,10 @@
            n_fresh      , n_fresh_ai   , &
            n_fsalt      , n_fsalt_ai   , &
            n_fhocn      , n_fhocn_ai   , &
+#ifdef NEMO_IN_CCSM
+           n_fresh_nemo , n_fsalt_nemo , &
+           n_fhocn_nemo ,                &
+#endif
            n_fswthru    , n_fswthru_ai , &
            n_strairx    , n_strairy    , &
            n_strtltx    , n_strtlty    , &

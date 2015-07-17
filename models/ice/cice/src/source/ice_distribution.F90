@@ -1580,6 +1580,7 @@
 !----------------------------------------------------------------------
 
    numOcnBlocks = count(workPerBlock /= 0)
+   maxWork = maxval(workPerBlock)
 
    if (numOcnBlocks <= 2*nprocs) then
 
@@ -1622,8 +1623,6 @@
 !----------------------------------------------------------------------
 
    else
-
-      maxWork = maxval(workPerBlock)
 
       call proc_decomposition(dist%nprocs, nprocsX, nprocsY)
 

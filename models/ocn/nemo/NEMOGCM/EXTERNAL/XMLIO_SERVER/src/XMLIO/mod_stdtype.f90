@@ -1,0 +1,48 @@
+MODULE mod_stdtype
+
+  INTEGER,PARAMETER :: integer0 = 0
+  INTEGER,PARAMETER :: integer1 = 1
+  INTEGER,PARAMETER :: integer2 = 2
+  INTEGER,PARAMETER :: integer3 = 3
+  INTEGER,PARAMETER :: integer4 = 4
+  INTEGER,PARAMETER :: integer5 = 5
+  INTEGER,PARAMETER :: integer6 = 6
+  INTEGER,PARAMETER :: integer7 = 7
+  
+  INTEGER,PARAMETER :: real0    = 8
+  INTEGER,PARAMETER :: real1    = 9
+  INTEGER,PARAMETER :: real2    = 10
+  INTEGER,PARAMETER :: real3    = 11
+  INTEGER,PARAMETER :: real4    = 12
+  INTEGER,PARAMETER :: real5    = 13
+  INTEGER,PARAMETER :: real6    = 14
+  INTEGER,PARAMETER :: real7    = 15
+
+  INTEGER,PARAMETER :: logical0 = 16
+  INTEGER,PARAMETER :: logical1 = 17
+  INTEGER,PARAMETER :: logical2 = 18
+  INTEGER,PARAMETER :: logical3 = 19
+  INTEGER,PARAMETER :: logical4 = 20
+  INTEGER,PARAMETER :: logical5 = 21
+  INTEGER,PARAMETER :: logical6 = 22
+  INTEGER,PARAMETER :: logical7 = 23
+  
+  INTEGER,PARAMETER :: string0  = 24
+  INTEGER,PARAMETER :: string1  = 25
+  INTEGER,PARAMETER :: string2  = 26
+  INTEGER,PARAMETER :: string3  = 27
+  INTEGER,PARAMETER :: string4  = 28
+  INTEGER,PARAMETER :: string5  = 29
+  INTEGER,PARAMETER :: string6  = 30
+  INTEGER,PARAMETER :: string7  = 31
+
+  INTEGER,PARAMETER :: char0   = 32
+  INTEGER,PARAMETER :: char1   = 33
+  INTEGER,PARAMETER :: char2   = 34
+  INTEGER,PARAMETER :: char3   = 35
+  INTEGER,PARAMETER :: char4   = 36
+  INTEGER,PARAMETER :: char5   = 37
+  INTEGER,PARAMETER :: char6   = 38
+  INTEGER,PARAMETER :: char7   = 39
+ 
+END MODULE mod_stdtype

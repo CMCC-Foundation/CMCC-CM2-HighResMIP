@@ -379,14 +379,14 @@
             status  = pio_def_var(File, avail_hist_fields(n)%vname, &
                  pio_real, dimid3, varid)
             status = pio_put_att(File,varid,'units', &
-                 avail_hist_fields(n)%vunit)
+                 trim(avail_hist_fields(n)%vunit))
             status = pio_put_att(File,varid, 'long_name', &
-                 avail_hist_fields(n)%vdesc)
+                 trim(avail_hist_fields(n)%vdesc))
 
             status = pio_put_att(File,varid,'coordinates', &
-                 avail_hist_fields(n)%vcoord)
+                 trim(avail_hist_fields(n)%vcoord))
             status = pio_put_att(File,varid,'cell_measures', &
-                 avail_hist_fields(n)%vcellmeas)
+                 trim(avail_hist_fields(n)%vcellmeas))
             status = pio_put_att(File,varid,'missing_value',spval)
             status = pio_put_att(File,varid,'_FillValue',spval)
 
@@ -402,7 +402,7 @@
                  'Ice range: '//c_hi_range(icategory)
             endif
             status = pio_put_att(File,varid,'comment', &
-                 avail_hist_fields(n)%vcomment)
+                 trim(avail_hist_fields(n)%vcomment))
 
             !-----------------------------------------------------------------
             ! Add cell_methods attribute to variables if averaged

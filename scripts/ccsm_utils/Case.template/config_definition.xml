@@ -106,7 +106,7 @@
 
 <entry id="COMP_OCN" 
  type="char"
- valid_values="pop2,docn,xocn,socn,aquap,mpas-o" 
+ valid_values="pop2,docn,xocn,socn,aquap,mpas-o,nemo" 
  value="pop2"  
  group="case_comp"
  sdesc="Name of ocean component"
@@ -1663,6 +1663,27 @@ Users should NOT EDIT this setting."
  group="build_component_pop2"
  sdesc="pop block distribution type (do not edit if POP_AUTO_DECOMP is true)"
 ></entry>
+
+<!-- ======================================================================= -->
+<!-- NEMO                                                                    -->
+<!-- ======================================================================= -->
+
+<entry id="NEMO_REBUILD"
+ type="logical"
+ valid_values="TRUE,FALSE"
+ value="FALSE"
+ group="run_dout"
+ sdesc="if true, NEMO output files rebuild is performed at the end of run"
+></entry>
+
+<entry id="NEMO_TOP_MODULES" 
+ type="char"
+ valid_values=",age,cfc,c14" 
+ value="" 
+ group="build_component_nemo"
+ sdesc="Optional NEMO ocean tracers. Valid values are Any combination of: age cfc c14"
+></entry>
+
 
 <!-- ======================================================================= -->
 <!-- CISM                                                                    -->

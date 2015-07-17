@@ -50,6 +50,9 @@
       use ice_constants
       use ice_exit, only: abort_ice
       use perf_mod,        only: t_startf, t_stopf, t_barrierf
+#ifdef NEMO_IN_CCSM
+      use ice_domain,      only: ns_boundary_type
+#endif
 !
 !EOP
 !
@@ -1175,6 +1178,58 @@
       ! Initialize
       !-----------------------------------------------------------------
 
+#ifdef NEMO_IN_CCSM
+      ! FIXME: should be removed once fixed the BC on ice stresses
+      if (trim(ns_boundary_type) == 'tripoleT') then
+         do j = 1, ny_block
+         do i = 1, nx_block
+            waterx   (i,j) = c0
+            watery   (i,j) = c0
+            forcex   (i,j) = c0
+            forcey   (i,j) = c0
+            umassdtei(i,j) = c0
+
+            stressp_1 (i,j) = c0
+            stressp_2 (i,j) = c0
+            stressp_3 (i,j) = c0
+            stressp_4 (i,j) = c0
+            stressm_1 (i,j) = c0
+            stressm_2 (i,j) = c0
+            stressm_3 (i,j) = c0
+            stressm_4 (i,j) = c0
+            stress12_1(i,j) = c0
+            stress12_2(i,j) = c0
+            stress12_3(i,j) = c0
+            stress12_4(i,j) = c0
+         enddo                     ! i
+         enddo                     ! j
+      else
+        do j = 1, ny_block
+        do i = 1, nx_block
+           waterx   (i,j) = c0
+           watery   (i,j) = c0
+           forcex   (i,j) = c0
+           forcey   (i,j) = c0
+           umassdtei(i,j) = c0
+
+           if (icetmask(i,j)==0) then
+              stressp_1 (i,j) = c0
+              stressp_2 (i,j) = c0
+              stressp_3 (i,j) = c0
+              stressp_4 (i,j) = c0
+              stressm_1 (i,j) = c0
+              stressm_2 (i,j) = c0
+              stressm_3 (i,j) = c0
+              stressm_4 (i,j) = c0
+              stress12_1(i,j) = c0
+              stress12_2(i,j) = c0
+              stress12_3(i,j) = c0
+              stress12_4(i,j) = c0
+           endif                  ! icetmask
+        enddo                     ! i
+        enddo                     ! j
+      endif
+#else
       do j = 1, ny_block
       do i = 1, nx_block
          waterx   (i,j) = c0
@@ -1199,6 +1254,7 @@
          endif                  ! icetmask
       enddo                     ! i
       enddo                     ! j
+#endif
 
       !-----------------------------------------------------------------
       ! Identify cells where icetmask = 1

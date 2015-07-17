@@ -913,7 +913,7 @@ subroutine refindex_aer_init(phys_prop, nc_id)
       ! successfully read refindex data -- set complex values in physprop object
       allocate(phys_prop%refindex_aer_sw(nswbands))
       do i = 1, nswbands
-         phys_prop%refindex_aer_sw(i) = cmplx(ref_real(i), abs(ref_im(i)))
+         phys_prop%refindex_aer_sw(i) = cmplx(ref_real(i), abs(ref_im(i)), r8)
       end do
 
       deallocate(ref_real, ref_im)
@@ -940,7 +940,7 @@ subroutine refindex_aer_init(phys_prop, nc_id)
       ! successfully read refindex data -- set complex value in physprop object
       allocate(phys_prop%refindex_aer_lw(nlwbands))
       do i = 1, nlwbands
-         phys_prop%refindex_aer_lw(i) = cmplx(ref_real(i), abs(ref_im(i)))
+         phys_prop%refindex_aer_lw(i) = cmplx(ref_real(i), abs(ref_im(i)), r8)
       end do
 
       deallocate(ref_real, ref_im)

@@ -99,6 +99,26 @@
                        ice_HaloUpdate4DI4
    end interface
 
+#ifdef NEMO_IN_CCSM
+   ! The following halo update routines are used only when exchanging data
+   ! with the NEMO ocean model through the cpl driver/coupler.
+   ! They differ wrt their ice_* equivalent only in the way the north zip
+   ! is handled. Surprisingly the north zip treatment implemented in CICE
+   ! tripole grid configuration is different from the one used in NEMO,
+   ! even though it should be derived from the NEMO code (according to
+   ! NOCS people).
+   ! So for now we keep using the original ice_* routines inside CICE
+   ! but we use the nemo_* routines over fields exchanged with NEMO.
+   public :: nemo_HaloUpdate
+
+   interface nemo_HaloUpdate  ! generic interface
+      module procedure nemo_HaloUpdate2DR8, &
+                       nemo_HaloUpdate2DR4, &
+                       nemo_HaloUpdate3DR8, &
+                       nemo_HaloUpdate3DR4
+   end interface
+#endif
+
    interface ice_HaloExtrapolate  ! generic interface
       module procedure ice_HaloExtrapolate2DR8 !, &
 !                       ice_HaloExtrapolate2DR4, &  ! not yet
@@ -7087,6 +7107,1776 @@ end subroutine ice_HaloDestroy
 !-----------------------------------------------------------------------
 
  end subroutine ice_HaloExtrapolate2DR8
+
+#ifdef NEMO_IN_CCSM
+!***********************************************************************
+!BOP
+! !IROUTINE: nemo_HaloUpdate2DR8
+! !INTERFACE:
+
+ subroutine nemo_HaloUpdate2DR8(array, halo,                    &
+                               fieldLoc, fieldKind, &
+                               fillValue)
+
+! !DESCRIPTION:
+!  This routine updates ghost cells for an input array and is a
+!  member of a group of routines under the generic interface
+!  nemo\_HaloUpdate.  This routine is the specific interface
+!  for 2d horizontal arrays of double precision.
+!
+! !REVISION HISTORY:
+!  same as module
+
+! !USER:
+
+! !INPUT PARAMETERS:
+
+   type (ice_halo), intent(in) :: &
+      halo                 ! precomputed halo structure containing all
+                           !  information needed for halo update
+
+   integer (int_kind), intent(in) :: &
+      fieldKind,          &! id for type of field (scalar, vector, angle)
+      fieldLoc             ! id for location on horizontal grid
+                           !  (center, NEcorner, Nface, Eface)
+
+   real (dbl_kind), intent(in), optional :: &
+      fillValue            ! optional value to put in ghost cells
+                           !  where neighbor points are unknown
+                           !  (e.g. eliminated land blocks or
+                           !   closed boundaries)
+
+! !INPUT/OUTPUT PARAMETERS:
+
+   real (dbl_kind), dimension(:,:,:), intent(inout) :: &
+      array                ! array containing field for which halo
+                           ! needs to be updated
+
+! !OUTPUT PARAMETERS:
+
+!EOP
+!BOC
+!-----------------------------------------------------------------------
+!
+!  local variables
+!
+!-----------------------------------------------------------------------
+
+   integer (int_kind) ::           &
+      i,j,n,nmsg,                &! dummy loop indices
+      ierr,                      &! error or status flag for MPI,alloc
+      nxGlobal,                  &! global domain size in x (tripole)
+      iSrc,jSrc,                 &! source addresses for message
+      iDst,jDst,                 &! dest   addresses for message
+      srcBlock,                  &! local block number for source
+      dstBlock,                  &! local block number for destination
+      ioffset, joffset,          &! address shifts for tripole
+      isign                       ! sign factor for tripole grids
+
+   integer (int_kind), dimension(:), allocatable :: &
+      sndRequest,      &! MPI request ids
+      rcvRequest        ! MPI request ids
+
+   integer (int_kind), dimension(:,:), allocatable :: &
+      sndStatus,       &! MPI status flags
+      rcvStatus         ! MPI status flags
+
+   real (dbl_kind) :: &
+      fill,            &! value to use for unknown points
+      x1,x2,xavg        ! scalars for enforcing symmetry at U pts
+
+   integer (int_kind) ::  len  ! length of messages
+
+!-----------------------------------------------------------------------
+!
+!  initialize error code and fill value
+!
+!-----------------------------------------------------------------------
+
+   if (present(fillValue)) then
+      fill = fillValue
+   else
+      fill = 0.0_dbl_kind
+   endif
+
+   nxGlobal = 0
+   if (allocated(bufTripoleR8)) then
+      nxGlobal = size(bufTripoleR8,dim=1)
+      bufTripoleR8 = fill
+   endif
+
+!-----------------------------------------------------------------------
+!
+!  allocate request and status arrays for messages
+!
+!-----------------------------------------------------------------------
+
+   allocate(sndRequest(halo%numMsgSend), &
+            rcvRequest(halo%numMsgRecv), &
+            sndStatus(MPI_STATUS_SIZE,halo%numMsgSend), &
+            rcvStatus(MPI_STATUS_SIZE,halo%numMsgRecv), stat=ierr)
+
+   if (ierr > 0) then
+      call abort_ice( &
+         'nemo_HaloUpdate2DR8: error allocating req,status arrays')
+      return
+   endif
+
+!-----------------------------------------------------------------------
+!
+!  post receives
+!
+!-----------------------------------------------------------------------
+
+   do nmsg=1,halo%numMsgRecv
+
+      len = halo%SizeRecv(nmsg)
+      call MPI_IRECV(bufRecvR8(1:len,nmsg), len, mpiR8, &
+                     halo%recvTask(nmsg),               &
+                     mpitagHalo + halo%recvTask(nmsg),  &
+                     halo%communicator, rcvRequest(nmsg), ierr)
+   end do
+
+!-----------------------------------------------------------------------
+!
+!  fill send buffer and post sends
+!
+!-----------------------------------------------------------------------
+
+   do nmsg=1,halo%numMsgSend
+
+      do n=1,halo%sizeSend(nmsg)
+         iSrc     = halo%sendAddr(1,n,nmsg)
+         jSrc     = halo%sendAddr(2,n,nmsg)
+         srcBlock = halo%sendAddr(3,n,nmsg)
+
+         bufSendR8(n,nmsg) = array(iSrc,jSrc,srcBlock)
+      end do
+      do n=halo%sizeSend(nmsg)+1,bufSizeSend
+         bufSendR8(n,nmsg) = fill  ! fill remainder of buffer
+      end do
+
+      len = halo%SizeSend(nmsg)
+      call MPI_ISEND(bufSendR8(1:len,nmsg), len, mpiR8, &
+                     halo%sendTask(nmsg),               &
+                     mpitagHalo + my_task,              &
+                     halo%communicator, sndRequest(nmsg), ierr)
+   end do
+
+
+!-----------------------------------------------------------------------
+!
+!  while messages are being communicated,
+!  fill out halo region, needed for masked halos to ensure
+!  halo values are fill for halo gridcells that are not updated
+!
+!-----------------------------------------------------------------------
+
+   do j = 1,nghost
+      array(1:nx_block,           j,:) = fill
+      array(1:nx_block,ny_block-j+1,:) = fill
+   enddo
+   do i = 1,nghost
+      array(i,           1:ny_block,:) = fill
+      array(nx_block-i+1,1:ny_block,:) = fill
+   enddo
+
+!-----------------------------------------------------------------------
+!
+!  do local copies while waiting for messages to complete
+!  if srcBlock is zero, that denotes an eliminated land block or a 
+!    closed boundary where ghost cell values are undefined
+!  if srcBlock is less than zero, the message is a copy out of the
+!    tripole buffer and will be treated later
+!
+!-----------------------------------------------------------------------
+
+   do nmsg=1,halo%numLocalCopies
+      iSrc     = halo%srcLocalAddr(1,nmsg)
+      jSrc     = halo%srcLocalAddr(2,nmsg)
+      srcBlock = halo%srcLocalAddr(3,nmsg)
+      iDst     = halo%dstLocalAddr(1,nmsg)
+      jDst     = halo%dstLocalAddr(2,nmsg)
+      dstBlock = halo%dstLocalAddr(3,nmsg)
+
+      if (srcBlock > 0) then
+         if (dstBlock > 0) then
+            array(iDst,jDst,dstBlock) = &
+            array(iSrc,jSrc,srcBlock)
+         else if (dstBlock < 0) then ! tripole copy into buffer
+            bufTripoleR8(iDst,jDst) = &
+            array(iSrc,jSrc,srcBlock)
+         endif
+      else if (srcBlock == 0) then
+         array(iDst,jDst,dstBlock) = fill
+      endif
+   end do
+
+!-----------------------------------------------------------------------
+!
+!  wait for receives to finish and then unpack the recv buffer into
+!  ghost cells
+!
+!-----------------------------------------------------------------------
+
+   call MPI_WAITALL(halo%numMsgRecv, rcvRequest, rcvStatus, ierr)
+
+   do nmsg=1,halo%numMsgRecv
+      do n=1,halo%sizeRecv(nmsg)
+         iDst     = halo%recvAddr(1,n,nmsg)
+         jDst     = halo%recvAddr(2,n,nmsg)
+         dstBlock = halo%recvAddr(3,n,nmsg)
+
+         if (dstBlock > 0) then
+            array(iDst,jDst,dstBlock) = bufRecvR8(n,nmsg)
+         else if (dstBlock < 0) then !tripole
+            bufTripoleR8(iDst,jDst) = bufRecvR8(n,nmsg)
+         endif
+      end do
+   end do
+
+!-----------------------------------------------------------------------
+!
+!  take care of northern boundary in tripole case
+!  bufTripole array contains the top nghost+1 rows (u-fold) or nghost+2 rows
+!  (T-fold) of physical domain for entire (global) top row 
+!
+!-----------------------------------------------------------------------
+
+   if (nxGlobal > 0) then
+
+      select case (fieldKind)
+      case (field_type_scalar)
+         isign =  1
+      case (field_type_vector)
+         isign = -1
+      case (field_type_angle)
+         isign = -1
+      case default
+         call abort_ice( &
+            'nemo_HaloUpdate2DR8: Unknown field kind')
+      end select
+
+      if (halo%tripoleTFlag) then
+
+        select case (fieldLoc)
+        case (field_loc_center)   ! cell center location
+  
+           ioffset = -1
+           joffset = 0
+  
+           !*** top row is degenerate, so must enforce symmetry
+           !***   use average of two degenerate points for value
+  
+           do i = 2,nxGlobal/2
+              iDst = nxGlobal - i + 2
+              bufTripoleR8(iDst,halo%tripoleRows) = isign*bufTripoleR8(i,halo%tripoleRows)
+           end do
+ 
+        case (field_loc_NEcorner)   ! cell corner location
+  
+           ioffset = 0
+           joffset = 1
+  
+        case (field_loc_Eface)   ! cell center location
+  
+           ioffset = 0
+           joffset = 0
+  
+           !*** top row is degenerate, so must enforce symmetry
+           !***   use average of two degenerate points for value
+  
+           do i = 1,nxGlobal/2
+              iDst = nxGlobal + 1 - i
+              bufTripoleR8(iDst,halo%tripoleRows) = isign*bufTripoleR8(i,halo%tripoleRows)
+           end do
+ 
+        case (field_loc_Nface)   ! cell corner (velocity) location
+  
+           ioffset = -1
+           joffset = 1
+  
+        case default
+           call abort_ice( &
+              'nemo_HaloUpdate2DR8: Unknown field location')
+        end select
+
+      else ! tripole u-fold
+
+        select case (fieldLoc)
+        case (field_loc_center)   ! cell center location
+  
+           ioffset = 0
+           joffset = 0
+  
+        case (field_loc_NEcorner)   ! cell corner location
+  
+           ioffset = 1
+           joffset = 1
+  
+           !*** top row is degenerate, so must enforce symmetry
+           !***   use average of two degenerate points for value
+  
+           do i = 1,nxGlobal/2 - 1
+              iDst = nxGlobal - i
+              x1 = bufTripoleR8(i   ,halo%tripoleRows)
+              x2 = bufTripoleR8(iDst,halo%tripoleRows)
+              xavg = 0.5_dbl_kind*(x1 + isign*x2)
+              bufTripoleR8(i   ,halo%tripoleRows) = xavg
+              bufTripoleR8(iDst,halo%tripoleRows) = isign*xavg
+           end do
+  
+        case (field_loc_Eface)   ! cell center location
+  
+           ioffset = 1
+           joffset = 0
+  
+        case (field_loc_Nface)   ! cell corner (velocity) location
+  
+           ioffset = 0
+           joffset = 1
+  
+           !*** top row is degenerate, so must enforce symmetry
+           !***   use average of two degenerate points for value
+  
+           do i = 1,nxGlobal/2
+              iDst = nxGlobal + 1 - i
+              x1 = bufTripoleR8(i   ,halo%tripoleRows)
+              x2 = bufTripoleR8(iDst,halo%tripoleRows)
+              xavg = 0.5_dbl_kind*(x1 + isign*x2)
+              bufTripoleR8(i   ,halo%tripoleRows) = xavg
+              bufTripoleR8(iDst,halo%tripoleRows) = isign*xavg
+           end do
+  
+        case default
+           call abort_ice( &
+              'nemo_HaloUpdate2DR8: Unknown field location')
+        end select
+
+      endif
+
+      !*** copy out of global tripole buffer into local
+      !*** ghost cells
+
+      !*** look through local copies to find the copy out
+      !*** messages (srcBlock < 0)
+
+      do nmsg=1,halo%numLocalCopies
+         srcBlock = halo%srcLocalAddr(3,nmsg)
+
+         if (srcBlock < 0) then
+
+            iSrc     = halo%srcLocalAddr(1,nmsg) ! tripole buffer addr
+            jSrc     = halo%srcLocalAddr(2,nmsg)
+
+            iDst     = halo%dstLocalAddr(1,nmsg) ! local block addr
+            jDst     = halo%dstLocalAddr(2,nmsg)
+            dstBlock = halo%dstLocalAddr(3,nmsg)
+
+            !*** correct for offsets
+            iSrc = iSrc - ioffset
+            jSrc = jSrc - joffset
+            if (iSrc == 0) iSrc = nxGlobal
+            if (iSrc > nxGlobal) iSrc = iSrc - nxGlobal
+
+            !*** for center and Eface on u-fold, and NE corner and Nface
+            !*** on T-fold, do not need to replace
+            !*** top row of physical domain, so jSrc should be
+            !*** out of range and skipped
+            !*** otherwise do the copy
+
+            if (jSrc <= halo%tripoleRows .and. jSrc>0 .and. jDst>0) then
+               array(iDst,jDst,dstBlock) = isign*bufTripoleR8(iSrc,jSrc)
+            endif
+
+         endif
+      end do
+
+   endif
+
+!-----------------------------------------------------------------------
+!
+!  wait for sends to complete and deallocate arrays
+!
+!-----------------------------------------------------------------------
+
+   call MPI_WAITALL(halo%numMsgSend, sndRequest, sndStatus, ierr)
+
+   deallocate(sndRequest, rcvRequest, sndStatus, rcvStatus, stat=ierr)
+
+   if (ierr > 0) then
+      call abort_ice( &
+         'nemo_HaloUpdate2DR8: error deallocating req,status arrays')
+      return
+   endif
+
+!-----------------------------------------------------------------------
+!EOC
+
+ end subroutine nemo_HaloUpdate2DR8
+
+!***********************************************************************
+!BOP
+! !IROUTINE: nemo_HaloUpdate2DR4
+! !INTERFACE:
+
+ subroutine nemo_HaloUpdate2DR4(array, halo,                    &
+                               fieldLoc, fieldKind, &
+                               fillValue)
+
+! !DESCRIPTION:
+!  This routine updates ghost cells for an input array and is a
+!  member of a group of routines under the generic interface
+!  ice\_HaloUpdate.  This routine is the specific interface
+!  for 2d horizontal arrays of single precision.
+!
+! !REVISION HISTORY:
+!  same as module
+
+! !USER:
+
+! !INPUT PARAMETERS:
+
+   type (ice_halo), intent(in) :: &
+      halo                 ! precomputed halo structure containing all
+                           !  information needed for halo update
+
+   integer (int_kind), intent(in) :: &
+      fieldKind,          &! id for type of field (scalar, vector, angle)
+      fieldLoc             ! id for location on horizontal grid
+                           !  (center, NEcorner, Nface, Eface)
+
+   real (real_kind), intent(in), optional :: &
+      fillValue            ! optional value to put in ghost cells
+                           !  where neighbor points are unknown
+                           !  (e.g. eliminated land blocks or
+                           !   closed boundaries)
+
+! !INPUT/OUTPUT PARAMETERS:
+
+   real (real_kind), dimension(:,:,:), intent(inout) :: &
+      array                ! array containing field for which halo
+                           ! needs to be updated
+
+! !OUTPUT PARAMETERS:
+
+!EOP
+!BOC
+!-----------------------------------------------------------------------
+!
+!  local variables
+!
+!-----------------------------------------------------------------------
+
+   integer (int_kind) ::           &
+      i,j,n,nmsg,                &! dummy loop indices
+      ierr,                      &! error or status flag for MPI,alloc
+      nxGlobal,                  &! global domain size in x (tripole)
+      iSrc,jSrc,                 &! source addresses for message
+      iDst,jDst,                 &! dest   addresses for message
+      srcBlock,                  &! local block number for source
+      dstBlock,                  &! local block number for destination
+      ioffset, joffset,          &! address shifts for tripole
+      isign                       ! sign factor for tripole grids
+
+   integer (int_kind), dimension(:), allocatable :: &
+      sndRequest,      &! MPI request ids
+      rcvRequest        ! MPI request ids
+
+   integer (int_kind), dimension(:,:), allocatable :: &
+      sndStatus,       &! MPI status flags
+      rcvStatus         ! MPI status flags
+
+   real (real_kind) :: &
+      fill,            &! value to use for unknown points
+      x1,x2,xavg        ! scalars for enforcing symmetry at U pts
+
+    integer (int_kind) :: len  ! length of messages
+
+!-----------------------------------------------------------------------
+!
+!  initialize error code and fill value
+!
+!-----------------------------------------------------------------------
+
+   if (present(fillValue)) then
+      fill = fillValue
+   else
+      fill = 0.0_real_kind
+   endif
+
+   nxGlobal = 0
+   if (allocated(bufTripoleR4)) then
+      nxGlobal = size(bufTripoleR4,dim=1)
+      bufTripoleR4 = fill
+   endif
+
+!-----------------------------------------------------------------------
+!
+!  allocate request and status arrays for messages
+!
+!-----------------------------------------------------------------------
+
+   allocate(sndRequest(halo%numMsgSend), &
+            rcvRequest(halo%numMsgRecv), &
+            sndStatus(MPI_STATUS_SIZE,halo%numMsgSend), &
+            rcvStatus(MPI_STATUS_SIZE,halo%numMsgRecv), stat=ierr)
+
+   if (ierr > 0) then
+      call abort_ice( &
+         'nemo_HaloUpdate2DR4: error allocating req,status arrays')
+      return
+   endif
+
+!-----------------------------------------------------------------------
+!
+!  post receives
+!
+!-----------------------------------------------------------------------
+
+   do nmsg=1,halo%numMsgRecv
+
+      len = halo%SizeRecv(nmsg)
+      call MPI_IRECV(bufRecvR4(1:len,nmsg), len, mpiR4, &
+                     halo%recvTask(nmsg),               &
+                     mpitagHalo + halo%recvTask(nmsg),  &
+                     halo%communicator, rcvRequest(nmsg), ierr)
+   end do
+
+!-----------------------------------------------------------------------
+!
+!  fill send buffer and post sends
+!
+!-----------------------------------------------------------------------
+
+   do nmsg=1,halo%numMsgSend
+
+      do n=1,halo%sizeSend(nmsg)
+         iSrc     = halo%sendAddr(1,n,nmsg)
+         jSrc     = halo%sendAddr(2,n,nmsg)
+         srcBlock = halo%sendAddr(3,n,nmsg)
+
+         bufSendR4(n,nmsg) = array(iSrc,jSrc,srcBlock)
+      end do
+      do n=halo%sizeSend(nmsg)+1,bufSizeSend
+         bufSendR4(n,nmsg) = fill  ! fill remainder of buffer
+      end do
+
+      len = halo%SizeSend(nmsg)
+      call MPI_ISEND(bufSendR4(1:len,nmsg), len, mpiR4, &
+                     halo%sendTask(nmsg),               &
+                     mpitagHalo + my_task,              &
+                     halo%communicator, sndRequest(nmsg), ierr)
+   end do
+
+!-----------------------------------------------------------------------
+!
+!  while messages are being communicated,
+!  fill out halo region, needed for masked halos to ensure
+!  halo values are fill for halo gridcells that are not updated
+!
+!-----------------------------------------------------------------------
+
+   do j = 1,nghost
+      array(1:nx_block,           j,:) = fill
+      array(1:nx_block,ny_block-j+1,:) = fill
+   enddo
+   do i = 1,nghost
+      array(i,           1:ny_block,:) = fill
+      array(nx_block-i+1,1:ny_block,:) = fill
+   enddo
+
+!-----------------------------------------------------------------------
+!
+!  do local copies while waiting for messages to complete
+!  if srcBlock is zero, that denotes an eliminated land block or a 
+!    closed boundary where ghost cell values are undefined
+!  if srcBlock is less than zero, the message is a copy out of the
+!    tripole buffer and will be treated later
+!
+!-----------------------------------------------------------------------
+
+   do nmsg=1,halo%numLocalCopies
+      iSrc     = halo%srcLocalAddr(1,nmsg)
+      jSrc     = halo%srcLocalAddr(2,nmsg)
+      srcBlock = halo%srcLocalAddr(3,nmsg)
+      iDst     = halo%dstLocalAddr(1,nmsg)
+      jDst     = halo%dstLocalAddr(2,nmsg)
+      dstBlock = halo%dstLocalAddr(3,nmsg)
+
+      if (srcBlock > 0) then
+         if (dstBlock > 0) then
+            array(iDst,jDst,dstBlock) = &
+            array(iSrc,jSrc,srcBlock)
+         else if (dstBlock < 0) then ! tripole copy into buffer
+            bufTripoleR4(iDst,jDst) = &
+            array(iSrc,jSrc,srcBlock)
+         endif
+      else if (srcBlock == 0) then
+         array(iDst,jDst,dstBlock) = fill
+      endif
+   end do
+
+!-----------------------------------------------------------------------
+!
+!  wait for receives to finish and then unpack the recv buffer into
+!  ghost cells
+!
+!-----------------------------------------------------------------------
+
+   call MPI_WAITALL(halo%numMsgRecv, rcvRequest, rcvStatus, ierr)
+
+   do nmsg=1,halo%numMsgRecv
+      do n=1,halo%sizeRecv(nmsg)
+         iDst     = halo%recvAddr(1,n,nmsg)
+         jDst     = halo%recvAddr(2,n,nmsg)
+         dstBlock = halo%recvAddr(3,n,nmsg)
+
+         if (dstBlock > 0) then
+            array(iDst,jDst,dstBlock) = bufRecvR4(n,nmsg)
+         else if (dstBlock < 0) then !tripole
+            bufTripoleR4(iDst,jDst) = bufRecvR4(n,nmsg)
+         endif
+      end do
+   end do
+
+!-----------------------------------------------------------------------
+!
+!  take care of northern boundary in tripole case
+!  bufTripole array contains the top nghost+1 rows (u-fold) or nghost+2 rows
+!  (T-fold) of physical domain for entire (global) top row
+!
+!-----------------------------------------------------------------------
+
+   if (nxGlobal > 0) then
+
+      select case (fieldKind)
+      case (field_type_scalar)
+         isign =  1
+      case (field_type_vector)
+         isign = -1
+      case (field_type_angle)
+         isign = -1
+      case default
+         call abort_ice( &
+            'nemo_HaloUpdate2DR4: Unknown field kind')
+      end select
+
+      if (halo%tripoleTFlag) then
+
+        select case (fieldLoc)
+        case (field_loc_center)   ! cell center location
+  
+           ioffset = -1
+           joffset = 0
+  
+           !*** top row is degenerate, so must enforce symmetry
+           !***   use average of two degenerate points for value
+  
+           do i = 2,nxGlobal/2
+              iDst = nxGlobal - i + 2
+              bufTripoleR4(iDst,halo%tripoleRows) = isign*bufTripoleR4(i,halo%tripoleRows)
+           end do
+  
+        case (field_loc_NEcorner)   ! cell corner location
+  
+           ioffset = 0
+           joffset = 1
+  
+        case (field_loc_Eface)   ! cell center location
+  
+           ioffset = 0
+           joffset = 0
+  
+           !*** top row is degenerate, so must enforce symmetry
+           !***   use average of two degenerate points for value
+  
+           do i = 1,nxGlobal/2
+              iDst = nxGlobal + 1 - i
+              bufTripoleR4(iDst,halo%tripoleRows) = isign*bufTripoleR4(i,halo%tripoleRows)
+           end do
+  
+        case (field_loc_Nface)   ! cell corner (velocity) location
+  
+           ioffset = -1
+           joffset = 1
+  
+        case default
+           call abort_ice( &
+              'nemo_HaloUpdate2DR4: Unknown field location')
+        end select        
+
+      else ! tripole u-fold
+  
+        select case (fieldLoc)
+        case (field_loc_center)   ! cell center location
+  
+           ioffset = 0
+           joffset = 0
+  
+        case (field_loc_NEcorner)   ! cell corner location
+  
+           ioffset = 1
+           joffset = 1
+  
+           !*** top row is degenerate, so must enforce symmetry
+           !***   use average of two degenerate points for value
+  
+           do i = 1,nxGlobal/2 - 1
+              iDst = nxGlobal - i
+              x1 = bufTripoleR4(i   ,halo%tripoleRows)
+              x2 = bufTripoleR4(iDst,halo%tripoleRows)
+              xavg = 0.5_real_kind*(x1 + isign*x2)
+              bufTripoleR4(i   ,halo%tripoleRows) = xavg
+              bufTripoleR4(iDst,halo%tripoleRows) = isign*xavg
+           end do
+  
+        case (field_loc_Eface)   ! cell center location
+  
+           ioffset = 1
+           joffset = 0
+  
+        case (field_loc_Nface)   ! cell corner (velocity) location
+  
+           ioffset = 0
+           joffset = 1
+  
+           !*** top row is degenerate, so must enforce symmetry
+           !***   use average of two degenerate points for value
+  
+           do i = 1,nxGlobal/2
+              iDst = nxGlobal + 1 - i
+              x1 = bufTripoleR4(i   ,halo%tripoleRows)
+              x2 = bufTripoleR4(iDst,halo%tripoleRows)
+              xavg = 0.5_real_kind*(x1 + isign*x2)
+              bufTripoleR4(i   ,halo%tripoleRows) = xavg
+              bufTripoleR4(iDst,halo%tripoleRows) = isign*xavg
+           end do
+  
+        case default
+           call abort_ice( &
+              'nemo_HaloUpdate2DR4: Unknown field location')
+        end select
+
+      endif
+
+      !*** copy out of global tripole buffer into local
+      !*** ghost cells
+
+      !*** look through local copies to find the copy out
+      !*** messages (srcBlock < 0)
+
+      do nmsg=1,halo%numLocalCopies
+         srcBlock = halo%srcLocalAddr(3,nmsg)
+
+         if (srcBlock < 0) then
+
+            iSrc     = halo%srcLocalAddr(1,nmsg) ! tripole buffer addr
+            jSrc     = halo%srcLocalAddr(2,nmsg)
+
+            iDst     = halo%dstLocalAddr(1,nmsg) ! local block addr
+            jDst     = halo%dstLocalAddr(2,nmsg)
+            dstBlock = halo%dstLocalAddr(3,nmsg)
+
+            !*** correct for offsets
+            iSrc = iSrc - ioffset
+            jSrc = jSrc - joffset
+            if (iSrc == 0) iSrc = nxGlobal
+            if (iSrc > nxGlobal) iSrc = iSrc - nxGlobal
+
+            !*** for center and Eface on u-fold, and NE corner and Nface
+            !*** on T-fold, do not need to replace
+            !*** top row of physical domain, so jSrc should be
+            !*** out of range and skipped
+            !*** otherwise do the copy
+
+            if (jSrc <= halo%tripoleRows .and. jSrc>0 .and. jDst>0) then
+               array(iDst,jDst,dstBlock) = isign*bufTripoleR4(iSrc,jSrc)
+            endif
+
+         endif
+      end do
+
+   endif
+
+!-----------------------------------------------------------------------
+!
+!  wait for sends to complete and deallocate arrays
+!
+!-----------------------------------------------------------------------
+
+   call MPI_WAITALL(halo%numMsgSend, sndRequest, sndStatus, ierr)
+
+   deallocate(sndRequest, rcvRequest, sndStatus, rcvStatus, stat=ierr)
+
+   if (ierr > 0) then
+      call abort_ice( &
+         'nemo_HaloUpdate2DR4: error deallocating req,status arrays')
+      return
+   endif
+
+!-----------------------------------------------------------------------
+!EOC
+
+ end subroutine nemo_HaloUpdate2DR4
+
+!***********************************************************************
+!BOP
+! !IROUTINE: nemo_HaloUpdate3DR8
+! !INTERFACE:
+
+ subroutine nemo_HaloUpdate3DR8(array, halo,                    &
+                               fieldLoc, fieldKind, &
+                               fillValue, mode)
+
+! !DESCRIPTION:
+!  This routine updates ghost cells for an input array and is a
+!  member of a group of routines under the generic interface
+!  nemo\_HaloUpdate.  This routine is the specific interface
+!  for 3d horizontal arrays of double precision.
+!
+! !REVISION HISTORY:
+!  same as module
+
+! !USER:
+
+! !INPUT PARAMETERS:
+
+   type (ice_halo), intent(in) :: &
+      halo                 ! precomputed halo structure containing all
+                           !  information needed for halo update
+
+   integer (int_kind), intent(in) :: &
+      fieldKind,          &! id for type of field (scalar, vector, angle)
+      fieldLoc             ! id for location on horizontal grid
+                           !  (center, NEcorner, Nface, Eface)
+
+   real (dbl_kind), intent(in), optional :: &
+      fillValue            ! optional value to put in ghost cells
+                           !  where neighbor points are unknown
+                           !  (e.g. eliminated land blocks or
+                           !   closed boundaries)
+
+   character(*), intent(in), optional :: &
+      mode                 ! optional value to specify mode of comm
+
+! !INPUT/OUTPUT PARAMETERS:
+
+   real (dbl_kind), dimension(:,:,:,:), intent(inout) :: &
+      array                ! array containing field for which halo
+                           ! needs to be updated
+
+! !OUTPUT PARAMETERS:
+
+!EOP
+!BOC
+!-----------------------------------------------------------------------
+!
+!  local variables
+!
+!-----------------------------------------------------------------------
+
+   integer (int_kind) ::           &
+      i,j,k,n,nmsg,              &! dummy loop indices
+      ierr,                      &! error or status flag for MPI,alloc
+      nxGlobal,                  &! global domain size in x (tripole)
+      nz,                        &! size of array in 3rd dimension
+      iSrc,jSrc,                 &! source addresses for message
+      iDst,jDst,                 &! dest   addresses for message
+      srcBlock,                  &! local block number for source
+      dstBlock,                  &! local block number for destination
+      ioffset, joffset,          &! address shifts for tripole
+      isign                       ! sign factor for tripole grids
+
+   integer (int_kind), dimension(:), allocatable :: &
+      sndRequest,      &! MPI request ids
+      rcvRequest        ! MPI request ids
+
+   integer (int_kind), dimension(:,:), allocatable :: &
+      sndStatus,       &! MPI status flags
+      rcvStatus         ! MPI status flags
+
+   real (dbl_kind) :: &
+      fill,            &! value to use for unknown points
+      x1,x2,xavg        ! scalars for enforcing symmetry at U pts
+
+   real (dbl_kind), dimension(:,:), allocatable :: &
+      bufSend, bufRecv            ! 3d send,recv buffers
+
+   real (dbl_kind), dimension(:,:,:), allocatable :: &
+      bufTripole                  ! 3d tripole buffer
+
+   integer (int_kind) :: len ! length of message 
+   logical :: do_send, do_recv
+   save
+
+!-----------------------------------------------------------------------
+!
+!  initialize error code and fill value
+!
+!-----------------------------------------------------------------------
+
+   do_send = .true.
+   do_recv = .true.
+   if (present(mode)) then
+      if (trim(mode) == 'send') then
+         do_send=.true.
+         do_recv=.false.
+      elseif (trim(mode) == 'recv') then
+         do_send=.false.
+         do_recv=.true.
+      else
+         call abort_ice( &
+         'nemo_HaloUpdate3DR8: illegal mode : '//trim(mode))
+      endif
+   endif
+
+   if (present(fillValue)) then
+      fill = fillValue
+   else
+      fill = 0.0_dbl_kind
+   endif
+
+   nxGlobal = 0
+   if (allocated(bufTripoleR8)) nxGlobal = size(bufTripoleR8,dim=1)
+
+!-----------------------------------------------------------------------
+!
+!  allocate request and status arrays for messages
+!
+!-----------------------------------------------------------------------
+
+ if (do_send) then
+
+   allocate(sndRequest(halo%numMsgSend), &
+            rcvRequest(halo%numMsgRecv), &
+            sndStatus(MPI_STATUS_SIZE,halo%numMsgSend), &
+            rcvStatus(MPI_STATUS_SIZE,halo%numMsgRecv), stat=ierr)
+
+   if (ierr > 0) then
+      call abort_ice( &
+         'nemo_HaloUpdate3DR8: error allocating req,status arrays')
+      return
+   endif
+
+!-----------------------------------------------------------------------
+!
+!  allocate 3D buffers
+!
+!-----------------------------------------------------------------------
+
+   nz = size(array, dim=3)
+
+   allocate(bufSend(bufSizeSend*nz, halo%numMsgSend), &
+            bufRecv(bufSizeRecv*nz, halo%numMsgRecv), &
+            bufTripole(nxGlobal, halo%tripoleRows, nz), &
+            stat=ierr)
+
+   if (ierr > 0) then
+      call abort_ice( &
+         'nemo_HaloUpdate3DR8: error allocating buffers')
+      return
+   endif
+
+   bufTripole = fill
+
+!-----------------------------------------------------------------------
+!
+!  post receives
+!
+!-----------------------------------------------------------------------
+
+   do nmsg=1,halo%numMsgRecv
+
+      len = halo%SizeRecv(nmsg)*nz
+      call MPI_IRECV(bufRecv(1:len,nmsg), len, mpiR8,   &
+                     halo%recvTask(nmsg),               &
+                     mpitagHalo + halo%recvTask(nmsg),  &
+                     halo%communicator, rcvRequest(nmsg), ierr)
+   end do
+
+!-----------------------------------------------------------------------
+!
+!  fill send buffer and post sends
+!
+!-----------------------------------------------------------------------
+
+   do nmsg=1,halo%numMsgSend
+
+      i=0
+      do n=1,halo%sizeSend(nmsg)
+         iSrc     = halo%sendAddr(1,n,nmsg)
+         jSrc     = halo%sendAddr(2,n,nmsg)
+         srcBlock = halo%sendAddr(3,n,nmsg)
+
+         do k=1,nz
+            i = i + 1
+            bufSend(i,nmsg) = array(iSrc,jSrc,k,srcBlock)
+         end do
+      end do
+      do n=i+1,bufSizeSend*nz
+         bufSend(n,nmsg) = fill  ! fill remainder of buffer
+      end do
+
+      len = halo%SizeSend(nmsg)*nz
+      call MPI_ISEND(bufSend(1:len,nmsg), len, mpiR8, &
+                     halo%sendTask(nmsg),             &
+                     mpitagHalo + my_task,            &
+                     halo%communicator, sndRequest(nmsg), ierr)
+   end do
+
+!-----------------------------------------------------------------------
+!
+!  while messages are being communicated,
+!  fill out halo region, needed for masked halos to ensure
+!  halo values are fill for halo gridcells that are not updated
+!
+!-----------------------------------------------------------------------
+
+   do j = 1,nghost
+      array(1:nx_block,           j,:,:) = fill
+      array(1:nx_block,ny_block-j+1,:,:) = fill
+   enddo
+   do i = 1,nghost
+      array(i,           1:ny_block,:,:) = fill
+      array(nx_block-i+1,1:ny_block,:,:) = fill
+   enddo
+
+!-----------------------------------------------------------------------
+!
+!  do local copies while waiting for messages to complete
+!  if srcBlock is zero, that denotes an eliminated land block or a 
+!    closed boundary where ghost cell values are undefined
+!  if srcBlock is less than zero, the message is a copy out of the
+!    tripole buffer and will be treated later
+!
+!-----------------------------------------------------------------------
+
+   do nmsg=1,halo%numLocalCopies
+      iSrc     = halo%srcLocalAddr(1,nmsg)
+      jSrc     = halo%srcLocalAddr(2,nmsg)
+      srcBlock = halo%srcLocalAddr(3,nmsg)
+      iDst     = halo%dstLocalAddr(1,nmsg)
+      jDst     = halo%dstLocalAddr(2,nmsg)
+      dstBlock = halo%dstLocalAddr(3,nmsg)
+
+      if (srcBlock > 0) then
+         if (dstBlock > 0) then
+            do k=1,nz
+               array(iDst,jDst,k,dstBlock) = &
+               array(iSrc,jSrc,k,srcBlock)
+            end do
+         else if (dstBlock < 0) then ! tripole copy into buffer
+            do k=1,nz
+               bufTripole(iDst,jDst,k) = &
+               array(iSrc,jSrc,k,srcBlock)
+            end do
+         endif
+      else if (srcBlock == 0) then
+         do k=1,nz
+            array(iDst,jDst,k,dstBlock) = fill
+         end do
+      endif
+   end do
+ endif   ! do_send
+
+!-----------------------------------------------------------------------
+!
+!  wait for receives to finish and then unpack the recv buffer into
+!  ghost cells
+!
+!-----------------------------------------------------------------------
+
+ if (do_recv) then
+   call MPI_WAITALL(halo%numMsgRecv, rcvRequest, rcvStatus, ierr)
+
+   do nmsg=1,halo%numMsgRecv
+      i = 0
+      do n=1,halo%sizeRecv(nmsg)
+         iDst     = halo%recvAddr(1,n,nmsg)
+         jDst     = halo%recvAddr(2,n,nmsg)
+         dstBlock = halo%recvAddr(3,n,nmsg)
+
+         if (dstBlock > 0) then
+            do k=1,nz
+               i = i + 1
+               array(iDst,jDst,k,dstBlock) = bufRecv(i,nmsg)
+            end do
+         else if (dstBlock < 0) then !tripole
+            do k=1,nz
+               i = i + 1
+               bufTripole(iDst,jDst,k) = bufRecv(i,nmsg)
+            end do
+         endif
+      end do
+   end do
+
+!-----------------------------------------------------------------------
+!
+!  take care of northern boundary in tripole case
+!  bufTripole array contains the top nghost+1 rows (u-fold) or nghost+2 rows
+!  (T-fold) of physical domain for entire (global) top row
+!
+!-----------------------------------------------------------------------
+
+   if (nxGlobal > 0) then
+
+      select case (fieldKind)
+      case (field_type_scalar)
+         isign =  1
+      case (field_type_vector)
+         isign = -1
+      case (field_type_angle)
+         isign = -1
+      case default
+         call abort_ice( &
+            'nemo_HaloUpdate3DR8: Unknown field kind')
+      end select
+
+      if (halo%tripoleTFlag) then
+
+        select case (fieldLoc)
+        case (field_loc_center)   ! cell center location
+  
+           ioffset = -1
+           joffset = 0
+  
+           !*** top row is degenerate, so must enforce symmetry
+           !***   use average of two degenerate points for value
+
+           do k=1,nz
+           do i = 2,nxGlobal/2
+              iDst = nxGlobal - i + 2
+              bufTripole(iDst,halo%tripoleRows,k) = isign*bufTripole(i,halo%tripoleRows,k)
+           end do
+           end do
+  
+        case (field_loc_NEcorner)   ! cell corner location
+  
+           ioffset = 0
+           joffset = 1
+  
+        case (field_loc_Eface)   ! cell center location
+  
+           ioffset = 0
+           joffset = 0
+  
+           !*** top row is degenerate, so must enforce symmetry
+           !***   use average of two degenerate points for value
+  
+           do k=1,nz
+           do i = 1,nxGlobal/2
+              iDst = nxGlobal + 1 - i
+              bufTripole(iDst,halo%tripoleRows,k) = isign*bufTripole(i,halo%tripoleRows,k)
+           end do
+           end do
+ 
+        case (field_loc_Nface)   ! cell corner (velocity) location
+  
+           ioffset = -1
+           joffset = 1
+  
+        case default
+           call abort_ice( &
+              'nemo_HaloUpdate3DR8: Unknown field location')
+        end select 
+  
+      else ! tripole u-fold
+  
+        select case (fieldLoc)
+        case (field_loc_center)   ! cell center location
+  
+           ioffset = 0
+           joffset = 0
+  
+        case (field_loc_NEcorner)   ! cell corner location
+  
+           ioffset = 1
+           joffset = 1
+  
+           !*** top row is degenerate, so must enforce symmetry
+           !***   use average of two degenerate points for value
+  
+           do k=1,nz
+           do i = 1,nxGlobal/2 - 1
+              iDst = nxGlobal - i
+              x1 = bufTripole(i   ,halo%tripoleRows,k)
+              x2 = bufTripole(iDst,halo%tripoleRows,k)
+              xavg = 0.5_dbl_kind*(x1 + isign*x2)
+              bufTripole(i   ,halo%tripoleRows,k) = xavg
+              bufTripole(iDst,halo%tripoleRows,k) = isign*xavg
+           end do
+           end do
+  
+        case (field_loc_Eface)   ! cell center location
+  
+           ioffset = 1
+           joffset = 0
+  
+        case (field_loc_Nface)   ! cell corner (velocity) location
+  
+           ioffset = 0
+           joffset = 1
+  
+           !*** top row is degenerate, so must enforce symmetry
+           !***   use average of two degenerate points for value
+  
+           do k=1,nz
+           do i = 1,nxGlobal/2
+              iDst = nxGlobal + 1 - i
+              x1 = bufTripole(i   ,halo%tripoleRows,k)
+              x2 = bufTripole(iDst,halo%tripoleRows,k)
+              xavg = 0.5_dbl_kind*(x1 + isign*x2)
+              bufTripole(i   ,halo%tripoleRows,k) = xavg
+              bufTripole(iDst,halo%tripoleRows,k) = isign*xavg
+           end do
+           end do
+  
+        case default
+           call abort_ice( &
+              'nemo_HaloUpdate3DR8: Unknown field location')
+        end select
+
+      endif
+
+      !*** copy out of global tripole buffer into local
+      !*** ghost cells
+
+      !*** look through local copies to find the copy out
+      !*** messages (srcBlock < 0)
+
+      do nmsg=1,halo%numLocalCopies
+         srcBlock = halo%srcLocalAddr(3,nmsg)
+
+         if (srcBlock < 0) then
+
+            iSrc     = halo%srcLocalAddr(1,nmsg) ! tripole buffer addr
+            jSrc     = halo%srcLocalAddr(2,nmsg)
+
+            iDst     = halo%dstLocalAddr(1,nmsg) ! local block addr
+            jDst     = halo%dstLocalAddr(2,nmsg)
+            dstBlock = halo%dstLocalAddr(3,nmsg)
+
+            !*** correct for offsets
+            iSrc = iSrc - ioffset
+            jSrc = jSrc - joffset
+            if (iSrc == 0) iSrc = nxGlobal
+            if (iSrc > nxGlobal) iSrc = iSrc - nxGlobal
+
+            !*** for center and Eface on u-fold, and NE corner and Nface
+            !*** on T-fold, do not need to replace
+            !*** top row of physical domain, so jSrc should be
+            !*** out of range and skipped
+            !*** otherwise do the copy
+
+            if (jSrc <= halo%tripoleRows .and. jSrc>0 .and. jDst>0) then
+               do k=1,nz
+                  array(iDst,jDst,k,dstBlock) = isign*    &
+                                  bufTripole(iSrc,jSrc,k)
+               end do
+            endif
+
+         endif
+      end do
+
+   endif
+!-----------------------------------------------------------------------
+!
+!  wait for sends to complete and deallocate arrays
+!
+!-----------------------------------------------------------------------
+
+   call MPI_WAITALL(halo%numMsgSend, sndRequest, sndStatus, ierr)
+
+   deallocate(sndRequest, rcvRequest, sndStatus, rcvStatus, stat=ierr)
+
+   if (ierr > 0) then
+      call abort_ice( &
+         'nemo_HaloUpdate3DR8: error deallocating req,status arrays')
+      return
+   endif
+
+   deallocate(bufSend, bufRecv, bufTripole, stat=ierr)
+
+   if (ierr > 0) then
+      call abort_ice( &
+         'nemo_HaloUpdate3DR8: error deallocating 3d buffers')
+      return
+   endif
+ endif    ! do_recv
+
+!-----------------------------------------------------------------------
+!EOC
+
+ end subroutine nemo_HaloUpdate3DR8
+
+!***********************************************************************
+!BOP
+! !IROUTINE: nemo_HaloUpdate3DR4
+! !INTERFACE:
+
+ subroutine nemo_HaloUpdate3DR4(array, halo,                    &
+                               fieldLoc, fieldKind, &
+                               fillValue)
+
+! !DESCRIPTION:
+!  This routine updates ghost cells for an input array and is a
+!  member of a group of routines under the generic interface
+!  ice\_HaloUpdate.  This routine is the specific interface
+!  for 3d horizontal arrays of single precision.
+!
+! !REVISION HISTORY:
+!  same as module
+
+! !USER:
+
+! !INPUT PARAMETERS:
+
+   type (ice_halo), intent(in) :: &
+      halo                 ! precomputed halo structure containing all
+                           !  information needed for halo update
+
+   integer (int_kind), intent(in) :: &
+      fieldKind,          &! id for type of field (scalar, vector, angle)
+      fieldLoc             ! id for location on horizontal grid
+                           !  (center, NEcorner, Nface, Eface)
+
+   real (real_kind), intent(in), optional :: &
+      fillValue            ! optional value to put in ghost cells
+                           !  where neighbor points are unknown
+                           !  (e.g. eliminated land blocks or
+                           !   closed boundaries)
+
+! !INPUT/OUTPUT PARAMETERS:
+
+   real (real_kind), dimension(:,:,:,:), intent(inout) :: &
+      array                ! array containing field for which halo
+                           ! needs to be updated
+
+! !OUTPUT PARAMETERS:
+
+!EOP
+!BOC
+!-----------------------------------------------------------------------
+!
+!  local variables
+!
+!-----------------------------------------------------------------------
+
+   integer (int_kind) ::           &
+      i,j,k,n,nmsg,              &! dummy loop indices
+      ierr,                      &! error or status flag for MPI,alloc
+      nxGlobal,                  &! global domain size in x (tripole)
+      nz,                        &! size of array in 3rd dimension
+      iSrc,jSrc,                 &! source addresses for message
+      iDst,jDst,                 &! dest   addresses for message
+      srcBlock,                  &! local block number for source
+      dstBlock,                  &! local block number for destination
+      ioffset, joffset,          &! address shifts for tripole
+      isign                       ! sign factor for tripole grids
+
+   integer (int_kind), dimension(:), allocatable :: &
+      sndRequest,      &! MPI request ids
+      rcvRequest        ! MPI request ids
+
+   integer (int_kind), dimension(:,:), allocatable :: &
+      sndStatus,       &! MPI status flags
+      rcvStatus         ! MPI status flags
+
+   real (real_kind) :: &
+      fill,            &! value to use for unknown points
+      x1,x2,xavg        ! scalars for enforcing symmetry at U pts
+
+   real (real_kind), dimension(:,:), allocatable :: &
+      bufSend, bufRecv            ! 3d send,recv buffers
+
+   real (real_kind), dimension(:,:,:), allocatable :: &
+      bufTripole                  ! 3d tripole buffer
+
+   integer (int_kind) :: len ! length of message 
+
+!-----------------------------------------------------------------------
+!
+!  initialize error code and fill value
+!
+!-----------------------------------------------------------------------
+
+   if (present(fillValue)) then
+      fill = fillValue
+   else
+      fill = 0.0_real_kind
+   endif
+
+   nxGlobal = 0
+   if (allocated(bufTripoleR4)) nxGlobal = size(bufTripoleR4,dim=1)
+
+!-----------------------------------------------------------------------
+!
+!  allocate request and status arrays for messages
+!
+!-----------------------------------------------------------------------
+
+   allocate(sndRequest(halo%numMsgSend), &
+            rcvRequest(halo%numMsgRecv), &
+            sndStatus(MPI_STATUS_SIZE,halo%numMsgSend), &
+            rcvStatus(MPI_STATUS_SIZE,halo%numMsgRecv), stat=ierr)
+
+   if (ierr > 0) then
+      call abort_ice( &
+         'nemo_HaloUpdate3DR4: error allocating req,status arrays')
+      return
+   endif
+
+!-----------------------------------------------------------------------
+!
+!  allocate 3D buffers
+!
+!-----------------------------------------------------------------------
+
+   nz = size(array, dim=3)
+
+   allocate(bufSend(bufSizeSend*nz, halo%numMsgSend),  &
+            bufRecv(bufSizeRecv*nz, halo%numMsgRecv),  &
+            bufTripole(nxGlobal, halo%tripoleRows, nz), &
+            stat=ierr)
+
+   if (ierr > 0) then
+      call abort_ice( &
+         'nemo_HaloUpdate3DR4: error allocating buffers')
+      return
+   endif
+
+   bufTripole = fill
+
+!-----------------------------------------------------------------------
+!
+!  post receives
+!
+!-----------------------------------------------------------------------
+
+   do nmsg=1,halo%numMsgRecv
+
+      len = halo%SizeRecv(nmsg)*nz
+      call MPI_IRECV(bufRecv(1:len,nmsg), len, mpiR4,   &
+                     halo%recvTask(nmsg),               &
+                     mpitagHalo + halo%recvTask(nmsg),  &
+                     halo%communicator, rcvRequest(nmsg), ierr)
+   end do
+
+!-----------------------------------------------------------------------
+!
+!  fill send buffer and post sends
+!
+!-----------------------------------------------------------------------
+
+   do nmsg=1,halo%numMsgSend
+
+      i=0
+      do n=1,halo%sizeSend(nmsg)
+         iSrc     = halo%sendAddr(1,n,nmsg)
+         jSrc     = halo%sendAddr(2,n,nmsg)
+         srcBlock = halo%sendAddr(3,n,nmsg)
+
+         do k=1,nz
+            i = i + 1
+            bufSend(i,nmsg) = array(iSrc,jSrc,k,srcBlock)
+         end do
+      end do
+      do n=i+1,bufSizeSend*nz
+         bufSend(n,nmsg) = fill  ! fill remainder of buffer
+      end do
+
+      len = halo%SizeSend(nmsg)*nz
+      call MPI_ISEND(bufSend(1:len,nmsg), len, mpiR4, &
+                     halo%sendTask(nmsg),             &
+                     mpitagHalo + my_task,            &
+                     halo%communicator, sndRequest(nmsg), ierr)
+   end do
+
+!-----------------------------------------------------------------------
+!
+!  while messages are being communicated,
+!  fill out halo region, needed for masked halos to ensure
+!  halo values are fill for halo gridcells that are not updated
+!
+!-----------------------------------------------------------------------
+
+   do j = 1,nghost
+      array(1:nx_block,           j,:,:) = fill
+      array(1:nx_block,ny_block-j+1,:,:) = fill
+   enddo
+   do i = 1,nghost
+      array(i,           1:ny_block,:,:) = fill
+      array(nx_block-i+1,1:ny_block,:,:) = fill
+   enddo
+
+!-----------------------------------------------------------------------
+!
+!  do local copies while waiting for messages to complete
+!  if srcBlock is zero, that denotes an eliminated land block or a 
+!    closed boundary where ghost cell values are undefined
+!  if srcBlock is less than zero, the message is a copy out of the
+!    tripole buffer and will be treated later
+!
+!-----------------------------------------------------------------------
+
+   do nmsg=1,halo%numLocalCopies
+      iSrc     = halo%srcLocalAddr(1,nmsg)
+      jSrc     = halo%srcLocalAddr(2,nmsg)
+      srcBlock = halo%srcLocalAddr(3,nmsg)
+      iDst     = halo%dstLocalAddr(1,nmsg)
+      jDst     = halo%dstLocalAddr(2,nmsg)
+      dstBlock = halo%dstLocalAddr(3,nmsg)
+
+      if (srcBlock > 0) then
+         if (dstBlock > 0) then
+            do k=1,nz
+               array(iDst,jDst,k,dstBlock) = &
+               array(iSrc,jSrc,k,srcBlock)
+            end do
+         else if (dstBlock < 0) then ! tripole copy into buffer
+            do k=1,nz
+               bufTripole(iDst,jDst,k) = &
+               array(iSrc,jSrc,k,srcBlock)
+            end do
+         endif
+      else if (srcBlock == 0) then
+         do k=1,nz
+            array(iDst,jDst,k,dstBlock) = fill
+         end do
+      endif
+   end do
+
+!-----------------------------------------------------------------------
+!
+!  wait for receives to finish and then unpack the recv buffer into
+!  ghost cells
+!
+!-----------------------------------------------------------------------
+
+   call MPI_WAITALL(halo%numMsgRecv, rcvRequest, rcvStatus, ierr)
+
+   do nmsg=1,halo%numMsgRecv
+      i = 0
+      do n=1,halo%sizeRecv(nmsg)
+         iDst     = halo%recvAddr(1,n,nmsg)
+         jDst     = halo%recvAddr(2,n,nmsg)
+         dstBlock = halo%recvAddr(3,n,nmsg)
+
+         if (dstBlock > 0) then
+            do k=1,nz
+               i = i + 1
+               array(iDst,jDst,k,dstBlock) = bufRecv(i,nmsg)
+            end do
+         else if (dstBlock < 0) then !tripole
+            do k=1,nz
+               i = i + 1
+               bufTripole(iDst,jDst,k) = bufRecv(i,nmsg)
+            end do
+         endif
+      end do
+   end do
+
+!-----------------------------------------------------------------------
+!
+!  take care of northern boundary in tripole case
+!  bufTripole array contains the top nghost+1 rows (u-fold) or nghost+2 rows
+!  (T-fold) of physical domain for entire (global) top row
+!
+!-----------------------------------------------------------------------
+
+   if (nxGlobal > 0) then
+
+      select case (fieldKind)
+      case (field_type_scalar)
+         isign =  1
+      case (field_type_vector)
+         isign = -1
+      case (field_type_angle)
+         isign = -1
+      case default
+         call abort_ice( &
+            'nemo_HaloUpdate3DR4: Unknown field kind')
+      end select
+
+      if (halo%tripoleTFlag) then
+
+        select case (fieldLoc)
+        case (field_loc_center)   ! cell center location
+  
+           ioffset = -1
+           joffset = 0
+  
+           !*** top row is degenerate, so must enforce symmetry
+           !***   use average of two degenerate points for value
+
+           do k=1,nz
+           do i = 2,nxGlobal/2
+              iDst = nxGlobal - i + 2
+              bufTripole(iDst,halo%tripoleRows,k) = isign*bufTripole(i,halo%tripoleRows,k)
+           end do
+           end do
+  
+        case (field_loc_NEcorner)   ! cell corner location
+  
+           ioffset = 0
+           joffset = 1
+  
+        case (field_loc_Eface)   ! cell center location
+  
+           ioffset = 0
+           joffset = 0
+  
+           !*** top row is degenerate, so must enforce symmetry
+           !***   use average of two degenerate points for value
+  
+           do k=1,nz
+           do i = 1,nxGlobal/2
+              iDst = nxGlobal + 1 - i
+              bufTripole(iDst,halo%tripoleRows,k) = isign*bufTripole(i,halo%tripoleRows,k)
+           end do
+           end do
+  
+        case (field_loc_Nface)   ! cell corner (velocity) location
+  
+           ioffset = -1
+           joffset = 1
+  
+        case default
+           call abort_ice( &
+              'nemo_HaloUpdate3DR4: Unknown field location')
+        end select  
+  
+      else ! tripole u-fold  
+  
+        select case (fieldLoc)
+        case (field_loc_center)   ! cell center location
+  
+           ioffset = 0
+           joffset = 0
+  
+        case (field_loc_NEcorner)   ! cell corner location
+  
+           ioffset = 1
+           joffset = 1
+  
+           !*** top row is degenerate, so must enforce symmetry
+           !***   use average of two degenerate points for value
+  
+           do k=1,nz
+           do i = 1,nxGlobal/2 - 1
+              iDst = nxGlobal - i
+              x1 = bufTripole(i   ,halo%tripoleRows,k)
+              x2 = bufTripole(iDst,halo%tripoleRows,k)
+              xavg = 0.5_real_kind*(x1 + isign*x2)
+              bufTripole(i   ,halo%tripoleRows,k) = xavg
+              bufTripole(iDst,halo%tripoleRows,k) = isign*xavg
+           end do
+           end do
+  
+        case (field_loc_Eface)   ! cell center location
+  
+           ioffset = 1
+           joffset = 0
+  
+        case (field_loc_Nface)   ! cell corner (velocity) location
+  
+           ioffset = 0
+           joffset = 1
+  
+           !*** top row is degenerate, so must enforce symmetry
+           !***   use average of two degenerate points for value
+  
+           do k=1,nz
+           do i = 1,nxGlobal/2
+              iDst = nxGlobal + 1 - i
+              x1 = bufTripole(i   ,halo%tripoleRows,k)
+              x2 = bufTripole(iDst,halo%tripoleRows,k)
+              xavg = 0.5_real_kind*(x1 + isign*x2)
+              bufTripole(i   ,halo%tripoleRows,k) = xavg
+              bufTripole(iDst,halo%tripoleRows,k) = isign*xavg
+           end do
+           end do
+  
+        case default
+           call abort_ice( &
+              'nemo_HaloUpdate3DR4: Unknown field location')
+        end select
+
+      endif
+
+      !*** copy out of global tripole buffer into local
+      !*** ghost cells
+
+      !*** look through local copies to find the copy out
+      !*** messages (srcBlock < 0)
+
+      do nmsg=1,halo%numLocalCopies
+         srcBlock = halo%srcLocalAddr(3,nmsg)
+
+         if (srcBlock < 0) then
+
+            iSrc     = halo%srcLocalAddr(1,nmsg) ! tripole buffer addr
+            jSrc     = halo%srcLocalAddr(2,nmsg)
+
+            iDst     = halo%dstLocalAddr(1,nmsg) ! local block addr
+            jDst     = halo%dstLocalAddr(2,nmsg)
+            dstBlock = halo%dstLocalAddr(3,nmsg)
+
+            !*** correct for offsets
+            iSrc = iSrc - ioffset
+            jSrc = jSrc - joffset
+            if (iSrc == 0) iSrc = nxGlobal
+            if (iSrc > nxGlobal) iSrc = iSrc - nxGlobal
+
+            !*** for center and Eface on u-fold, and NE corner and Nface
+            !*** on T-fold, do not need to replace
+            !*** top row of physical domain, so jSrc should be
+            !*** out of range and skipped
+            !*** otherwise do the copy
+
+            if (jSrc <= halo%tripoleRows .and. jSrc>0 .and. jDst>0) then
+               do k=1,nz
+                  array(iDst,jDst,k,dstBlock) = isign*    &
+                                  bufTripole(iSrc,jSrc,k)
+               end do
+            endif
+
+         endif
+      end do
+
+   endif
+
+!-----------------------------------------------------------------------
+!
+!  wait for sends to complete and deallocate arrays
+!
+!-----------------------------------------------------------------------
+
+   call MPI_WAITALL(halo%numMsgSend, sndRequest, sndStatus, ierr)
+
+   deallocate(sndRequest, rcvRequest, sndStatus, rcvStatus, stat=ierr)
+
+   if (ierr > 0) then
+      call abort_ice( &
+         'nemo_HaloUpdate3DR4: error deallocating req,status arrays')
+      return
+   endif
+
+   deallocate(bufSend, bufRecv, bufTripole, stat=ierr)
+
+   if (ierr > 0) then
+      call abort_ice( &
+         'nemo_HaloUpdate3DR4: error deallocating 3d buffers')
+      return
+   endif
+
+!-----------------------------------------------------------------------
+!EOC
+
+ end subroutine nemo_HaloUpdate3DR4
+
+#endif
 
 !***********************************************************************
 

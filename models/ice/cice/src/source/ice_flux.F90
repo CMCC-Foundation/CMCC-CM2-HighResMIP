@@ -225,6 +225,14 @@
          dimension(nx_block,ny_block,max_blocks,max_nstrm) :: &
          albcnt       ! counter for zenith angle
 
+#if defined NEMO_IN_CCSM
+      real (kind=dbl_kind), dimension (nx_block,ny_block,max_blocks) :: &
+         fresh_nemo   , & ! fresh water flux to ocean (only snow melting, 
+                          ! snow-ice formation, ice subl./cond.) (kg/m^2/s)
+         fsalt_nemo   , & ! rejected salt flux to ocean (kg/m^2/s)
+         fhocn_nemo       ! net heat flux to ocean (W/m^2)
+#endif
+
        ! out to ocean
        ! (Note CICE_IN_NEMO does not use these for coupling.
        !  It uses fresh_gbm,fsalt_gbm,fhocn_gbm and fswthru_gbm)
@@ -517,6 +525,11 @@
       fsalt   (:,:,:) = c0
       fhocn   (:,:,:) = c0
       fswthru (:,:,:) = c0
+#if defined NEMO_IN_CCSM
+      fresh_nemo (:,:,:) = c0
+      fsalt_nemo (:,:,:) = c0
+      fhocn_nemo (:,:,:) = c0
+#endif
 
       !-----------------------------------------------------------------
       ! derived or computed fields
@@ -633,6 +646,11 @@
       fhocn  (:,:,:)  = c0
       fsoot  (:,:,:,:)  = c0
       fswthru(:,:,:)  = c0
+#if defined NEMO_IN_CCSM
+      fresh_nemo (:,:,:)  = c0
+      fsalt_nemo (:,:,:)  = c0
+      fhocn_nemo (:,:,:)  = c0
+#endif
 
       end subroutine init_flux_ocn
 
@@ -784,6 +802,10 @@
                                Trefn,    Qrefn,      &
                                freshn,   fsaltn,     &
                                fhocnn,   fswthrun,   &
+#if defined NEMO_IN_CCSM
+                               freshn_nemo, fsaltn_nemo,     &
+                               fhocnn_nemo,          &
+#endif
                                strairxT, strairyT,   &  
                                fsurf,    fcondtop,   &
                                fsens,    flat,       & 
@@ -808,6 +830,10 @@
                                Tref,     Qref,       &
                                fresh,    fsalt,      &
                                fhocn,    fswthru,    &
+#if defined NEMO_IN_CCSM
+                               fresh_nemo, fsalt_nemo,      &
+                               fhocn_nemo,                  &
+#endif
                                melttn, meltsn, meltbn, congeln, snoicen, &
                                meltt,  melts,  &
                                meltb,                       &
@@ -877,6 +903,11 @@
           fsaltn  , & ! salt flux to ocean              (kg/m2/s)
           fhocnn  , & ! actual ocn/ice heat flx         (W/m**2)
           fswthrun, & ! sw radiation through ice bot    (W/m**2)
+#if defined NEMO_IN_CCSM
+          freshn_nemo , & ! fresh water flux to ocean       (kg/m2/s)
+          fsaltn_nemo , & ! salt flux to ocean              (kg/m2/s)
+          fhocnn_nemo , & ! actual ocn/ice heat flx         (W/m**2)
+#endif
           melttn  , & ! top ice melt                    (m)
           meltbn  , & ! bottom ice melt                 (m)
           meltsn  , & ! snow melt                       (m)
@@ -923,6 +954,11 @@
           fresh   , & ! fresh water flux to ocean       (kg/m2/s)
           fsalt   , & ! salt flux to ocean              (kg/m2/s)
           fhocn   , & ! actual ocn/ice heat flx         (W/m**2)
+#if defined NEMO_IN_CCSM
+          fresh_nemo , & ! fresh water flux to ocean       (kg/m2/s)
+          fsalt_nemo , & ! salt flux to ocean              (kg/m2/s)
+          fhocn_nemo , & ! actual ocn/ice heat flx         (W/m**2)
+#endif
           fswthru , & ! sw radiation through ice bot    (W/m**2)
           meltt   , & ! top ice melt                    (m)
           meltb   , & ! bottom ice melt                 (m)
@@ -991,6 +1027,11 @@
          fsalt    (i,j) = fsalt     (i,j) + fsaltn  (i,j)*aicen(i,j)
          fhocn    (i,j) = fhocn     (i,j) + fhocnn  (i,j)*aicen(i,j)
          fswthru  (i,j) = fswthru   (i,j) + fswthrun(i,j)*aicen(i,j)
+#if defined NEMO_IN_CCSM
+         fresh_nemo (i,j) = fresh_nemo (i,j) + freshn_nemo (i,j)*aicen(i,j)
+         fsalt_nemo (i,j) = fsalt_nemo (i,j) + fsaltn_nemo (i,j)*aicen(i,j)
+         fhocn_nemo (i,j) = fhocn_nemo (i,j) + fhocnn_nemo (i,j)*aicen(i,j)
+#endif
 
          ! ice/snow thickness
 
@@ -1031,6 +1072,10 @@
                                Tref,     Qref,     &
                                fresh,    fsalt,    &
                                fhocn,    fswthru,  &
+#if defined NEMO_IN_CCSM
+                               fresh_nemo, fsalt_nemo, &
+                               fhocn_nemo,         &
+#endif
                                fsoot,              &
                                alvdr,    alidr,    &
                                alvdf,    alidf)
@@ -1075,6 +1120,11 @@
           fsalt   , & ! salt flux to ocean              (kg/m2/s)
           fhocn   , & ! actual ocn/ice heat flx         (W/m**2)
           fswthru , & ! sw radiation through ice bot    (W/m**2)
+#if defined NEMO_IN_CCSM
+          fresh_nemo , & ! fresh water flux to ocean       (kg/m2/s)
+          fsalt_nemo , & ! salt flux to ocean              (kg/m2/s)
+          fhocn_nemo , & ! actual ocn/ice heat flx         (W/m**2)
+#endif
           alvdr   , & ! visible, direct   (fraction)
           alidr   , & ! near-ir, direct   (fraction)
           alvdf   , & ! visible, diffuse  (fraction)
@@ -1113,6 +1163,11 @@
             fsalt   (i,j) = fsalt   (i,j) * ar
             fhocn   (i,j) = fhocn   (i,j) * ar
             fswthru (i,j) = fswthru (i,j) * ar
+#if defined NEMO_IN_CCSM
+            fresh_nemo (i,j) = fresh_nemo (i,j) * ar
+            fsalt_nemo (i,j) = fsalt_nemo (i,j) * ar
+            fhocn_nemo (i,j) = fhocn_nemo (i,j) * ar
+#endif
             alvdr   (i,j) = alvdr   (i,j) * ar
             alidr   (i,j) = alidr   (i,j) * ar
             alvdf   (i,j) = alvdf   (i,j) * ar
@@ -1135,6 +1190,11 @@
             fhocn   (i,j) = c0
             fsoot   (i,j,:) = c0
             fswthru (i,j) = c0
+#if defined NEMO_IN_CCSM
+            fresh_nemo (i,j) = c0
+            fsalt_nemo (i,j) = c0
+            fhocn_nemo (i,j) = c0
+#endif
             alvdr   (i,j) = c0  ! zero out albedo where ice is absent
             alidr   (i,j) = c0
             alvdf   (i,j) = c0 

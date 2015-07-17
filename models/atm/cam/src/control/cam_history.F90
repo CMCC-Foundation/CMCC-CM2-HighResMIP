@@ -3888,7 +3888,7 @@ CONTAINS
            str = tape(t)%hlist(f)%time_op
            select case (str)
            case ('mean', 'maximum', 'minimum' )
-              ierr=pio_put_att (tape(t)%File, varid,'cell_methods', 'time: '//str)
+              ierr=pio_put_att (tape(t)%File, varid,'cell_methods', 'time: '//trim(str))
            end select
            if(i>0) ierr= pio_put_att(tape(t)%File, varid, 'basename',tape(t)%hlist(f)%field%name)
         end do

@@ -182,7 +182,7 @@ contains
 
        end select
     endif
-    call check_netcdf(File, ierr,__PIO_FILE__,__LINE__)
+    call check_netcdf(File, ierr,subName//__PIO_FILE__,__LINE__)
 # 163 "/glade/u/home/jedwards/pio_trunk/pio/pionfatt_mod.F90.in"
   end function put_att_text
 # 76 "/glade/u/home/jedwards/pio_trunk/pio/pionfatt_mod.F90.in"
@@ -272,7 +272,7 @@ contains
 
        end select
     endif
-    call check_netcdf(File, ierr,__PIO_FILE__,__LINE__)
+    call check_netcdf(File, ierr,subName//__PIO_FILE__,__LINE__)
 # 163 "/glade/u/home/jedwards/pio_trunk/pio/pionfatt_mod.F90.in"
   end function put_att_real
 # 76 "/glade/u/home/jedwards/pio_trunk/pio/pionfatt_mod.F90.in"
@@ -362,7 +362,7 @@ contains
 
        end select
     endif
-    call check_netcdf(File, ierr,__PIO_FILE__,__LINE__)
+    call check_netcdf(File, ierr,subName//__PIO_FILE__,__LINE__)
 # 163 "/glade/u/home/jedwards/pio_trunk/pio/pionfatt_mod.F90.in"
   end function put_att_double
 # 76 "/glade/u/home/jedwards/pio_trunk/pio/pionfatt_mod.F90.in"
@@ -452,7 +452,7 @@ contains
 
        end select
     endif
-    call check_netcdf(File, ierr,__PIO_FILE__,__LINE__)
+    call check_netcdf(File, ierr,subName//__PIO_FILE__,__LINE__)
 # 163 "/glade/u/home/jedwards/pio_trunk/pio/pionfatt_mod.F90.in"
   end function put_att_int
 
@@ -545,7 +545,7 @@ contains
 
        end select
     endif
-    call check_netcdf(File, ierr,__PIO_FILE__,__LINE__)
+    call check_netcdf(File, ierr,subName//__PIO_FILE__,__LINE__)
 # 255 "/glade/u/home/jedwards/pio_trunk/pio/pionfatt_mod.F90.in"
   end function put_att_1d_real
 ! TYPE real,double,int
@@ -637,7 +637,7 @@ contains
 
        end select
     endif
-    call check_netcdf(File, ierr,__PIO_FILE__,__LINE__)
+    call check_netcdf(File, ierr,subName//__PIO_FILE__,__LINE__)
 # 255 "/glade/u/home/jedwards/pio_trunk/pio/pionfatt_mod.F90.in"
   end function put_att_1d_double
 ! TYPE real,double,int
@@ -729,7 +729,7 @@ contains
 
        end select
     endif
-    call check_netcdf(File, ierr,__PIO_FILE__,__LINE__)
+    call check_netcdf(File, ierr,subName//__PIO_FILE__,__LINE__)
 # 255 "/glade/u/home/jedwards/pio_trunk/pio/pionfatt_mod.F90.in"
   end function put_att_1d_int
 
@@ -1094,7 +1094,7 @@ contains
 
        end select
     endif
-    call check_netcdf(File, ierr,__PIO_FILE__,__LINE__)
+    call check_netcdf(File, ierr,subName//__PIO_FILE__,__LINE__)
     if(ios%async_interface .or. ios%num_tasks>ios%num_iotasks) then
        call MPI_BCAST(value, clen, MPI_CHARACTER,Ios%iomaster,Ios%my_comm, mpierr)
        call CheckMPIReturn(subName, mpierr)
@@ -1164,7 +1164,7 @@ contains
 
        end select
     endif
-    call check_netcdf(File, ierr,__PIO_FILE__,__LINE__)
+    call check_netcdf(File, ierr,subName//__PIO_FILE__,__LINE__)
     if(ios%async_interface .or. ios%num_tasks>ios%num_iotasks) then
        call MPI_BCAST(value, clen, MPI_REAL4,Ios%iomaster,Ios%my_comm, mpierr)
        call CheckMPIReturn(subName, mpierr)
@@ -1234,7 +1234,7 @@ contains
 
        end select
     endif
-    call check_netcdf(File, ierr,__PIO_FILE__,__LINE__)
+    call check_netcdf(File, ierr,subName//__PIO_FILE__,__LINE__)
     if(ios%async_interface .or. ios%num_tasks>ios%num_iotasks) then
        call MPI_BCAST(value, clen, MPI_REAL8,Ios%iomaster,Ios%my_comm, mpierr)
        call CheckMPIReturn(subName, mpierr)
@@ -1304,7 +1304,7 @@ contains
 
        end select
     endif
-    call check_netcdf(File, ierr,__PIO_FILE__,__LINE__)
+    call check_netcdf(File, ierr,subName//__PIO_FILE__,__LINE__)
     if(ios%async_interface .or. ios%num_tasks>ios%num_iotasks) then
        call MPI_BCAST(value, clen, MPI_INTEGER,Ios%iomaster,Ios%my_comm, mpierr)
        call CheckMPIReturn(subName, mpierr)
@@ -1385,7 +1385,7 @@ contains
 
        end select
     endif
-    call check_netcdf(File, ierr,__PIO_FILE__,__LINE__)
+    call check_netcdf(File, ierr,subName//__PIO_FILE__,__LINE__)
     if(ios%async_interface .or. ios%num_tasks>ios%num_iotasks) then
        call MPI_BCAST(value, clen, MPI_REAL4,Ios%iomaster,Ios%my_comm, mpierr)
        call CheckMPIReturn(subName, mpierr)
@@ -1466,7 +1466,7 @@ contains
 
        end select
     endif
-    call check_netcdf(File, ierr,__PIO_FILE__,__LINE__)
+    call check_netcdf(File, ierr,subName//__PIO_FILE__,__LINE__)
     if(ios%async_interface .or. ios%num_tasks>ios%num_iotasks) then
        call MPI_BCAST(value, clen, MPI_INTEGER,Ios%iomaster,Ios%my_comm, mpierr)
        call CheckMPIReturn(subName, mpierr)
@@ -1547,7 +1547,7 @@ contains
 
        end select
     endif
-    call check_netcdf(File, ierr,__PIO_FILE__,__LINE__)
+    call check_netcdf(File, ierr,subName//__PIO_FILE__,__LINE__)
     if(ios%async_interface .or. ios%num_tasks>ios%num_iotasks) then
        call MPI_BCAST(value, clen, MPI_REAL8,Ios%iomaster,Ios%my_comm, mpierr)
        call CheckMPIReturn(subName, mpierr)

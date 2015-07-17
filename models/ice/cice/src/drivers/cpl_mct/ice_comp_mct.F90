@@ -74,6 +74,12 @@ module ice_comp_mct
   use ice_global_reductions
   use ice_broadcast
   use CICE_RunMod
+#ifdef NEMO_IN_CCSM
+  use ice_grid,        only : hm_i, tmask_i
+  use ice_boundary,    only : nemo_HaloUpdate 
+!  use ice_read_write,  only : ice_open, ice_write
+  use ice_flux,        only : fhocn_nemo, fresh_nemo, fsalt_nemo
+#endif
 
 ! !PUBLIC MEMBER FUNCTIONS:
   implicit none
@@ -1068,7 +1074,11 @@ contains
             !-------states-------------------- 
             i2x_i%rAttr(index_i2x_Si_ifrac ,n)    = ailohi(i,j,iblk)   
 
+#ifdef NEMO_IN_CCSM
+            if ( tmask_i(i,j,iblk) .and. ailohi(i,j,iblk) > c0 ) then
+#else
             if ( tmask(i,j,iblk) .and. ailohi(i,j,iblk) > c0 ) then
+#endif
                !-------states-------------------- 
                i2x_i%rAttr(index_i2x_Si_t     ,n)    = Tsrf(i,j,iblk)
                i2x_i%rAttr(index_i2x_Si_avsdr ,n)    = alvdr(i,j,iblk)
@@ -1091,10 +1101,17 @@ contains
                i2x_i%rAttr(index_i2x_Faii_swnet,n)   = fswabs(i,j,iblk)
             
                !--- i/o fluxes computed by ice
+#ifdef NEMO_IN_CCSM
+               i2x_i%rAttr(index_i2x_Fioi_melth,n)   = fhocn_nemo(i,j,iblk)
+               i2x_i%rAttr(index_i2x_Fioi_meltw,n)   = fresh_nemo(i,j,iblk) ! h2o flux from melting    ???
+               i2x_i%rAttr(index_i2x_Fioi_salt, n)   = fsalt_nemo(i,j,iblk) ! salt flux from melting   ???
+#else
+
                i2x_i%rAttr(index_i2x_Fioi_melth,n)   = fhocn(i,j,iblk)
-               i2x_i%rAttr(index_i2x_Fioi_swpen,n)   = fswthru(i,j,iblk) ! hf from melting          
                i2x_i%rAttr(index_i2x_Fioi_meltw,n)   = fresh(i,j,iblk)   ! h2o flux from melting    ???
                i2x_i%rAttr(index_i2x_Fioi_salt ,n)   = fsalt(i,j,iblk)   ! salt flux from melting   ???
+#endif
+               i2x_i%rAttr(index_i2x_Fioi_swpen,n)   = fswthru(i,j,iblk) ! hf from melting          
                i2x_i%rAttr(index_i2x_Fioi_taux ,n)   = tauxo(i,j,iblk)   ! stress : i/o zonal       ???
                i2x_i%rAttr(index_i2x_Fioi_tauy ,n)   = tauyo(i,j,iblk)   ! stress : i/o meridional  ???
             end if
@@ -1177,8 +1194,13 @@ contains
 
      if (.not.prescribed_ice) then
         call t_startf ('cice_imp_halo')
+#ifdef NEMO_IN_CCSM
+        call nemo_HaloUpdate(aflds, halo_info, field_loc_center, &
+                                              field_type_scalar)                                                         
+#else
         call ice_HaloUpdate(aflds, halo_info, field_loc_center, &
                                               field_type_scalar)
+#endif
         call t_stopf ('cice_imp_halo')
      endif
  
@@ -1233,8 +1255,13 @@ contains
 
      if (.not.prescribed_ice) then
         call t_startf ('cice_imp_halo')
+#ifdef NEMO_IN_CCSM
+        call nemo_HaloUpdate(aflds, halo_info, field_loc_center, &
+                                             field_type_vector)
+#else
         call ice_HaloUpdate(aflds, halo_info, field_loc_center, &
                                              field_type_vector)
+#endif
         call t_stopf ('cice_imp_halo')
      endif
 
@@ -1499,7 +1526,11 @@ contains
        do j = jlo, jhi
        do i = ilo, ihi
           n = n+1
+#ifdef NEMO_IN_CCSM
+          data(n) = real(nint(hm_i(i,j,iblk)),kind=dbl_kind)
+#else
           data(n) = real(nint(hm(i,j,iblk)),kind=dbl_kind)
+#endif
        enddo   !i
        enddo   !j
     enddo      !iblk
@@ -1519,7 +1550,11 @@ contains
 	  if (trim(grid_type) == 'latlon') then
              data(n) = ocn_gridcell_frac(i,j,iblk)
           else
+#ifdef NEMO_IN_CCSM
+             data(n) = real(nint(hm_i(i,j,iblk)),kind=dbl_kind)
+#else
              data(n) = real(nint(hm(i,j,iblk)),kind=dbl_kind)
+#endif
           end if
        enddo   !i
        enddo   !j

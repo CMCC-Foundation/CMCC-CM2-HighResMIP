@@ -455,7 +455,7 @@ subroutine cmplr(hes     ,w       ,nc)
         u = (0.0_r8,-1.0_r8)*hes(n-1,n-2)
         ti = u
         tr = abs(tr) + abs(ti)
-        s = cmplx(sr,tr)
+        s = cmplx(sr,tr,r8)
      else
         s = hes(n,n)
         x = hes(n-1,n)*hes(n,n-1)

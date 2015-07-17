@@ -60,6 +60,22 @@ fi
 sta=${DOUT_S_ROOT}/.sta-$$-`date +%Y%m%d%H%M%S%N`
 mkdir -p ${sta} 2> /dev/null
 
+if [ "${COMP_OCN}" == "nemo" -a "${NEMO_REBUILD}" == "TRUE" ]; then
+    BACK=${PWD}
+    cd ${DOUT_S_ROOT}/../
+    DOUT_NEMO_REBUILD=${PWD}/nemo_rebuild/${CASE}
+    if [ ! -d ${DOUT_NEMO_REBUILD} ] ; then
+        mkdir -p ${DOUT_NEMO_REBUILD}
+    fi
+    if [ -f ${DOUT_NEMO_REBUILD}/../${CASE}.st_archive.lock ] ; then
+        rm -f  ${DOUT_NEMO_REBUILD}/../${CASE}.st_archive.lock
+    fi
+    touch  ${DOUT_NEMO_REBUILD}/../${CASE}.st_archive.lock
+    cd ${BACK}
+else
+    DOUT_NEMO_REBUILD=${sta}/ocn/hist
+fi
+
 if [ $? -ne 0 ]; then
     echo "st_archive.sh: error, unable to create short-term archive directory"
     echo "st_archive.sh: exiting"
@@ -275,6 +291,8 @@ while [ $IDX -le $NINST_OCN ]
 do
     get_inst_suffix $IDX $NINST_OCN
     set ocn${inst_suffix}.log.*;                                                                                                               dispose ifiles_n ${sta}/ocn/logs $*
+    case $COMP_OCN in
+      pop2)
     set ${CASE}.pop${inst_suffix}.r.*.hdr;            latest=`ls -rt $* 2> /dev/null | tail -1`; mv $latest ${sta}/rest/${dname} 2> /dev/null; dispose ifiles_y ${sta}/ocn/rest $*
     set ${CASE}.pop${inst_suffix}.r.*0000;            latest=`ls -rt $* 2> /dev/null | tail -1`; mv $latest ${sta}/rest/${dname} 2> /dev/null; dispose ifiles_y ${sta}/ocn/rest $*
     set ${CASE}.pop${inst_suffix}.r.*0000.nc;         latest=`ls -rt $* 2> /dev/null | tail -1`; mv $latest ${sta}/rest/${dname} 2> /dev/null; dispose ifiles_y ${sta}/ocn/rest $*
@@ -291,6 +309,124 @@ do
     set ${CASE}.docn${inst_suffix}.r.* ;              latest=`ls -rt $* 2> /dev/null | tail -1`; mv $latest ${sta}/rest/${dname} 2> /dev/null; dispose ifiles_y ${sta}/ocn/rest $*
     set ${CASE}.docn${inst_suffix}.rs* ;              latest=`ls -rt $* 2> /dev/null | tail -1`; mv $latest ${sta}/rest/${dname} 2> /dev/null; dispose ifiles_y ${sta}/ocn/rest $*
     set ${CASE}.docn${inst_suffix}.h.* ;                                                                                                       dispose ifiles_n ${sta}/ocn/hist $*
+          ;;
+       nemo)
+          nf=`ls -rt ${CASE}*_restart_0000.nc 2>/dev/null | wc -w`
+	  if [ ${nf} -gt 0 ]; then
+	      if [ ${nf} -gt 1 ]; then
+		  n=0
+		  while [ ${n} -lt ${NTASKS_OCN} ]; do
+		      pe=`printf "%04d" ${n}`
+                      set ${CASE}*_restart_${pe}.nc
+		      latest=`ls -rt $* 2>/dev/null | tail -1`
+		      mv ${latest} ${sta}/rest/${dname} 2>/dev/null
+	              dispose ifiles_y ${sta}/ocn/rest $*
+		      n=`expr ${n} + 1`
+		  done
+	      else
+                  set ${CASE}*_restart_[0-9][0-9][0-9][0-9].nc
+	          dispose ifiles_n ${sta}/rest/${dname} $*
+	      fi
+	  else
+              nf=`ls -rt ${CASE}*_restart.nc 2>/dev/null | wc -w`
+	      if [ ${nf} -gt 0 ]; then
+                  set ${CASE}*_restart.nc
+	          if [ ${nf} -gt 1 ]; then
+		      latest=`ls -rt $* 2>/dev/null | tail -1`
+		      mv ${latest} ${sta}/rest/${dname} 2>/dev/null
+	              dispose ifiles_y ${sta}/ocn/rest $*
+	          else
+	              dispose ifiles_n ${sta}/rest/${dname} $*
+	          fi
+	      fi
+	  fi
+	  #
+          nf=`ls -rt ${CASE}*_restart_trc_0000.nc 2>/dev/null | wc -w`
+	  if [ ${nf} -gt 0 ]; then
+	      if [ ${nf} -gt 1 ]; then
+		  n=0
+		  while [ ${n} -lt ${NTASKS_OCN} ]; do
+		      pe=`printf "%04d" ${n}`
+                      set ${CASE}*_restart_trc_${pe}.nc
+		      latest=`ls -rt $* 2>/dev/null | tail -1`
+		      mv ${latest} ${sta}/rest/${dname} 2>/dev/null
+	              dispose ifiles_y ${sta}/ocn/rest $*
+		      n=`expr ${n} + 1`
+		  done
+	      else
+                  set ${CASE}*_restart_trc_[0-9][0-9][0-9][0-9].nc
+	          dispose ifiles_n ${sta}/rest/${dname} $*
+	      fi
+	  else
+              nf=`ls -rt ${CASE}*_restart_trc.nc 2>/dev/null | wc -w`
+	      if [ ${nf} -gt 0 ]; then
+                  set ${CASE}*_restart_trc.nc
+	          if [ ${nf} -gt 1 ]; then
+		      latest=`ls -rt $* 2>/dev/null | tail -1`
+		      mv ${latest} ${sta}/rest/${dname} 2>/dev/null
+	              dispose ifiles_y ${sta}/ocn/rest $*
+	          else
+	              dispose ifiles_n ${sta}/rest/${dname} $*
+	          fi
+	      fi
+	  fi
+	  #
+	  nf=`ls -rt ${CASE}*_grid_T*.nc 2>/dev/null | wc -w`
+	  ymd=`ls -1 ${CASE}*_grid_T*.nc 2>/dev/null | head -1 | sed -e "s/_grid_T.*$//" -e "s/${CASE}_[0-9][dmy]_//"`
+	  if [ ${nf} -gt 0 ]; then
+              set ${CASE}*_grid_T*.nc
+	      dispose ifiles_n ${DOUT_NEMO_REBUILD} $*
+          fi
+	  nf=`ls -rt ${CASE}*_ptrc_T*.nc 2>/dev/null | wc -w`
+	  if [ ${nf} -gt 0 ]; then
+              set ${CASE}*_ptrc_T*.nc
+	      dispose ifiles_n ${DOUT_NEMO_REBUILD} $*
+	  fi
+	  nf=`ls -rt ${CASE}*_scalar*.nc 2>/dev/null | wc -w`
+	  if [ ${nf} -gt 0 ]; then
+              set ${CASE}*_scalar*.nc
+	      dispose ifiles_n ${sta}/ocn/hist $*
+	  fi
+	  nf=`ls -rt ${CASE}*_grid_U*.nc 2>/dev/null | wc -w`
+	  if [ ${nf} -gt 0 ]; then
+              set ${CASE}*_grid_U*.nc
+	      dispose ifiles_n ${DOUT_NEMO_REBUILD} $*
+	  fi
+	  nf=`ls -rt ${CASE}*_grid_V*.nc 2>/dev/null | wc -w`
+	  if [ ${nf} -gt 0 ]; then
+              set ${CASE}*_grid_V*.nc
+	      dispose ifiles_n ${DOUT_NEMO_REBUILD} $*
+	  fi
+	  nf=`ls -rt ${CASE}*_grid_W*.nc 2>/dev/null | wc -w`
+	  if [ ${nf} -gt 0 ]; then
+              set ${CASE}*_grid_W*.nc
+	      dispose ifiles_n ${DOUT_NEMO_REBUILD} $*
+	  fi
+	  nf=`ls -rt ${CASE}*_diaptr*.nc 2>/dev/null | wc -w`
+	  if [ ${nf} -gt 0 ]; then
+              set ${CASE}*_diaptr*.nc
+	      dispose ifiles_n ${DOUT_NEMO_REBUILD} $*
+          fi
+	  nf=`ls -rt mesh_*.nc 2>/dev/null | wc -w`
+	  if [ ${nf} -gt 0 ]; then
+              set mesh_*.nc
+              dispose ifiles_n ${DOUT_NEMO_REBUILD} $*
+	  fi
+	  nf=`ls -rt mask*.nc 2>/dev/null | wc -w`
+	  if [ ${nf} -gt 0 ]; then
+              set mask*.nc
+	      dispose ifiles_n ${DOUT_NEMO_REBUILD} $*
+	  fi
+	  if [ ! -f ${sta}/ocn/logs/layout.dat -a -f layout.dat ]; then
+	      mv layout.dat \
+	        ${sta}/ocn/logs/
+	  fi
+	  if [ -f heat_salt_volume_budgets.txt ]; then
+	      mv heat_salt_volume_budgets.txt \
+	        ${sta}/ocn/logs/heat_salt_volume_budgets_${dname}.txt
+	  fi
+          ;;
+    esac
     IDX=`expr $IDX + 1`
 done
 
@@ -337,6 +473,27 @@ else
     exit 1
 fi
 
-echo "st_archive.sh: short-term archiving completed successfully"
+# Rebuild NEMO output
+if [ "${COMP_OCN}" == "nemo" -a "${NEMO_REBUILD}" == "TRUE" ]; then
+  cd ${DOUT_NEMO_REBUILD}/ || exit 1
+  if [ ! -f rebuild_nemo ]; then
+    cp ${EXEROOT}/ocn/REBUILD_NEMO/rebuild_nemo . || exit 1
+  fi
+  if [ ! -f rebuild_nemo.exe ]; then
+    cp ${EXEROOT}/ocn/REBUILD_NEMO/rebuild_nemo.exe . || exit 1
+  fi
+  if [ ! -f postrun.tpl ]; then
+    cp ${CASEBUILD}/nemoconf/postrun.tpl . || exit 1
+  fi
+  y1=`echo ${ymd} | cut -d'_' -f1`
+  y2=`echo ${ymd} | cut -d'_' -f2`
+  sed -e "s/YYYYMMDD1/${y1}/" \
+      -e "s/YYYYMMDD2/${y2}/" \
+      -e "s@DOUT_S_ROOT@${DOUT_S_ROOT}/ocn/hist@" \
+      -e "s/CASE/${CASE}/" postrun.tpl > postrun || exit 1
+  bsub < postrun
+fi
 
+echo "st_archive.sh: short-term archiving completed successfully"
+rm -f  ${DOUT_NEMO_REBUILD}/../${CASE}.st_archive.lock
 exit 0

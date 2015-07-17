@@ -847,6 +847,9 @@
                               frzmlt,    frazil,   &
                               frz_onset, yday,     &
                               fresh,     fsalt,    &
+#if defined NEMO_IN_CCSM
+                              fresh_nemo, fsalt_nemo,    &
+#endif
                               Tf,        l_stop,   &
                               istop,     jstop)
 !
@@ -903,6 +906,13 @@
          fresh     , & ! fresh water flux to ocean (kg/m^2/s)
          fsalt         ! salt flux to ocean (kg/m^2/s)
 
+#if defined NEMO_IN_CCSM
+      real (kind=dbl_kind), dimension (nx_block,ny_block), &
+         intent(inout) :: &
+         fresh_nemo     , & ! fresh water flux to ocean (kg/m^2/s)
+         fsalt_nemo         ! rejected salt flux to ocean (kg/m^2/s)
+#endif
+
       real (kind=dbl_kind), dimension (nx_block,ny_block), &
          intent(inout), optional :: &
          frz_onset ! day of year that freezing begins (congel or frazil)
@@ -946,6 +956,12 @@
          dfresh       , & ! change in fresh
          dfsalt       , & ! change in fsalt
          vtmp
+
+#if defined NEMO_IN_CCSM
+      real (kind=dbl_kind) :: &
+         dfresh_nemo  , & ! change in fresh
+         dfsalt_nemo      ! change in fsalt
+#endif
 
       integer (kind=int_kind) :: &
          jcells, kcells     , & ! grid cell counters
@@ -1034,6 +1050,18 @@
             fsalt(i,j)      = fsalt(i,j)      + dfsalt
          endif
 
+#ifdef NEMO_IN_CCSM
+      !-----------------------------------------------------------------
+      ! Update salt flux.
+      !
+      ! NOTE: NEMO assumes salt flux due to frzmlt > 0
+      !       IS included in flux fsalt_nemo.
+      !-----------------------------------------------------------------
+
+         dfsalt_nemo = (ocn_ref_salinity-ice_ref_salinity)* &
+                  rhoi*vi0new(ij)/dt
+         fsalt_nemo(i,j) = fsalt_nemo(i,j) + dfsalt_nemo
+#endif
       !-----------------------------------------------------------------
       ! Decide how to distribute the new ice.
       !-----------------------------------------------------------------
@@ -1257,6 +1285,10 @@
                                dt,                     &
                                fresh,      fsalt,      &
                                fhocn,      fsoot,      &
+#if defined NEMO_IN_CCSM
+                               fresh_nemo, fsalt_nemo, &
+                               fhocn_nemo,             &
+#endif
                                rside,      meltl,      &
                                aicen,      vicen,      &
                                vsnon,      eicen,      &
@@ -1303,6 +1335,14 @@
          fsalt     , & ! salt flux to ocean (kg/m^2/s)
          fhocn     , & ! net heat flux to ocean (W/m^2)
          meltl         ! lateral ice melt         (m/step-->cm/day)
+
+#if defined NEMO_IN_CCSM
+      real (kind=dbl_kind), dimension(nx_block,ny_block), &
+         intent(inout) :: &
+         fresh_nemo     , & ! fresh water flux to ocean (kg/m^2/s)
+         fsalt_nemo     , & ! rejected salt flux to ocean (kg/m^2/s)
+         fhocn_nemo         ! net heat flux to ocean (W/m^2)
+#endif
 
       real (kind=dbl_kind), dimension(nx_block,ny_block,n_aeromx), &
          intent(inout) :: &
@@ -1371,6 +1411,18 @@
             i = indxi(ij)
             j = indxj(ij)
 
+#ifdef NEMO_IN_CCSM
+
+            ! fluxes to coupler
+            ! dfresh > 0, dfsalt < 0
+
+            dfresh = (rhos*vsnon(i,j,n)) * rside(i,j) / dt
+            dfsalt = -rhoi*vicen(i,j,n)*(ocn_ref_salinity - &
+                     ice_ref_salinity) * rside(i,j) / dt
+            fresh_nemo(i,j) = fresh_nemo(i,j) + dfresh
+            fsalt_nemo(i,j) = fsalt_nemo(i,j) + dfsalt
+#endif
+
             ! fluxes to coupler
             ! dfresh > 0, dfsalt > 0
 
@@ -1404,6 +1456,9 @@
 
                dfhocn = eicen(i,j,ilyr1(n)+k-1)*rside(i,j) / dt
                fhocn(i,j)      = fhocn(i,j)      + dfhocn
+#ifdef NEMO_IN_CCSM
+               fhocn_nemo(i,j) = fhocn_nemo(i,j) + dfhocn
+#endif
 
                ! ice energy
                eicen(i,j,ilyr1(n)+k-1) = eicen(i,j,ilyr1(n)+k-1) &
@@ -1423,6 +1478,9 @@
 
                dfhocn = esnon(i,j,slyr1(n)+k-1)*rside(i,j) / dt
                fhocn(i,j)      = fhocn(i,j)      + dfhocn
+#ifdef NEMO_IN_CCSM
+               fhocn_nemo(i,j) = fhocn_nemo(i,j) + dfhocn
+#endif
 
                ! snow energy
                esnon(i,j,slyr1(n)+k-1) = esnon(i,j,slyr1(n)+k-1) &
