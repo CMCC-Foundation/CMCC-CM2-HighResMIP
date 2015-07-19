@@ -118,33 +118,25 @@ cat >> ${CASEROOT}/${CASE}.run << EOF1
 # Run the model
 # -------------------------------------------------------------------------
 
-set nhosts=`expr ${LSB_DJOB_NUMPROC} / ${PES_PER_NODE}`
-set nrem=`expr ${LSB_DJOB_NUMPROC} % ${PES_PER_NODE}`
-if ( ${nrem} > 0 ) then
-  set nhosts=`expr ${nhosts} + 1`
+@ nhosts = \${LSB_DJOB_NUMPROC} / \${PES_PER_NODE}
+@ nrem   = \${LSB_DJOB_NUMPROC} % \${PES_PER_NODE}
+if ( \${nrem} > 0 ) then
+  @ nhosts = \${nhosts} + 1
 endif
-setenv I_MPI_HYDRA_BRANCH_COUNT ${nhosts}
+setenv I_MPI_HYDRA_BRANCH_COUNT \${nhosts}
 
 module list
 printenv
-echo "nhosts= ${nhosts}"
+echo "nhosts= \${nhosts}"
 
 cd \$RUNDIR
 sleep 2
 echo "\`date\` -- CSM EXECUTION BEGINS HERE" 
-setenv MP_LABELIO yes
 setenv OMP_NUM_THREADS \$maxthrds
 if ( "\$MPILIB" == "mpi-serial" ) then
     \$EXEROOT/cesm.exe >&! cesm.log.\$LID
 else
-    if( \$maxthrds > 1 ) then
-      unsetenv MP_PE_AFFINITY
-      unsetenv MP_TASK_AFFINITY
-      unsetenv MP_CPU_BIND_LIST 
-    else
-      setenv TARGET_PROCESSOR_LIST AUTO_SELECT
-   endif
-   mpiexec.hydra $EXEROOT/cesm.exe >&! cesm.log.$LID
+   mpiexec.hydra \$EXEROOT/cesm.exe >&! cesm.log.\$LID
 endif
 
 wait
