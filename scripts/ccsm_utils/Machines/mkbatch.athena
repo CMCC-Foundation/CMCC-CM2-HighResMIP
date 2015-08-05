@@ -118,12 +118,7 @@ cat >> ${CASEROOT}/${CASE}.run << EOF1
 # Run the model
 # -------------------------------------------------------------------------
 
-@ nhosts = \${LSB_DJOB_NUMPROC} / \${PES_PER_NODE}
-@ nrem   = \${LSB_DJOB_NUMPROC} % \${PES_PER_NODE}
-if ( \${nrem} > 0 ) then
-  @ nhosts = \${nhosts} + 1
-endif
-setenv I_MPI_HYDRA_BRANCH_COUNT \${nhosts}
+setenv I_MPI_HYDRA_BRANCH_COUNT ${nodes}
 
 module list
 printenv
