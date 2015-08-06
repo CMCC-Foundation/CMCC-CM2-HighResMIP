@@ -118,11 +118,16 @@ cat >> ${CASEROOT}/${CASE}.run << EOF1
 # Run the model
 # -------------------------------------------------------------------------
 
-setenv I_MPI_HYDRA_BRANCH_COUNT ${nodes}
+@ ptile  = \${MAX_TASKS_PER_NODE} / 2
+@ nhosts = \${LSB_DJOB_NUMPROC} / \${ptile}
+@ nrem   = \${LSB_DJOB_NUMPROC} % \${ptile}
+if ( \${nrem} > 0 ) then
+  @ nhosts = \${nhosts} + 1
+endif
+setenv I_MPI_HYDRA_BRANCH_COUNT \${nhosts}
 
 module list
 printenv
-echo "nhosts= \${nhosts}"
 
 cd \$RUNDIR
 sleep 2
