@@ -518,6 +518,14 @@ case "*day*":
     # 2 hours OCN-CPL coupling
     @ nnfsbc = ${ts_per_day} / ${OCN_NCPL}
     breaksw
+  case "16":
+    if ("${OCN_GRID}" != "tn0.25v1") then
+      echo "Error: wrong OCN_NCPL value (${OCN_NCPL}) for grid ${OCN_GRID} with time step ${DTSEC}!"
+      exit 1
+    endif
+    # 1.5 hours OCN-CPL coupling
+    @ nnfsbc = ${ts_per_day} / ${OCN_NCPL}
+    breaksw
   case "24":
     if ("${OCN_GRID}" != "tn1v1") then
       echo "Error: wrong OCN_NCPL value (${OCN_NCPL}) for grid ${OCN_GRID} with time step ${DTSEC}!"
