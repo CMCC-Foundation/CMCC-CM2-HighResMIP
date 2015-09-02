@@ -522,7 +522,7 @@ contains
 
           call ocn_sum_buffer
           if (MOD(istp-nit000+1, nn_ncpl)==0) then
-             call ocn_export_mct(o2x_o, errorCode)
+             call ocn_export_mct(o2x_o, errorCode, lexport=.false.)
           endif
 
           istp = istp+1
@@ -1077,7 +1077,7 @@ contains
     call mct_gGrid_importRAttr(dom_o,"lon"  ,data,lsize) 
     call mct_gGrid_importRAttr(dom_o,"area" ,data,lsize) 
     call mct_gGrid_importRAttr(dom_o,"aream",data,lsize) 
-    data(:) = 0.0_wp     
+    data(:) = c0
     call mct_gGrid_importRAttr(dom_o,"mask",data,lsize) 
     call mct_gGrid_importRAttr(dom_o,"frac",data,lsize) 
 
@@ -1096,7 +1096,7 @@ contains
     enddo
     ! longitude shift: [-180:180] --> [0:360]
     ! consistent with domain and mapping files
-    where (data(:)<0.0_wp)
+    where (data(:)<c0)
        data(:) = data(:) + 360.0_wp
     end where
     call mct_gGrid_importRattr(dom_o,"lon",data,lsize) 
@@ -1377,7 +1377,7 @@ contains
 ! !IROUTINE: ocn_export_mct
 ! !INTERFACE:
 
- subroutine ocn_export_mct(o2x_o, errorCode)   
+ subroutine ocn_export_mct(o2x_o, errorCode, lexport)
 
 ! !DESCRIPTION:
 !  This routine calls the routines necessary to send NEMO fields to
@@ -1389,6 +1389,8 @@ contains
 ! !INPUT/OUTPUT PARAMETERS:
 
    type(mct_aVect)   , intent(inout) :: o2x_o
+
+   logical, intent(in), optional :: lexport
 
 ! !OUTPUT PARAMETERS:
 
@@ -1424,6 +1426,8 @@ contains
    real (wp) ::   &
       rtmp1, rtmp2
 
+   logical :: l_export
+
    logical, save :: lfirst = .true.
 
 !-----------------------------------------------------------------------
@@ -1433,6 +1437,9 @@ contains
    ! already at the right time step for SBC output (istp+nn_fsbc-1).
    ! We just avoid to call iom_put the first time this routine is called
    ! (from ocn_init_mct) for initialization pourpuses.
+
+   l_export = .true.
+   if (present(lexport)) l_export = lexport
 
 !-----------------------------------------------------------------------
 !
@@ -1448,10 +1455,10 @@ contains
 !
 !-----------------------------------------------------------------------
 
-   WORK1(:,:) = 0.0_wp
-   WORK2(:,:) = 0.0_wp
-   WORK3(:,:) = 0.0_wp
-   WORK4(:,:) = 0.0_wp
+   WORK1(:,:) = c0
+   WORK2(:,:) = c0
+   WORK3(:,:) = c0
+   WORK4(:,:) = c0
 
    ! Apply LBC
    SBUFF_SUM(:,:,index_o2x_So_u) = SBUFF_SUM(:,:,index_o2x_So_u)*umask(:,:,1)
@@ -1467,12 +1474,12 @@ contains
 !          WORK4(i,j) = 0.5_wp * ( SBUFF_SUM(i,j,index_o2x_So_v) + &
 !             SBUFF_SUM(i,j-1,index_o2x_So_v) )
          rtmp1 = umask(i,j,1)+umask(i-1,j,1)
-         if (rtmp1 > 0.0_wp) then
+         if (rtmp1 > c0) then
             WORK3(i,j) = ( SBUFF_SUM(i,j,index_o2x_So_u)*umask(i,j,1) + &
                SBUFF_SUM(i-1,j,index_o2x_So_u)*umask(i-1,j,1) ) / rtmp1
          end if
          rtmp2 = vmask(i,j,1)+vmask(i,j-1,1)
-         if (rtmp2 > 0.0_wp) then
+         if (rtmp2 > c0) then
             WORK4(i,j) = ( SBUFF_SUM(i,j,index_o2x_So_v)*vmask(i,j,1) + &
                SBUFF_SUM(i,j-1,index_o2x_So_v)*vmask(i,j-1,1) ) / rtmp2
          end if
@@ -1495,6 +1502,7 @@ contains
    WORK3(:,:) = WORK1(:,:)*tmask(:,:,1)/tlast_coupled
    WORK4(:,:) = WORK2(:,:)*tmask(:,:,1)/tlast_coupled
 
+   if (l_export) then
    n = 0
    do j=lnldj,lnlej
       do i=lnldi,lnlei
@@ -1503,6 +1511,7 @@ contains
          o2x_o%rAttr(index_o2x_So_v,n) = WORK4(i,j)
       enddo
    enddo
+   end if
 
 !-----------------------------------------------------------------------
 !
@@ -1513,6 +1522,7 @@ contains
    WORK1(:,:) = (SBUFF_SUM(:,:,index_o2x_So_t)/tlast_coupled + rt0)*tmask(:,:,1)
    call lbc_lnk( WORK1, 'T', 1._wp)
 
+   if (l_export) then
    n = 0
    do j=lnldj,lnlej
       do i=lnldi,lnlei
@@ -1520,6 +1530,7 @@ contains
          o2x_o%rAttr(index_o2x_So_t,n) = WORK1(i,j)
       enddo
    enddo
+   end if
 
    if (.not. lfirst) then
       call iom_put('So_t_o2x', WORK1)
@@ -1534,6 +1545,7 @@ contains
    WORK1(:,:) = SBUFF_SUM(:,:,index_o2x_So_s)*tmask(:,:,1)/tlast_coupled
    call lbc_lnk( WORK1, 'T', 1._wp)
 
+   if (l_export) then
    n = 0
    do j=lnldj,lnlej
       do i=lnldi,lnlei
@@ -1541,6 +1553,7 @@ contains
          o2x_o%rAttr(index_o2x_So_s,n) = WORK1(i,j)
       enddo
    enddo
+   end if
 
    if (.not. lfirst) then
       call iom_put('So_s_o2x', WORK1)
@@ -1552,10 +1565,10 @@ contains
 !
 !-----------------------------------------------------------------------
 
-   WORK1(:,:) = 0.0_wp
-   WORK2(:,:) = 0.0_wp
-   WORK3(:,:) = 0.0_wp
-   WORK4(:,:) = 0.0_wp
+   WORK1(:,:) = c0
+   WORK2(:,:) = c0
+   WORK3(:,:) = c0
+   WORK4(:,:) = c0
 
    ! Apply LBC (not sure it's necessary)
    SBUFF_SUM(:,:,index_o2x_So_dhdx) = SBUFF_SUM(:,:,index_o2x_So_dhdx)*umask(:,:,1)
@@ -1571,12 +1584,12 @@ contains
 !          WORK4(i,j) = 0.5_wp * ( SBUFF_SUM(i,j,index_o2x_So_dhdy) + &
 !             SBUFF_SUM(i,j-1,index_o2x_So_dhdy) )
          rtmp1 = umask(i,j,1)+umask(i-1,j,1)
-         if (rtmp1>0.0_wp) then
+         if (rtmp1>c0) then
             WORK3(i,j) = ( SBUFF_SUM(i,j,index_o2x_So_dhdx)*umask(i,j,1) + &
                SBUFF_SUM(i-1,j,index_o2x_So_dhdx)*umask(i-1,j,1) ) / rtmp1
          end if
          rtmp2 = vmask(i,j,1)+vmask(i,j-1,1)
-         if (rtmp2>0.0_wp) then
+         if (rtmp2>c0) then
             WORK4(i,j) = ( SBUFF_SUM(i,j,index_o2x_So_dhdy)*vmask(i,j,1) + &
                SBUFF_SUM(i,j-1,index_o2x_So_dhdy)*vmask(i,j-1,1) ) / rtmp2
          end if
@@ -1599,6 +1612,7 @@ contains
    WORK3(:,:) = WORK1(:,:)*tmask(:,:,1)/tlast_coupled
    WORK4(:,:) = WORK2(:,:)*tmask(:,:,1)/tlast_coupled
 
+   if (l_export) then
    n = 0
    do j=lnldj,lnlej
       do i=lnldi,lnlei
@@ -1607,6 +1621,7 @@ contains
          o2x_o%rAttr(index_o2x_So_dhdy,n) = WORK4(i,j)
       enddo
    enddo
+   end if
 
 !-----------------------------------------------------------------------
 !
@@ -1617,6 +1632,7 @@ contains
 
    call lbc_lnk( QFLUX(:,:), 'T', 1._wp )
 
+   if (l_export) then
    n = 0
    do j=lnldj,lnlej
       do i=lnldi,lnlei
@@ -1625,9 +1641,10 @@ contains
 !         o2x_o%rAttr(index_o2x_Fioo_q,n) = c0
       enddo
    enddo
+   end if
 
    if (.not. lfirst) then
-      call iom_put('So_qflux_o2x', MAX(0.0_wp, QFLUX))
+      call iom_put('So_qflux_o2x', MAX(c0, QFLUX))
    endif
 
    tlast_ice  = c0
@@ -1642,7 +1659,7 @@ contains
 !
 !-----------------------------------------------------------------------
 
-   if (index_o2x_Faoo_fco2_ocn > 0) then
+   if (index_o2x_Faoo_fco2_ocn > 0 .AND. l_export) then
       n = 0
       do j=lnldj,lnlej
          do i=lnldi,lnlei
@@ -1661,7 +1678,7 @@ contains
 !
 !-----------------------------------------------------------------------
 
-   if (ldiag_cpl) then
+   if (ldiag_cpl .AND. l_export) then
       if (lwp) write(numout,*)'nemo_send_to_coupler'
 
       do k = 1,nsend
@@ -1679,7 +1696,7 @@ contains
             k==index_o2x_So_dhdx .or. k==index_o2x_So_dhdy) then
            sgn = -1._wp
         else if (k==index_o2x_Fioo_q) then
-           WORKA(:,:)=MAX(0.0_wp, WORKA(:,:))
+           WORKA(:,:)=MAX(c0, WORKA(:,:))
         end if
         call lbc_lnk(WORKA(:,:), 'T', sgn)
 
@@ -1791,8 +1808,8 @@ contains
 !   endif
 
     ! T -> (U, V)
-    ssgu(:,:) = 0.0_wp
-    ssgv(:,:) = 0.0_wp
+    ssgu(:,:) = c0
+    ssgv(:,:) = c0
     DO jj = 1, jpjm1              ! Sea surface gradient (now)
        DO ji = 1, jpim1
           ssgu(ji,jj) = ( sshn(ji+1,jj) - sshn(ji,jj) ) / e1u(ji,jj)
