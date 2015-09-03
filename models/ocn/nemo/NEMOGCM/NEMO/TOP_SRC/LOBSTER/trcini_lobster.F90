@@ -29,7 +29,7 @@ MODULE trcini_lobster
 #  include "top_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/TOP 3.3 , NEMO Consortium (2010)
-   !! $Id: trcini_lobster.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -39,16 +39,17 @@ CONTAINS
       !!                    ***  ROUTINE trc_ini_lobster  ***
       !! ** purpose :   specific initialisation for LOBSTER bio-model
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zrro => wrk_2d_1 , zdm0 => wrk_3d_1
       !!
       INTEGER  ::   ji, jj, jk, jn
       REAL(wp) ::   ztest, zfluo, zfluu
-      !!----------------------------------------------------------------------
-      !
-      IF(  wrk_in_use(2, 1)  .OR.  wrk_in_use(3, 1)  )  THEN
-         CALL ctl_stop('trc_ini_lobster: requested workspace arrays unavailable')   ;  RETURN
-      ENDIF
+      REAL(wp), POINTER, DIMENSION(:,:  ) :: zrro
+      REAL(wp), POINTER, DIMENSION(:,:,:) :: zdm0
+      !!---------------------------------------------------------------------
+
+      ! Allocate temporary workspace
+      CALL wrk_alloc( jpi, jpj,      zrro )
+      CALL wrk_alloc( jpi, jpj, jpk, zdm0 )
+
 
       IF(lwp) WRITE(numout,*)
       IF(lwp) WRITE(numout,*) ' trc_ini_lobster :   LOBSTER biochemical model initialisation'
@@ -253,8 +254,8 @@ CONTAINS
       !
       IF(lwp) WRITE(numout,*) 'Initialization of LOBSTER tracers done'
       !
-      IF(  wrk_not_released(2, 1)  .OR.   &
-           wrk_not_released(3, 1)   )   CALL ctl_stop('trc_ini_lobster: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi, jpj,      zrro )
+      CALL wrk_dealloc( jpi, jpj, jpk, zdm0 )
       !
    END SUBROUTINE trc_ini_lobster
 

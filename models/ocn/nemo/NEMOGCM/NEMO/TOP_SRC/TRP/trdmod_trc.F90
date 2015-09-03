@@ -49,7 +49,7 @@ CONTAINS
       CHARACTER (len=20) :: cltra
       !!----------------------------------------------------------------------
 
-      IF( kt == nit000 ) THEN
+      IF( kt == nittrc000 ) THEN
 !         IF(lwp)WRITE(numout,*)
 !         IF(lwp)WRITE(numout,*) 'trd_mod_trc:'
 !         IF(lwp)WRITE(numout,*) '~~~~~~~~~~~~'
@@ -58,6 +58,7 @@ CONTAINS
       !>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
       ! Mixed layer trends for passive tracers
       !<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+#if defined key_trdmld_trc  
       IF( lk_trdmld_trc .AND. ln_trdtrc( kjn ) ) THEN
          !
          SELECT CASE ( ktrd )
@@ -81,20 +82,26 @@ CONTAINS
          END SELECT
          !
       END IF
+#endif
 
       IF( lk_trdtrc .AND. ln_trdtrc( kjn ) ) THEN
          !
          SELECT CASE( ktrd )
-         CASE( jptra_trd_xad )       ;    WRITE (cltra,'("XAD_",16a)')   ctrcnm(kjn)
-         CASE( jptra_trd_yad )       ;    WRITE (cltra,'("YAD_",16a)')   ctrcnm(kjn)
-         CASE( jptra_trd_zad )       ;    WRITE (cltra,'("ZAD_",16a)')   ctrcnm(kjn)
-         CASE( jptra_trd_ldf )       ;    WRITE (cltra,'("LDF_",16a)')   ctrcnm(kjn)
-         CASE( jptra_trd_bbl )       ;    WRITE (cltra,'("BBL_",16a)')   ctrcnm(kjn)
-         CASE( jptra_trd_zdf )       ;    WRITE (cltra,'("ZDF_",16a)')   ctrcnm(kjn)
-         CASE( jptra_trd_dmp )       ;    WRITE (cltra,'("DMP_",16a)')   ctrcnm(kjn)
-         CASE( jptra_trd_nsr )       ;    WRITE (cltra,'("FOR_",16a)')   ctrcnm(kjn)
+         CASE( jptra_trd_xad  )   ;    WRITE (cltra,'("XAD_",4a)')
+         CASE( jptra_trd_yad  )   ;    WRITE (cltra,'("YAD_",4a)')
+         CASE( jptra_trd_zad  )   ;    WRITE (cltra,'("ZAD_",4a)')
+         CASE( jptra_trd_ldf  )   ;    WRITE (cltra,'("LDF_",4a)')
+         CASE( jptra_trd_bbl  )   ;    WRITE (cltra,'("BBL_",4a)')
+         CASE( jptra_trd_nsr  )   ;    WRITE (cltra,'("FOR_",4a)')
+         CASE( jptra_trd_zdf  )   ;    WRITE (cltra,'("ZDF_",4a)')
+         CASE( jptra_trd_dmp  )   ;    WRITE (cltra,'("DMP_",4a)')
+         CASE( jptra_trd_sms  )   ;    WRITE (cltra,'("SMS_",4a)')
+         CASE( jptra_trd_atf  )   ;    WRITE (cltra,'("ATF_",4a)')
+         CASE( jptra_trd_radb )   ;    WRITE (cltra,'("RDB_",4a)')
+         CASE( jptra_trd_radn )   ;    WRITE (cltra,'("RDN_",4a)')
          END SELECT
-                                          CALL iom_put( cltra,  ptrtrd(:,:,:) )
+                                       cltra = TRIM(cltra)//TRIM(ctrcnm(kjn))
+                                       CALL iom_put( cltra,  ptrtrd(:,:,:) )
          !
       END IF
 
@@ -110,7 +117,9 @@ CONTAINS
       REAL(wp), DIMENSION(jpi,jpj,jpk), INTENT( inout )  ::   ptrbio  ! Bio trend
       !!----------------------------------------------------------------------
 
+#if defined key_trdmld_trc  
       CALL trd_mld_bio_zint( ptrbio, ktrd ) ! Verticaly integrated biological trends
+#endif
 
    END SUBROUTINE trd_mod_trc_bio
 #else

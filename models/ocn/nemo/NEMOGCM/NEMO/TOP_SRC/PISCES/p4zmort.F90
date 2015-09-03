@@ -13,12 +13,11 @@ MODULE p4zmort
    !!   p4z_mort       :   Compute the mortality terms for phytoplankton
    !!   p4z_mort_init  :   Initialize the mortality params for phytoplankton
    !!----------------------------------------------------------------------
-   USE trc
-   USE oce_trc         !
-   USE trc         ! 
-   USE sms_pisces      ! 
-   USE p4zsink
-   USE prtctl_trc
+   USE oce_trc         !  shared variables between ocean and passive tracers
+   USE trc             !  passive tracers common variables 
+   USE sms_pisces      !  PISCES Source Minus Sink variables
+   USE p4zsink         !  vertical flux of particulate matter due to sinking
+   USE prtctl_trc      !  print control for debugging
 
    IMPLICIT NONE
    PRIVATE
@@ -26,21 +25,19 @@ MODULE p4zmort
    PUBLIC   p4z_mort    
    PUBLIC   p4z_mort_init    
 
-
    !! * Shared module variables
-   REAL(wp), PUBLIC ::   &
-     wchl   = 0.001_wp    ,  &  !:
-     wchld  = 0.02_wp     ,  &  !:
-     mprat  = 0.01_wp     ,  &  !:
-     mprat2 = 0.01_wp     ,  &  !:
-     mpratm = 0.01_wp           !:
+   REAL(wp), PUBLIC :: wchl   = 0.001_wp  !:
+   REAL(wp), PUBLIC :: wchld  = 0.02_wp   !:
+   REAL(wp), PUBLIC :: mprat  = 0.01_wp   !:
+   REAL(wp), PUBLIC :: mprat2 = 0.01_wp   !:
+   REAL(wp), PUBLIC :: mpratm = 0.01_wp   !:
 
 
    !!* Substitution
 #  include "top_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/TOP 3.3 , NEMO Consortium (2010)
-   !! $Id: p4zmort.F90 2528 2010-12-27 17:33:53Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 
@@ -79,22 +76,17 @@ CONTAINS
       REAL(wp) :: ztortp , zrespp , zmortp , zstep
       CHARACTER (len=25) :: charout
       !!---------------------------------------------------------------------
-
-
-#if defined key_diatrc
-     prodcal(:,:,:) = 0.  !: Initialisation of calcite production variable
-#endif
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('p4z_nano')
+      !
+      prodcal(:,:,:) = 0.  !: calcite production variable set to zero
       DO jk = 1, jpkm1
          DO jj = 1, jpj
             DO ji = 1, jpi
-
                zcompaph = MAX( ( trn(ji,jj,jk,jpphy) - 1e-8 ), 0.e0 )
-
+               zstep    = xstep
 # if defined key_degrad
-               zstep =  xstep * facvol(ji,jj,jk)  
-# else
-               zstep =  xstep  
+               zstep    = zstep * facvol(ji,jj,jk)
 # endif
                !     Squared mortality of Phyto similar to a sedimentation term during
                !     blooms (Doney et al. 1996)
@@ -116,9 +108,9 @@ CONTAINS
                tra(ji,jj,jk,jpnch) = tra(ji,jj,jk,jpnch) - zmortp * zfactch
                tra(ji,jj,jk,jpnfe) = tra(ji,jj,jk,jpnfe) - zmortp * zfactfe
                zprcaca = xfracal(ji,jj,jk) * zmortp
-#if defined key_diatrc
+               !
                prodcal(ji,jj,jk) = prodcal(ji,jj,jk) + zprcaca  ! prodcal=prodcal(nanophy)+prodcal(microzoo)+prodcal(mesozoo)
-#endif
+               !
                zfracal = 0.5 * xfracal(ji,jj,jk)
                tra(ji,jj,jk,jpdic) = tra(ji,jj,jk,jpdic) - zprcaca
                tra(ji,jj,jk,jptal) = tra(ji,jj,jk,jptal) - 2. * zprcaca
@@ -142,7 +134,9 @@ CONTAINS
          CALL prt_ctl_trc_info(charout)
          CALL prt_ctl_trc(tab4d=tra, mask=tmask, clinfo=ctrcnm)
        ENDIF
-
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('p4z_nano')
+      !
    END SUBROUTINE p4z_nano
 
    SUBROUTINE p4z_diat
@@ -157,9 +151,10 @@ CONTAINS
       REAL(wp) ::  zfactfe,zfactsi,zfactch, zcompadi
       REAL(wp) ::  zrespp2, ztortp2, zmortp2, zstep
       CHARACTER (len=25) :: charout
- 
       !!---------------------------------------------------------------------
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('p4z_diat')
+      !
 
       !    Aggregation term for diatoms is increased in case of nutrient
       !    stress as observed in reality. The stressed cells become more
@@ -176,11 +171,9 @@ CONTAINS
                !    stress as observed in reality. The stressed cells become more
                !    sticky and coagulate to sink quickly out of the euphotic zone
                !     ------------------------------------------------------------
-
+               zstep   = xstep
 # if defined key_degrad
-               zstep =  xstep * facvol(ji,jj,jk)  
-# else
-               zstep =  xstep  
+               zstep = zstep * facvol(ji,jj,jk)
 # endif
                !  Phytoplankton respiration 
                !     ------------------------
@@ -197,13 +190,13 @@ CONTAINS
                !   ---------------------------------------------------------------------
                zfactch = trn(ji,jj,jk,jpdch) / ( trn(ji,jj,jk,jpdia) + rtrn )
                zfactfe = trn(ji,jj,jk,jpdfe) / ( trn(ji,jj,jk,jpdia) + rtrn )
-               zfactsi = trn(ji,jj,jk,jpbsi) / ( trn(ji,jj,jk,jpdia) + rtrn )
+               zfactsi = trn(ji,jj,jk,jpdsi) / ( trn(ji,jj,jk,jpdia) + rtrn )
 
                tra(ji,jj,jk,jpdia) = tra(ji,jj,jk,jpdia) - zmortp2 
                tra(ji,jj,jk,jpdch) = tra(ji,jj,jk,jpdch) - zmortp2 * zfactch
                tra(ji,jj,jk,jpdfe) = tra(ji,jj,jk,jpdfe) - zmortp2 * zfactfe
-               tra(ji,jj,jk,jpbsi) = tra(ji,jj,jk,jpbsi) - zmortp2 * zfactsi
-               tra(ji,jj,jk,jpdsi) = tra(ji,jj,jk,jpdsi) + zmortp2 * zfactsi
+               tra(ji,jj,jk,jpdsi) = tra(ji,jj,jk,jpdsi) - zmortp2 * zfactsi
+               tra(ji,jj,jk,jpgsi) = tra(ji,jj,jk,jpgsi) + zmortp2 * zfactsi
 #if defined key_kriest
                tra(ji,jj,jk,jppoc) = tra(ji,jj,jk,jppoc) + zmortp2  
                tra(ji,jj,jk,jpnum) = tra(ji,jj,jk,jpnum) + ztortp2 * xkr_ddiat + zrespp2 * xkr_daggr
@@ -218,12 +211,14 @@ CONTAINS
          END DO
       END DO
       !
-        IF(ln_ctl)   THEN  ! print mean trends (used for debugging)
+      IF(ln_ctl)   THEN  ! print mean trends (used for debugging)
          WRITE(charout, FMT="('diat')")
          CALL prt_ctl_trc_info(charout)
          CALL prt_ctl_trc(tab4d=tra, mask=tmask, clinfo=ctrcnm)
-       ENDIF
-             
+      ENDIF
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('p4z_diat')
+      !
    END SUBROUTINE p4z_diat
 
    SUBROUTINE p4z_mort_init
@@ -242,8 +237,8 @@ CONTAINS
 
       NAMELIST/nampismort/ wchl, wchld, mprat, mprat2, mpratm
 
-      REWIND( numnat )                     ! read numnat
-      READ  ( numnat, nampismort )
+      REWIND( numnatp )                     ! read numnatp
+      READ  ( numnatp, nampismort )
 
       IF(lwp) THEN                         ! control print
          WRITE(numout,*) ' '

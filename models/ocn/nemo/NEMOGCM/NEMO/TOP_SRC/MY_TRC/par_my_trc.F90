@@ -6,7 +6,7 @@ MODULE par_my_trc
    !! History :   2.0  !  2007-12  (C. Ethe, G. Madec)  revised architecture
    !!----------------------------------------------------------------------
    !! NEMO/TOP 3.3 , NEMO Consortium (2010)
-   !! $Id: par_my_trc.F90 2528 2010-12-27 17:33:53Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
    USE par_lobster, ONLY : jp_lobster      !: number of tracers in LOBSTER

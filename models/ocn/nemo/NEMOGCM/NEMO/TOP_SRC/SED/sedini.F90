@@ -448,7 +448,7 @@ CONTAINS
       CALL ctl_opn( numnamsed, 'namelist.sediment', 'OLD', 'FORMATTED', 'SEQUENTIAL', -1, numout, .FALSE. )
 
       dtsed = rdt
-      nitsed000 = nit000
+      nitsed000 = nittrc000
       nitsedend = nitend
 #if ! defined key_sed_off
       nwrised   = nwritetrc

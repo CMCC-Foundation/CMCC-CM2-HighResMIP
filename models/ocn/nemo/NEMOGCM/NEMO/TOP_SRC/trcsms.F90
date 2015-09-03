@@ -28,7 +28,7 @@ MODULE trcsms
 
    !!----------------------------------------------------------------------
    !! NEMO/TOP 3.3 , NEMO Consortium (2010)
-   !! $Id: trcsms.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -45,9 +45,9 @@ CONTAINS
       !!
       CHARACTER (len=25) :: charout
       !!---------------------------------------------------------------------
-
-      IF ( MOD( kt, nn_dttrc) /= 0 ) RETURN      ! this ROUTINE is called only every ndttrc time step
-
+      !
+      IF( nn_timing == 1 )   CALL timing_start('trc_sms')
+      !
       IF( lk_lobster )   CALL trc_sms_lobster( kt )    ! main program of LOBSTER
       IF( lk_pisces  )   CALL trc_sms_pisces ( kt )    ! main program of PISCES 
       IF( lk_cfc     )   CALL trc_sms_cfc    ( kt )    ! surface fluxes of CFC
@@ -59,6 +59,8 @@ CONTAINS
          CALL prt_ctl_trc_info( charout )
          CALL prt_ctl_trc( tab4d=trn, mask=tmask, clinfo=ctrcnm )
       ENDIF
+      !
+      IF( nn_timing == 1 )   CALL timing_stop('trc_sms')
       !
    END SUBROUTINE trc_sms
 

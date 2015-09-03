@@ -33,6 +33,12 @@ MODULE oce_trc
    !* IO manager *
    USE in_out_manager    
  
+   !* Memory Allocation *
+   USE wrk_nemo      
+ 
+   !* Timing *
+   USE timing    
+ 
    !* MPP library                         
    USE lib_mpp 
 
@@ -184,24 +190,31 @@ MODULE oce_trc
    USE oce , ONLY :   un      =>    un      !: i-horizontal velocity (m s-1) 
    USE oce , ONLY :   vn      =>    vn      !: j-horizontal velocity (m s-1)
    USE oce , ONLY :   wn      =>    wn      !: vertical velocity (m s-1)  
-   USE oce , ONLY :   tn      =>    tn      !: pot. temperature (celsius)
-   USE oce , ONLY :   sn      =>    sn      !: salinity (psu)
    USE oce , ONLY :   tsn     =>    tsn     !: 4D array contaning ( tn, sn )
    USE oce , ONLY :   tsb     =>    tsb     !: 4D array contaning ( tb, sb )
    USE oce , ONLY :   tsa     =>    tsa     !: 4D array contaning ( ta, sa )
    USE oce , ONLY :   rhop    =>    rhop    !: potential volumic mass (kg m-3) 
    USE oce , ONLY :   rhd     =>    rhd     !: in situ density anomalie rhd=(rho-rau0)/rau0 (no units)
    USE oce , ONLY :   hdivn   =>    hdivn   !: horizontal divergence (1/s)
+   USE oce , ONLY :   rotn    =>    rotn    !: relative vorticity    [s-1]
+   USE oce , ONLY :   hdivb   =>    hdivb   !: horizontal divergence (1/s)
+   USE oce , ONLY :   rotb    =>    rotb    !: relative vorticity    [s-1]
+   USE oce , ONLY :   sshn    =>    sshn    !: sea surface height at t-point [m]   
+   USE oce , ONLY :   sshb    =>    sshb    !: sea surface height at t-point [m]   
+   USE oce , ONLY :   ssha    =>    ssha    !: sea surface height at t-point [m]   
+   USE oce , ONLY :   sshu_n  =>    sshu_n  !: sea surface height at u-point [m]   
+   USE oce , ONLY :   sshu_b  =>    sshu_b  !: sea surface height at u-point [m]   
+   USE oce , ONLY :   sshu_a  =>    sshu_a  !: sea surface height at u-point [m]   
+   USE oce , ONLY :   sshv_n  =>    sshv_n  !: sea surface height at v-point [m]   
+   USE oce , ONLY :   sshv_b  =>    sshv_b  !: sea surface height at v-point [m]   
+   USE oce , ONLY :   sshv_a  =>    sshv_a  !: sea surface height at v-point [m]   
+   USE oce , ONLY :   sshf_n  =>    sshf_n  !: sea surface height at v-point [m]   
    USE oce , ONLY :   l_traldf_rot => l_traldf_rot  !: rotated laplacian operator for lateral diffusion
 #if defined key_offline
    USE oce , ONLY :   gtsu    =>    gtsu    !: t-, s- and rd horizontal gradient at u- and
    USE oce , ONLY :   gtsv    =>    gtsv    !:
    USE oce , ONLY :   gru     =>    gru     !:
    USE oce , ONLY :   grv     =>    grv     !: 
-# if defined key_degrad
-   USE dommsk , ONLY :   facvol     =>   facvol     !: volume factor for degradation
-# endif
-
 #endif
 
    USE dom_oce , ONLY :   nn_cla    =>  nn_cla        !: flag (0/1) for cross land advection 
@@ -212,6 +225,7 @@ MODULE oce_trc
    USE sbc_oce , ONLY :   wndm       =>    wndm       !: 10m wind speed 
    USE sbc_oce , ONLY :   qsr        =>    qsr        !: penetrative solar radiation (w m-2)  
    USE sbc_oce , ONLY :   emp        =>    emp        !: freshwater budget: volume flux               [Kg/m2/s]
+   USE sbc_oce , ONLY :   emp_b      =>    emp_b      !: freshwater budget: volume flux               [Kg/m2/s]
    USE sbc_oce , ONLY :   emps       =>    emps       !: freshwater budget: concentration/dillution   [Kg/m2/s]
    USE sbc_oce , ONLY :   rnf        =>    rnf        !: river runoff   [Kg/m2/s]
    USE sbc_oce , ONLY :   ln_dm2dc   =>    ln_dm2dc   !: Daily mean to Diurnal Cycle short wave (qsr) 
@@ -222,25 +236,29 @@ MODULE oce_trc
    USE traqsr  , ONLY :   ln_qsr_bio =>    ln_qsr_bio !: flag to use or not the biological fluxes for light
    USE sbcrnf  , ONLY :   rnfmsk     =>    rnfmsk     !: mixed adv scheme in runoffs vicinity (hori.) 
    USE sbcrnf  , ONLY :   rnfmsk_z   =>    rnfmsk_z   !: mixed adv scheme in runoffs vicinity (vert.)
+   USE sbcrnf  , ONLY :   h_rnf      =>    h_rnf      !: river runoff   [Kg/m2/s]
 
    USE trc_oce
 
    !* lateral diffusivity (tracers) *
-   USE ldftra_oce , ONLY :   aht0    =>   aht0     !: horizontal eddy diffusivity for tracers (m2/s)
-   USE ldftra_oce , ONLY :   ahtb0   =>   ahtb0    !: background eddy diffusivity for isopycnal diff. (m2/s)
-   USE ldftra_oce , ONLY :   ahtu    =>   ahtu     !: lateral diffusivity coef. at u-points 
-   USE ldftra_oce , ONLY :   ahtv    =>   ahtv     !: lateral diffusivity coef. at v-points 
-   USE ldftra_oce , ONLY :   ahtw    =>   ahtw     !: lateral diffusivity coef. at w-points 
-   USE ldftra_oce , ONLY :   ahtt    =>   ahtt     !: lateral diffusivity coef. at t-points
-   USE ldftra_oce , ONLY :   aeiv0   =>   aeiv0    !: eddy induced velocity coefficient (m2/s) 
-   USE ldftra_oce , ONLY :   aeiu    =>   aeiu     !: eddy induced velocity coef. at u-points (m2/s)   
-   USE ldftra_oce , ONLY :   aeiv    =>   aeiv     !: eddy induced velocity coef. at v-points (m2/s) 
-   USE ldftra_oce , ONLY :   aeiw    =>   aeiw     !: eddy induced velocity coef. at w-points (m2/s) 
+   USE ldftra_oce , ONLY :  rldf     =>   rldf        !: multiplicative coef. for lateral diffusivity
+   USE ldftra_oce , ONLY :  rn_aht_0 =>   rn_aht_0    !: horizontal eddy diffusivity for tracers (m2/s)
+   USE ldftra_oce , ONLY :  aht0     =>   aht0        !: horizontal eddy diffusivity for tracers (m2/s)
+   USE ldftra_oce , ONLY :  ahtb0    =>   ahtb0       !: background eddy diffusivity for isopycnal diff. (m2/s)
+   USE ldftra_oce , ONLY :  ahtu     =>   ahtu        !: lateral diffusivity coef. at u-points 
+   USE ldftra_oce , ONLY :  ahtv     =>   ahtv        !: lateral diffusivity coef. at v-points 
+   USE ldftra_oce , ONLY :  ahtw     =>   ahtw        !: lateral diffusivity coef. at w-points 
+   USE ldftra_oce , ONLY :  ahtt     =>   ahtt        !: lateral diffusivity coef. at t-points
+   USE ldftra_oce , ONLY :  aeiv0    =>   aeiv0       !: eddy induced velocity coefficient (m2/s) 
+   USE ldftra_oce , ONLY :  aeiu     =>   aeiu        !: eddy induced velocity coef. at u-points (m2/s)   
+   USE ldftra_oce , ONLY :  aeiv     =>   aeiv        !: eddy induced velocity coef. at v-points (m2/s) 
+   USE ldftra_oce , ONLY :  aeiw     =>   aeiw        !: eddy induced velocity coef. at w-points (m2/s) 
+   USE ldftra_oce , ONLY :  lk_traldf_eiv  =>  lk_traldf_eiv     !: eddy induced velocity flag
 
    !* vertical diffusion *
    USE zdf_oce , ONLY :   avt        =>   avt         !: vert. diffusivity coef. at w-point for temp  
 # if defined key_zdfddm
-   USE zdfddm  , ONLY :   avs        =>   avs        !: salinity vertical diffusivity coeff. at w-point
+   USE zdfddm  , ONLY :   avs        =>   avs         !: salinity vertical diffusivity coeff. at w-point
 # endif
 
    !* mixing & mixed layer depth *
@@ -266,7 +284,7 @@ MODULE oce_trc
 
    !!----------------------------------------------------------------------
    !! NEMO/TOP 3.3 , NEMO Consortium (2010)
-   !! $Id: oce_trc.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence (NEMOGCM/NEMO_CeCILL.txt)
    !!======================================================================
 END MODULE oce_trc

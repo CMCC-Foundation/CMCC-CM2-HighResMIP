@@ -10,7 +10,6 @@ MODULE trcstp
    !!   trc_stp      : passive tracer system time-stepping
    !!----------------------------------------------------------------------
    USE oce_trc          ! ocean dynamics and active tracers variables
-#if ! defined key_bfm
    USE trc
    USE trctrp           ! passive tracers transport
    USE trcsms           ! passive tracers sources and sinks
@@ -20,24 +19,20 @@ MODULE trcstp
    USE trcrst
    USE trdmod_trc_oce
    USE trdmld_trc
-#else
-   USE api_bfm, ONLY: bio_calc
-   USE par_bfm
-#ifdef key_obcbfm
-   USE trcobcdta_bfm
-#endif
-#endif
    USE iom
    USE in_out_manager
+   USE trcsub
 
    IMPLICIT NONE
    PRIVATE
 
    PUBLIC   trc_stp    ! called by step
-   
+
+   !! * Substitutions
+#  include "domzgr_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/TOP 3.3 , NEMO Consortium (2010)
-   !! $Id: trcstp.F90 2528 2010-12-27 17:33:53Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -52,25 +47,27 @@ CONTAINS
       !!              Compute the passive tracers trends 
       !!              Update the passive tracers
       !!-------------------------------------------------------------------
-      INTEGER, INTENT( in ) ::  kt  ! ocean time-step index
+      INTEGER, INTENT( in ) ::  kt      ! ocean time-step index
+      INTEGER               ::  jk, jn  ! dummy loop indices
+      REAL(wp)              ::  ztrai
       CHARACTER (len=25)    ::  charout
       !!-------------------------------------------------------------------
+      !
+      IF( nn_timing == 1 )   CALL timing_start('trc_stp')
+      !
+      IF( kt == nittrc000 .AND. lk_trdmld_trc )  CALL trd_mld_trc_init    ! trends: Mixed-layer
+      !
+      IF( lk_vvl ) THEN                                                   ! update ocean volume due to ssh temporal evolution
+         DO jk = 1, jpk
+            cvol(:,:,jk) = e1e2t(:,:) * fse3t(:,:,jk) * tmask(:,:,jk)
+         END DO
+         IF( lk_degrad )  cvol(:,:,:) = cvol(:,:,:) * facvol(:,:,:)       ! degrad option: reduction by facvol
+         areatot         = glob_sum( cvol(:,:,:) )
+      ENDIF
+      !    
+     IF( nn_dttrc /= 1 )   CALL trc_sub_stp( kt )  ! averaging physical variables for sub-stepping
 
-#if defined key_bfm
-   !---------------------------------------------
-   ! Check the main BFM flag
-   !---------------------------------------------
-      IF (bio_calc) THEN
-
-                             CALL trc_bfm( kt )           ! main call to BFM
-
-                             CALL trc_trp_bfm( kt )       ! transport of BFM tracers
-
-                             CALL trc_dia_bfm( kt )       ! diagnostic output for BFM
-      END IF
-#else
-
-      IF( MOD( kt - 1 , nn_dttrc ) == 0 ) THEN      ! only every nn_dttrc time step
+     IF( MOD( kt , nn_dttrc ) == 0 ) THEN      ! only every nn_dttrc time step
          !
          IF(ln_ctl) THEN
             WRITE(charout,FMT="('kt =', I4,'  d/m/y =',I2,I2,I4)") kt, nday, nmonth, nyear
@@ -79,21 +76,28 @@ CONTAINS
          !
          tra(:,:,:,:) = 0.e0
          !
-         IF( kt == nit000 .AND. lk_trdmld_trc  )  &
-            &                      CALL trd_mld_trc_init        ! trends: Mixed-layer
-                                   CALL trc_rst_opn( kt )       ! Open tracer restart file 
-         IF( lk_iomput ) THEN  ;   CALL trc_wri( kt )           ! output of passive tracers
-         ELSE                  ;   CALL trc_dia( kt )
+                                   CALL trc_rst_opn  ( kt )       ! Open tracer restart file 
+         IF( lk_iomput ) THEN  ;   CALL trc_wri      ( kt )       ! output of passive tracers with iom I/O manager
+         ELSE                  ;   CALL trc_dia      ( kt )       ! output of passive tracers with old I/O manager
          ENDIF
-                                   CALL trc_sms( kt )           ! tracers: sink and source
-                                   CALL trc_trp( kt )           ! transport of passive tracers
-         IF( kt == nit000 )     CALL iom_close( numrtr )     ! close input  passive tracers restart file
-         IF( lrst_trc )            CALL trc_rst_wri( kt )       ! write tracer restart file
-         IF( lk_trdmld_trc  )      CALL trd_mld_trc( kt )       ! trends: Mixed-layer
+                                   CALL trc_sms      ( kt )       ! tracers: sinks and sources
+                                   CALL trc_trp      ( kt )       ! transport of passive tracers
+         IF( lrst_trc )            CALL trc_rst_wri  ( kt )       ! write tracer restart file
+         IF( lk_trdmld_trc  )      CALL trd_mld_trc  ( kt )       ! trends: Mixed-layer
+         !
+         IF( nn_dttrc /= 1   )     CALL trc_sub_reset( kt )       ! resetting physical variables when sub-stepping
          !
       ENDIF
-#endif
-
+      !
+      ztrai = 0._wp                                                   !  content of all tracers
+      DO jn = 1, jptra
+         ztrai = ztrai + glob_sum( trn(:,:,:,jn) * cvol(:,:,:)   )
+      END DO
+      IF( lwp ) WRITE(numstr,9300) kt,  ztrai / areatot
+9300  FORMAT(i10,e18.10)
+      !
+      IF( nn_timing == 1 )   CALL timing_stop('trc_stp')
+      !
    END SUBROUTINE trc_stp
 
 #else

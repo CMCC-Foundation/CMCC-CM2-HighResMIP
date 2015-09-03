@@ -34,14 +34,14 @@ MODULE trcadv
 
    INTEGER ::   nadv   ! choice of the type of advection scheme
    REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:) ::   r2dt  ! vertical profile time-step, = 2 rdttra
-   !                                                    ! except at nit000 (=rdttra) if neuler=0
+   !                                                    ! except at nitrrc000 (=rdttra) if neuler=0
 
    !! * Substitutions
 #  include "domzgr_substitute.h90"
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/TOP 3.3 , NEMO Consortium (2010)
-   !! $Id: trcadv.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -66,29 +66,29 @@ CONTAINS
       !!
       !! ** Method  : - Update the tracer with the advection term following nadv
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY: wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY: zun => wrk_3d_4, zvn => wrk_3d_5, zwn => wrk_3d_6   ! effective velocity
       !!
       INTEGER, INTENT(in) ::   kt   ! ocean time-step index
       !
       INTEGER ::   jk 
       CHARACTER (len=22) ::   charout
+      REAL(wp), POINTER, DIMENSION(:,:,:) :: zun, zvn, zwn  ! effective velocity
       !!----------------------------------------------------------------------
       !
-      IF( wrk_in_use(3, 4,5,6) ) THEN
-         CALL ctl_stop('trc_adv : requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
+      IF( nn_timing == 1 )  CALL timing_start('trc_adv')
+      !
+      CALL wrk_alloc( jpi, jpj, jpk, zun, zvn, zwn )
+      !
 
-      IF( kt == nit000 )   CALL trc_adv_ctl          ! initialisation & control of options
+      IF( kt == nittrc000 )   CALL trc_adv_ctl          ! initialisation & control of options
 
-#if ! defined key_pisces && ! defined key_bfm
-      IF( neuler == 0 .AND. kt == nit000 ) THEN     ! at nit000
+#if ! defined key_pisces
+      IF( neuler == 0 .AND. kt == nittrc000 ) THEN     ! at nittrc000
          r2dt(:) =  rdttrc(:)           ! = rdttrc (restarting with Euler time stepping)
-      ELSEIF( kt <= nit000 + nn_dttrc ) THEN          ! at nit000 or nit000+1
+      ELSEIF( kt <= nittrc000 + 1 ) THEN          ! at nittrc000 or nittrc000+1
          r2dt(:) = 2. * rdttrc(:)       ! = 2 rdttrc (leapfrog)
       ENDIF
 #else
-      r2dt(:) =  rdttrc(:)              ! = rdttrc (for PISCES and BFM use Euler time stepping)
+      r2dt(:) =  rdttrc(:)              ! = rdttrc (for PISCES use Euler time stepping)
 #endif
 
       !                                                   ! effective transport
@@ -101,34 +101,34 @@ CONTAINS
       END DO
       zwn(:,:,jpk) = 0.e0                                 ! no transport trough the bottom
 
-      !                                                   ! add the eiv transport (if necessary)
-      IF( lk_traldf_eiv )   CALL tra_adv_eiv( kt, zun, zvn, zwn, 'TRC' )
+      IF( lk_traldf_eiv .AND. .NOT. ln_traldf_grif )   &  ! add the eiv transport (if necessary)
+         &              CALL tra_adv_eiv( kt, nittrc000, zun, zvn, zwn, 'TRC' )
       !
       SELECT CASE ( nadv )                            !==  compute advection trend and add it to general trend  ==!
-      CASE ( 1 )   ;    CALL tra_adv_cen2  ( kt, 'TRC',       zun, zvn, zwn, trb, trn, tra, jptra )   !  2nd order centered
-      CASE ( 2 )   ;    CALL tra_adv_tvd   ( kt, 'TRC', r2dt, zun, zvn, zwn, trb, trn, tra, jptra )   !  TVD 
-      CASE ( 3 )   ;    CALL tra_adv_muscl ( kt, 'TRC', r2dt, zun, zvn, zwn, trb,      tra, jptra )   !  MUSCL 
-      CASE ( 4 )   ;    CALL tra_adv_muscl2( kt, 'TRC', r2dt, zun, zvn, zwn, trb, trn, tra, jptra )   !  MUSCL2 
-      CASE ( 5 )   ;    CALL tra_adv_ubs   ( kt, 'TRC', r2dt, zun, zvn, zwn, trb, trn, tra, jptra )   !  UBS 
-      CASE ( 6 )   ;    CALL tra_adv_qck   ( kt, 'TRC', r2dt, zun, zvn, zwn, trb, trn, tra, jptra )   !  QUICKEST 
+      CASE ( 1 )   ;    CALL tra_adv_cen2  ( kt, nittrc000, 'TRC',       zun, zvn, zwn, trb, trn, tra, jptra )   !  2nd order centered
+      CASE ( 2 )   ;    CALL tra_adv_tvd   ( kt, nittrc000, 'TRC', r2dt, zun, zvn, zwn, trb, trn, tra, jptra )   !  TVD 
+      CASE ( 3 )   ;    CALL tra_adv_muscl ( kt, nittrc000, 'TRC', r2dt, zun, zvn, zwn, trb,      tra, jptra )   !  MUSCL 
+      CASE ( 4 )   ;    CALL tra_adv_muscl2( kt, nittrc000, 'TRC', r2dt, zun, zvn, zwn, trb, trn, tra, jptra )   !  MUSCL2 
+      CASE ( 5 )   ;    CALL tra_adv_ubs   ( kt, nittrc000, 'TRC', r2dt, zun, zvn, zwn, trb, trn, tra, jptra )   !  UBS 
+      CASE ( 6 )   ;    CALL tra_adv_qck   ( kt, nittrc000, 'TRC', r2dt, zun, zvn, zwn, trb, trn, tra, jptra )   !  QUICKEST 
       !
       CASE (-1 )                                      !==  esopa: test all possibility with control print  ==!
-         CALL tra_adv_cen2  ( kt, 'TRC',       zun, zvn, zwn, trb, trn, tra, jptra )          
+         CALL tra_adv_cen2  ( kt, nittrc000, 'TRC',       zun, zvn, zwn, trb, trn, tra, jptra )          
          WRITE(charout, FMT="('adv1')")  ; CALL prt_ctl_trc_info(charout)
                                            CALL prt_ctl_trc(tab4d=tra, mask=tmask, clinfo=ctrcnm,clinfo2='trd')
-         CALL tra_adv_tvd   ( kt, 'TRC', r2dt, zun, zvn, zwn, trb, trn, tra, jptra )          
+         CALL tra_adv_tvd   ( kt, nittrc000, 'TRC', r2dt, zun, zvn, zwn, trb, trn, tra, jptra )          
          WRITE(charout, FMT="('adv2')")  ; CALL prt_ctl_trc_info(charout)
                                            CALL prt_ctl_trc(tab4d=tra, mask=tmask, clinfo=ctrcnm,clinfo2='trd')
-         CALL tra_adv_muscl ( kt, 'TRC', r2dt, zun, zvn, zwn, trb,      tra, jptra )          
+         CALL tra_adv_muscl ( kt, nittrc000, 'TRC', r2dt, zun, zvn, zwn, trb,      tra, jptra )          
          WRITE(charout, FMT="('adv3')")  ; CALL prt_ctl_trc_info(charout)
                                            CALL prt_ctl_trc(tab4d=tra, mask=tmask, clinfo=ctrcnm,clinfo2='trd')
-         CALL tra_adv_muscl2( kt, 'TRC', r2dt, zun, zvn, zwn, trb, trn, tra, jptra )          
+         CALL tra_adv_muscl2( kt, nittrc000, 'TRC', r2dt, zun, zvn, zwn, trb, trn, tra, jptra )          
          WRITE(charout, FMT="('adv4')")  ; CALL prt_ctl_trc_info(charout)
                                            CALL prt_ctl_trc(tab4d=tra, mask=tmask, clinfo=ctrcnm,clinfo2='trd')
-         CALL tra_adv_ubs   ( kt, 'TRC', r2dt, zun, zvn, zwn, trb, trn, tra, jptra )          
+         CALL tra_adv_ubs   ( kt, nittrc000, 'TRC', r2dt, zun, zvn, zwn, trb, trn, tra, jptra )          
          WRITE(charout, FMT="('adv5')")  ; CALL prt_ctl_trc_info(charout)
                                            CALL prt_ctl_trc(tab4d=tra, mask=tmask, clinfo=ctrcnm,clinfo2='trd')
-         CALL tra_adv_qck   ( kt, 'TRC', r2dt, zun, zvn, zwn, trb, trn, tra, jptra )          
+         CALL tra_adv_qck   ( kt, nittrc000, 'TRC', r2dt, zun, zvn, zwn, trb, trn, tra, jptra )          
          WRITE(charout, FMT="('adv6')")  ; CALL prt_ctl_trc_info(charout)
                                            CALL prt_ctl_trc(tab4d=tra, mask=tmask, clinfo=ctrcnm,clinfo2='trd')
          !
@@ -140,7 +140,9 @@ CONTAINS
                                             CALL prt_ctl_trc( tab4d=tra, mask=tmask, clinfo=ctrcnm, clinfo2='trd' )
       END IF
       !
-      IF( wrk_not_released(3, 4,5,6) ) CALL ctl_stop('trc_adv : failed to release workspace arrays.')
+      CALL wrk_dealloc( jpi, jpj, jpk, zun, zvn, zwn )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('trc_adv')
       !
    END SUBROUTINE trc_adv
 

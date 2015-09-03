@@ -16,6 +16,8 @@ MODULE sms_pisces
    IMPLICIT NONE
    PUBLIC
 
+   INTEGER ::   numnatp
+
    !!*  Time variables
    INTEGER  ::   nrdttrc           !: ???
    INTEGER  ::   ndayflxtr         !: ???
@@ -24,11 +26,11 @@ MODULE sms_pisces
    REAL(wp) ::   xstep             !: Time step duration for biology
 
    !!*  Biological parameters 
-   REAL(wp) ::   part              !: ???
    REAL(wp) ::   rno3              !: ???
    REAL(wp) ::   o2ut              !: ???
    REAL(wp) ::   po4r              !: ???
    REAL(wp) ::   rdenit            !: ???
+   REAL(wp) ::   rdenita           !: ???
    REAL(wp) ::   o2nit             !: ???
    REAL(wp) ::   wsbio, wsbio2     !: ???
    REAL(wp) ::   xkmort            !: ???
@@ -36,7 +38,7 @@ MODULE sms_pisces
 
    !!* Damping 
    LOGICAL  ::   ln_pisdmp         !: relaxation or not of nutrients to a mean value
-   LOGICAL  ::   ln_pisclo         !: Restoring or not of nutrients to initial value
+   INTEGER  ::   nn_pisdmp         !: frequency of relaxation or not of nutrients to a mean value
                                    !: on close seas
 
    !!*  Biological fluxes for light
@@ -54,16 +56,18 @@ MODULE sms_pisces
    REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:,:)  ::   xlimdia    !: ???
    REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:,:)  ::   concdfe    !: ???
    REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:,:)  ::   concnfe    !: ???
+   REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:,:)  ::   xlimnfe    !: ???
+   REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:,:)  ::   xlimdfe    !: ???
+   REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:,:)  ::   xlimsi     !: ???
+
 
    !!*  SMS for the organic matter
    REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   xfracal    !: ??
    REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   nitrfac    !: ??
    REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   xlimbac    !: ??
    REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   xdiss      !: ??
-#if defined key_diatrc
-   REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   prodcal    !: Calcite production
-   REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   grazing    !: Total zooplankton grazing
-#endif
+    REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   prodcal    !: Calcite production
+    REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   grazing    !: Total zooplankton grazing
 
    !!* Variable for chemistry of the CO2 cycle
    REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   akb3       !: ???
@@ -73,6 +77,11 @@ MODULE sms_pisces
    REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   akw3       !: ???
    REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   borat      !: ???
    REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   hi         !: ???
+   REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   excess     !: ???
+
+   !!* Temperature dependancy of SMS terms
+   REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   tgfunc    !: Temp. dependancy of various biological rates
+   REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   tgfunc2   !: Temp. dependancy of mesozooplankton rates
 
    !!* Array used to indicate negative tracer values
    REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   xnegtr     !: ???
@@ -87,7 +96,7 @@ MODULE sms_pisces
 
    !!----------------------------------------------------------------------
    !! NEMO/TOP 3.3 , NEMO Consortium (2010)
-   !! $Id: sms_pisces.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -97,34 +106,37 @@ CONTAINS
       !!        *** ROUTINE sms_pisces_alloc ***
       !!----------------------------------------------------------------------
       USE lib_mpp , ONLY: ctl_warn
-      INTEGER ::   ierr(5)        ! Local variables
+      INTEGER ::   ierr(6)        ! Local variables
       !!----------------------------------------------------------------------
       ierr(:) = 0
-      !
       !*  Biological fluxes for light
-      ALLOCATE( neln(jpi,jpj), heup(jpi,jpj),                           STAT=ierr(1) )
+      ALLOCATE( neln(jpi,jpj), heup(jpi,jpj),                   STAT=ierr(1) )
       !
       !*  Biological fluxes for primary production
-      ALLOCATE( xksimax(jpi,jpj)     , xksi(jpi,jpj)        ,               &
-         &      xnanono3(jpi,jpj,jpk), xdiatno3(jpi,jpj,jpk),               &
-         &      xnanonh4(jpi,jpj,jpk), xdiatnh4(jpi,jpj,jpk),               &
-         &      xlimphy (jpi,jpj,jpk), xlimdia (jpi,jpj,jpk),               &
-         &      concdfe (jpi,jpj,jpk), concnfe (jpi,jpj,jpk),           STAT=ierr(2) ) 
+      ALLOCATE( xksimax(jpi,jpj)     , xksi(jpi,jpj)        ,       &
+         &      xnanono3(jpi,jpj,jpk), xdiatno3(jpi,jpj,jpk),       &
+         &      xnanonh4(jpi,jpj,jpk), xdiatnh4(jpi,jpj,jpk),       &
+         &      xlimphy (jpi,jpj,jpk), xlimdia (jpi,jpj,jpk),       &
+         &      xlimnfe (jpi,jpj,jpk), xlimdfe (jpi,jpj,jpk),       &
+         &      xlimsi  (jpi,jpj,jpk), concdfe (jpi,jpj,jpk),       &
+         &      concnfe (jpi,jpj,jpk),                          STAT=ierr(2) ) 
          !
       !*  SMS for the organic matter
-      ALLOCATE( xfracal (jpi,jpj,jpk), nitrfac (jpi,jpj,jpk),               &
-#if defined key_diatrc
-         &      prodcal(jpi,jpj,jpk) , grazing(jpi,jpj,jpk) ,               &
-#endif 
-         &      xlimbac (jpi,jpj,jpk), xdiss(jpi,jpj,jpk)   ,           STAT=ierr(3) )  
+      ALLOCATE( xfracal (jpi,jpj,jpk), nitrfac(jpi,jpj,jpk),       &
+         &      prodcal(jpi,jpj,jpk) , grazing(jpi,jpj,jpk),       &
+         &      xlimbac (jpi,jpj,jpk), xdiss  (jpi,jpj,jpk),   STAT=ierr(3) )  
          !
       !* Variable for chemistry of the CO2 cycle
-      ALLOCATE( akb3(jpi,jpj,jpk), ak13(jpi,jpj,jpk) ,                      &
-         &      ak23(jpi,jpj,jpk), aksp(jpi,jpj,jpk) ,                      &
-         &      akw3(jpi,jpj,jpk), borat(jpi,jpj,jpk), hi(jpi,jpj,jpk), STAT=ierr(4) )
+      ALLOCATE( akb3(jpi,jpj,jpk)    , ak13  (jpi,jpj,jpk) ,       &
+         &      ak23(jpi,jpj,jpk)    , aksp  (jpi,jpj,jpk) ,       &
+         &      akw3(jpi,jpj,jpk)    , borat (jpi,jpj,jpk) ,       &
+         &      hi  (jpi,jpj,jpk)    , excess(jpi,jpj,jpk) ,   STAT=ierr(4) )
+         !
+      !* Temperature dependancy of SMS terms
+      ALLOCATE( tgfunc(jpi,jpj,jpk)  , tgfunc2(jpi,jpj,jpk) ,   STAT=ierr(5) )
          !
       !* Array used to indicate negative tracer values  
-      ALLOCATE( xnegtr(jpi,jpj,jpk),                                    STAT=ierr(5) )
+      ALLOCATE( xnegtr(jpi,jpj,jpk)  ,                          STAT=ierr(6) )
       !
       sms_pisces_alloc = MAXVAL( ierr )
       !

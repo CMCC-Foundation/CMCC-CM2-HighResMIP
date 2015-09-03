@@ -40,7 +40,7 @@ MODULE trctrp
 #  include "top_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/TOP 3.3 , NEMO Consortium (2010)
-   !! $Id: trctrp.F90 2528 2010-12-27 17:33:53Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 
@@ -57,11 +57,15 @@ CONTAINS
       !!----------------------------------------------------------------------
       INTEGER, INTENT( in ) ::  kstp  ! ocean time-step index
       !! ---------------------------------------------------------------------
+      !
+      IF( nn_timing == 1 )   CALL timing_start('trc_trp')
+      !
       IF( .NOT. lk_c1d ) THEN
          !
                                 CALL trc_sbc( kstp )            ! surface boundary condition
          IF( lk_trabbl )        CALL trc_bbl( kstp )            ! advective (and/or diffusive) bottom boundary layer scheme
-         IF( lk_trcdmp )        CALL trc_dmp( kstp )            ! internal damping trends
+         IF( ln_trcdmp )        CALL trc_dmp( kstp )            ! internal damping trends
+         IF( ln_trcdmp_clo )    CALL trc_dmp_clo( kstp )        ! restoring on close seas
                                 CALL trc_adv( kstp )            ! horizontal & vertical advection 
                                 CALL trc_ldf( kstp )            ! lateral mixing
          IF( .NOT. lk_offline .AND. lk_zdfkpp )    &
@@ -84,6 +88,8 @@ CONTAINS
           IF( ln_trcrad )       CALL trc_rad( kstp )            ! Correct artificial negative concentrations
          !
       END IF
+      !
+      IF( nn_timing == 1 )   CALL timing_stop('trc_trp')
       !
    END SUBROUTINE trc_trp
 

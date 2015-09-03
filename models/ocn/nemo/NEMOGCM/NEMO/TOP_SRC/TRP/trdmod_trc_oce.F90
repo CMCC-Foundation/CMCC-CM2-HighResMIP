@@ -37,9 +37,9 @@ MODULE trdmod_trc_oce
    LOGICAL, PARAMETER ::   lk_trdmld_trc = .TRUE.    !: ML trend flag
 
    INTEGER, PARAMETER ::            & !: mixed layer trends indices
-        jpmld_trc_xad     =  1,     & !:     zonal      \
-        jpmld_trc_yad     =  2,     & !:     meridonal   > advection
-        jpmld_trc_zad     =  3,     & !:     vertical   /
+        jpmld_trc_xad     =  1,     & !:     zonal       advection     
+        jpmld_trc_yad     =  2,     & !:     meridonal   =========
+        jpmld_trc_zad     =  3,     & !:     vertical    =========
         jpmld_trc_ldf     =  4,     & !:     lateral diffusion (geopot. or iso-neutral)
         jpmld_trc_zdf     =  5,     & !:     vertical diffusion (TKE)
         jpmld_trc_bbl     =  6,     & !:     bottom boundary layer (advective/diffusive)

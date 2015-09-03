@@ -9,7 +9,7 @@ MODULE trcsms_my_trc
    !!----------------------------------------------------------------------
    !!   'key_my_trc'                                               CFC tracers
    !!----------------------------------------------------------------------
-   !! trc_sms_my_trc       : MY_TRC model main routine 
+   !! trc_sms_my_trc       : MY_TRC model main routine
    !! trc_sms_my_trc_alloc : allocate arrays specific to MY_TRC sms
    !!----------------------------------------------------------------------
    USE par_trc         ! TOP parameters
@@ -25,32 +25,35 @@ MODULE trcsms_my_trc
    PUBLIC   trc_sms_my_trc_alloc ! called by trcini_my_trc.F90 module
 
    ! Defined HERE the arrays specific to MY_TRC sms and ALLOCATE them in trc_sms_my_trc_alloc
-   
+
    !!----------------------------------------------------------------------
    !! NEMO/TOP 3.3 , NEMO Consortium (2010)
-   !! $Id: trcsms_my_trc.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
 
    SUBROUTINE trc_sms_my_trc( kt )
       !!----------------------------------------------------------------------
-      !!                     ***  trc_sms_my_trc  ***  
+      !!                     ***  trc_sms_my_trc  ***
       !!
       !! ** Purpose :   main routine of MY_TRC model
       !!
-      !! ** Method  : - 
+      !! ** Method  : -
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   ztrmyt => wrk_3d_1   ! used for lobster sms trends
       !
       INTEGER, INTENT(in) ::   kt   ! ocean time-step index
       INTEGER ::   jn   ! dummy loop index
-      !!----------------------------------------------------------------------
-
+      REAL(wp), POINTER, DIMENSION(:,:,:) :: ztrmyt
+!!----------------------------------------------------------------------
+      !
+      IF( nn_timing == 1 )  CALL timing_start('trc_sms_my_trc')
+      !
       IF(lwp) WRITE(numout,*)
       IF(lwp) WRITE(numout,*) ' trc_sms_my_trc:  MY_TRC model'
       IF(lwp) WRITE(numout,*) ' ~~~~~~~~~~~~~~'
+
+      IF( l_trdtrc )  CALL wrk_alloc( jpi, jpj, jpk, ztrmyt )
 
       WHERE( (glamt <= 170) .AND. (glamt >= 160) .AND. (gphit <= -74) .AND. (gphit >=-75.6) )
         trn(:,:,1,jpmyt1) = 1._wp
@@ -58,7 +61,7 @@ CONTAINS
         tra(:,:,1,jpmyt1) = 0._wp
       END WHERE
 
-      WHERE( ((glamt <= -165) .OR. (glamt >= 160)) .AND. (gphit <= -76) .AND. (gphit >=-80)) 
+      WHERE( ((glamt <= -165) .OR. (glamt >= 160)) .AND. (gphit <= -76) .AND. (gphit >=-80))
         trn(:,:,1,jpmyt2) = 1._wp
         trb(:,:,1,jpmyt2) = 1._wp
         tra(:,:,1,jpmyt2) = 0._wp
@@ -69,7 +72,10 @@ CONTAINS
             ztrmyt(:,:,:) = tra(:,:,:,jn)
             CALL trd_mod_trc( ztrmyt, jn, jptra_trd_sms, kt )   ! save trends
           END DO
+          CALL wrk_dealloc( jpi, jpj, jpk, ztrmyt )
       END IF
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('trc_sms_my_trc')
       !
    END SUBROUTINE trc_sms_my_trc
 

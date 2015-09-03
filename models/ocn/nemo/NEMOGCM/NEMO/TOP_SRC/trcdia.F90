@@ -10,7 +10,7 @@ MODULE trcdia
    !!   NEMO      1.0  !  2005-03 (O. Aumont, A. El Moussaoui) F90
    !!                  !  2008-05 (C. Ethe re-organization)
    !!----------------------------------------------------------------------
-#if defined key_top && ! defined key_iomput
+#if defined key_top 
    !!----------------------------------------------------------------------
    !!   'key_top'                                                TOP models
    !!----------------------------------------------------------------------
@@ -24,13 +24,14 @@ MODULE trcdia
    USE trc
    USE par_trc
    USE dianam    ! build name of file (routine)
-   USE ioipsl
+   USE ioipsl    ! I/O manager
+   USE iom       ! I/O manager
+   USE lib_mpp   ! MPP library
 
    IMPLICIT NONE
    PRIVATE
 
    PUBLIC   trc_dia        ! called by XXX module 
-   PUBLIC   trc_dia_alloc  ! called by nemogcm.F90
 
    INTEGER  ::   nit5      !: id for tracer output file
    INTEGER  ::   ndepit5   !: id for depth mesh
@@ -40,22 +41,20 @@ MODULE trcdia
    REAL(wp) ::   zjulian   !: ????   not DOCTOR !
    INTEGER , ALLOCATABLE, SAVE, DIMENSION (:) ::   ndext50   !: integer arrays for ocean 3D index
    INTEGER , ALLOCATABLE, SAVE, DIMENSION (:) ::   ndext51   !: integer arrays for ocean surface index
-# if defined key_diatrc
+
    INTEGER  ::   nitd      !: id for additional array output file
    INTEGER  ::   ndepitd   !: id for depth mesh
    INTEGER  ::   nhoritd   !: id for horizontal mesh
-# endif
-# if defined key_diabio
+
    INTEGER  ::   nitb        !:         id.         for additional array output file
    INTEGER  ::   ndepitb   !:  id for depth mesh
    INTEGER  ::   nhoritb   !:  id for horizontal mesh
-# endif
 
    !! * Substitutions
 #  include "top_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/TOP 3.3 , NEMO Consortium (2010)
-   !! $Id: trcdia.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -66,36 +65,41 @@ CONTAINS
       !!
       !! ** Purpose :   output passive tracers fields 
       !!---------------------------------------------------------------------
-      INTEGER, INTENT(in) ::   kt   ! ocean time-step
+      INTEGER, INTENT(in) ::   kt    ! ocean time-step
       !
-      INTEGER ::   kindic   ! local integer
+      INTEGER             ::  ierr   ! local integer
       !!---------------------------------------------------------------------
       !
-      CALL trcdit_wr( kt, kindic )      ! outputs for tracer concentration
-      CALL trcdii_wr( kt, kindic )      ! outputs for additional arrays
-      CALL trcdib_wr( kt, kindic )      ! outputs for biological trends
+      IF( kt == nittrc000 )  THEN
+         ALLOCATE( ndext50(jpij*jpk), ndext51(jpij), STAT=ierr )
+         IF( ierr > 0 ) THEN
+            CALL ctl_stop( 'STOP', 'trc_diat: unable to allocate arrays' )  ;   RETURN
+         ENDIF
+      ENDIF
+      !
+      IF( .NOT.lk_iomput ) THEN
+                          CALL trcdit_wr( kt )      ! outputs for tracer concentration
+         IF( ln_diatrc )  CALL trcdii_wr( kt )      ! outputs for additional arrays
+         IF( ln_diabio )  CALL trcdib_wr( kt )      ! outputs for biological trends
+      ENDIF
       !
    END SUBROUTINE trc_dia
 
 
-   SUBROUTINE trcdit_wr( kt, kindic )
+   SUBROUTINE trcdit_wr( kt )
       !!----------------------------------------------------------------------
       !!                     ***  ROUTINE trcdit_wr  ***
       !!
       !! ** Purpose :   Standard output of passive tracer : concentration fields
       !!
-      !! ** Method  :   At the beginning of the first time step (nit000), define all
+      !! ** Method  :   At the beginning of the first time step (nittrc000), define all
       !!             the NETCDF files and fields for concentration of passive tracer
       !!
       !!        At each time step call histdef to compute the mean if necessary
       !!        Each nwritetrc time step, output the instantaneous or mean fields
       !!
-      !!        IF kindic <0, output of fields before the model interruption.
-      !!        IF kindic =0, time step loop
-      !!        IF kindic >0, output of fields before the time step loop
       !!----------------------------------------------------------------------
       INTEGER, INTENT(in) ::   kt       ! ocean time-step
-      INTEGER, INTENT(in) ::   kindic   ! indicator of abnormal termination
       !
       INTEGER ::   jn
       LOGICAL ::   ll_print = .FALSE.
@@ -134,22 +138,31 @@ CONTAINS
       ipk = jpk
 
       ! define time axis
-      itmod = kt - nit000 + 1
+      itmod = kt - nittrc000 + 1
       it    = kt
-      iiter = ( nit000 - 1 ) / nn_dttrc
+      iiter = ( nittrc000 - 1 ) / nn_dttrc
 
       ! Define NETCDF files and fields at beginning of first time step
       ! --------------------------------------------------------------
 
-      IF(ll_print)WRITE(numout,*)'trcdit_wr kt=',kt,' kindic ',kindic
+      IF(ll_print)WRITE(numout,*)'trcdit_wr kt=',kt
       
-      IF( kt == nit000 ) THEN
+      IF( kt == nittrc000 ) THEN
+
+         IF(lwp) THEN                   ! control print
+            WRITE(numout,*)
+            WRITE(numout,*) '    frequency of outputs for passive tracers nn_writetrc = ', nn_writetrc
+            DO jn = 1, jptra
+               IF( ln_trc_wri(jn) )  WRITE(numout,*) ' ouput tracer nb : ', jn, '    short name : ', ctrcnm(jn) 
+            END DO
+            WRITE(numout,*) ' '
+         ENDIF
 
          ! Compute julian date from starting date of the run
          CALL ymds2ju( nyear, nmonth, nday, rdt, zjulian )
          zjulian = zjulian - adatrj   !   set calendar origin to the beginning of the experiment
          IF(lwp)WRITE(numout,*)' '  
-         IF(lwp)WRITE(numout,*)' Date 0 used :', nit000                         &
+         IF(lwp)WRITE(numout,*)' Date 0 used :', nittrc000                         &
             &                 ,' YEAR ', nyear, ' MONTH ', nmonth, ' DAY ', nday   &
             &                 ,'Julian day : ', zjulian  
   
@@ -181,9 +194,9 @@ CONTAINS
 
          ! Declare all the output fields as NETCDF variables
          DO jn = 1, jptra
-            IF( lutsav(jn) ) THEN
+            IF( ln_trc_wri(jn) ) THEN
                cltra  = TRIM( ctrcnm(jn) )   ! short title for tracer
-               cltral = TRIM( ctrcnl(jn) )   ! long title for tracer
+               cltral = TRIM( ctrcln(jn) )   ! long title for tracer
                cltrau = TRIM( ctrcun(jn) )   ! UNIT for tracer
                CALL histdef( nit5, cltra, cltral, cltrau, jpi, jpj, nhorit5,  &
                   &          ipk, 1, ipk,  ndepit5, 32, clop, zsto, zout ) 
@@ -208,35 +221,29 @@ CONTAINS
 
       DO jn = 1, jptra
          cltra  = TRIM( ctrcnm(jn) )   ! short title for tracer
-         IF( lutsav(jn) ) CALL histwrite( nit5, cltra, it, trn(:,:,:,jn), ndimt50, ndext50 )
+         IF( ln_trc_wri(jn) ) CALL histwrite( nit5, cltra, it, trn(:,:,:,jn), ndimt50, ndext50 )
       END DO
 
       ! close the file 
       ! --------------
-      IF( kt == nitend .OR. kindic < 0 )   CALL histclo( nit5 )
+      IF( kt == nitend )   CALL histclo( nit5 )
       !
    END SUBROUTINE trcdit_wr
 
-#if defined key_diatrc
-
-   SUBROUTINE trcdii_wr( kt, kindic )
+   SUBROUTINE trcdii_wr( kt )
       !!----------------------------------------------------------------------
       !!                     ***  ROUTINE trcdii_wr  ***
       !!
       !! ** Purpose :   output of passive tracer : additional 2D and 3D arrays
       !!
-      !! ** Method  :   At the beginning of the first time step (nit000), define all
+      !! ** Method  :   At the beginning of the first time step (nittrc000), define all
       !!             the NETCDF files and fields for concentration of passive tracer
       !!
       !!        At each time step call histdef to compute the mean if necessary
       !!        Each nn_writedia time step, output the instantaneous or mean fields
       !!
-      !!        IF kindic <0, output of fields before the model interruption.
-      !!        IF kindic =0, time step loop
-      !!        IF kindic >0, output of fields before the time step loop
       !!----------------------------------------------------------------------
       INTEGER, INTENT(in) ::   kt       ! ocean time-step
-      INTEGER, INTENT(in) ::   kindic   ! indicator of abnormal termination
       !!
       LOGICAL ::   ll_print = .FALSE.
       CHARACTER (len=40) ::   clhstnam, clop
@@ -274,16 +281,16 @@ CONTAINS
       ipk = jpk
 
       ! define time axis
-      itmod = kt - nit000 + 1
+      itmod = kt - nittrc000 + 1
       it    = kt
-      iiter = ( nit000 - 1 ) / nn_dttrc
+      iiter = ( nittrc000 - 1 ) / nn_dttrc
 
       ! 1. Define NETCDF files and fields at beginning of first time step
       ! -----------------------------------------------------------------
 
-      IF( ll_print ) WRITE(numout,*) 'trcdii_wr kt=', kt, ' kindic ', kindic
+      IF( ll_print ) WRITE(numout,*) 'trcdii_wr kt=', kt
 
-      IF( kt == nit000 ) THEN
+      IF( kt == nittrc000 ) THEN
 
          ! Define the NETCDF files for additional arrays : 2D or 3D
 
@@ -355,37 +362,25 @@ CONTAINS
 
       ! Closing all files
       ! -----------------
-      IF( kt == nitend .OR. kindic < 0 )   CALL histclo(nitd)
+      IF( kt == nitend )   CALL histclo(nitd)
       !
 
    END SUBROUTINE trcdii_wr
 
-# else
-   SUBROUTINE trcdii_wr( kt, kindic )                      ! Dummy routine
-      INTEGER, INTENT (in) :: kt, kindic
-   END SUBROUTINE trcdii_wr
-# endif
-
-# if defined key_diabio
-
-   SUBROUTINE trcdib_wr( kt, kindic )
+   SUBROUTINE trcdib_wr( kt )
       !!----------------------------------------------------------------------
       !!                     ***  ROUTINE trcdib_wr  ***
       !!
       !! ** Purpose :   output of passive tracer : biological fields
       !!
-      !! ** Method  :   At the beginning of the first time step (nit000), define all
+      !! ** Method  :   At the beginning of the first time step (nittrc000), define all
       !!             the NETCDF files and fields for concentration of passive tracer
       !!
       !!        At each time step call histdef to compute the mean if necessary
       !!        Each nn_writebio time step, output the instantaneous or mean fields
       !!
-      !!        IF kindic <0, output of fields before the model interruption.
-      !!        IF kindic =0, time step loop
-      !!        IF kindic >0, output of fields before the time step loop
       !!----------------------------------------------------------------------
       INTEGER, INTENT( in ) ::   kt          ! ocean time-step
-      INTEGER, INTENT( in ) ::   kindic      ! indicator of abnormal termination
       !!
       LOGICAL ::   ll_print = .FALSE.
       CHARACTER (len=40) ::   clhstnam, clop
@@ -423,16 +418,16 @@ CONTAINS
       ipk = jpk
 
       ! define time axis
-      itmod = kt - nit000 + 1
+      itmod = kt - nittrc000 + 1
       it    = kt
-      iiter = ( nit000 - 1 ) / nn_dttrc
+      iiter = ( nittrc000 - 1 ) / nn_dttrc
 
       ! Define NETCDF files and fields at beginning of first time step
       ! --------------------------------------------------------------
 
-      IF(ll_print) WRITE(numout,*)'trcdib_wr kt=',kt,' kindic ',kindic
+      IF(ll_print) WRITE(numout,*)'trcdib_wr kt=',kt
 
-      IF( kt == nit000 ) THEN
+      IF( kt == nittrc000 ) THEN
 
          ! Define the NETCDF files for biological trends
 
@@ -480,27 +475,10 @@ CONTAINS
 
       ! Closing all files
       ! -----------------
-      IF( kt == nitend .OR. kindic < 0 )   CALL histclo( nitb )
+      IF( kt == nitend )   CALL histclo( nitb )
       !
    END SUBROUTINE trcdib_wr
 
-# else
-
-   SUBROUTINE trcdib_wr( kt, kindic )                      ! Dummy routine
-      INTEGER, INTENT ( in ) ::   kt, kindic
-   END SUBROUTINE trcdib_wr
-
-# endif 
-
-   INTEGER FUNCTION trc_dia_alloc()
-      !!---------------------------------------------------------------------
-      !!                     ***  ROUTINE trc_dia_alloc  ***
-      !!---------------------------------------------------------------------
-      ALLOCATE( ndext50(jpij*jpk), ndext51(jpij), STAT=trc_dia_alloc )
-      !
-      IF( trc_dia_alloc /= 0 )   CALL ctl_warn('trc_dia_alloc : failed to allocate arrays')
-      !
-   END FUNCTION trc_dia_alloc
 #else
    !!----------------------------------------------------------------------
    !!  Dummy module :                                     No passive tracer

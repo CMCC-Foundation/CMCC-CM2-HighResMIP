@@ -5,23 +5,27 @@ MODULE p4zrem
    !!======================================================================
    !! History :   1.0  !  2004     (O. Aumont) Original code
    !!             2.0  !  2007-12  (C. Ethe, G. Madec)  F90
+   !!             3.4  !  2011-06  (O. Aumont, C. Ethe) Quota model for iron
    !!----------------------------------------------------------------------
 #if defined key_pisces
    !!----------------------------------------------------------------------
    !!   'key_top'       and                                      TOP models
    !!   'key_pisces'                                       PISCES bio-model
    !!----------------------------------------------------------------------
-   !!   p4z_rem       :   Compute remineralization/scavenging of organic compounds
+   !!   p4z_rem       :  Compute remineralization/scavenging of organic compounds
+   !!   p4z_rem_init  :  Initialisation of parameters for remineralisation
+   !!   p4z_rem_alloc :  Allocate remineralisation variables
    !!----------------------------------------------------------------------
-   USE trc
-   USE oce_trc         !
-   USE sms_pisces      ! 
-   USE prtctl_trc
-   USE p4zint
-   USE p4zopt
-   USE p4zmeso
-   USE p4zprod
-   USE p4zche
+   USE oce_trc         !  shared variables between ocean and passive tracers
+   USE trc             !  passive tracers common variables 
+   USE sms_pisces      !  PISCES Source Minus Sink variables
+   USE p4zopt          !  optical model
+   USE p4zche          !  chemical model
+   USE p4zprod         !  Growth rate of the 2 phyto groups
+   USE p4zmeso         !  Sources and sinks of mesozooplankton
+   USE p4zint          !  interpolation and computation of various fields
+   USE prtctl_trc      !  print control for debugging
+   USE lib_fortran     ! Fortran utilities (allows no signed zero when 'key_nosignedzero' defined)
 
    IMPLICIT NONE
    PRIVATE
@@ -30,22 +34,27 @@ MODULE p4zrem
    PUBLIC   p4z_rem_init    ! called in trcsms_pisces.F90
    PUBLIC   p4z_rem_alloc
 
-   REAL(wp), PUBLIC ::   &
-     xremik  = 0.3_wp      ,  & !:
-     xremip  = 0.025_wp    ,  & !:
-     nitrif  = 0.05_wp     ,  & !:
-     xsirem  = 0.015_wp    ,  & !:
-     xlam1   = 0.005_wp    ,  & !:
-     oxymin  = 1.e-6_wp         !:
+   !! * Shared module variables
+   REAL(wp), PUBLIC ::  xremik    = 0.3_wp     !: remineralisation rate of POC 
+   REAL(wp), PUBLIC ::  xremip    = 0.025_wp   !: remineralisation rate of DOC
+   REAL(wp), PUBLIC ::  nitrif    = 0.05_wp    !: NH4 nitrification rate 
+   REAL(wp), PUBLIC ::  xsirem    = 0.003_wp   !: remineralisation rate of POC 
+   REAL(wp), PUBLIC ::  xsiremlab = 0.025_wp   !: fast remineralisation rate of POC 
+   REAL(wp), PUBLIC ::  xsilab    = 0.31_wp    !: fraction of labile biogenic silica 
+   REAL(wp), PUBLIC ::  xlam1     = 0.005_wp   !: scavenging rate of Iron 
+   REAL(wp), PUBLIC ::  oxymin    = 1.e-6_wp   !: halk saturation constant for anoxia 
+   REAL(wp), PUBLIC ::  ligand    = 0.6E-9_wp  !: ligand concentration in the ocean 
 
-   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   denitr   !: denitrification array
+
+   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   denitr     !: denitrification array
+   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   denitnh4   !: -    -    -    -   -
 
 
    !!* Substitution
 #  include "top_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/TOP 3.3 , NEMO Consortium (2010)
-   !! $Id: p4zrem.F90 2773 2011-06-01 10:49:52Z cetlod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -58,32 +67,34 @@ CONTAINS
       !!
       !! ** Method  : - ???
       !!---------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   ztempbac => wrk_2d_1
-      USE wrk_nemo, ONLY:   zdepbac  => wrk_3d_2 , zolimi => wrk_3d_3
       !
       INTEGER, INTENT(in) ::   kt ! ocean time step
       !
       INTEGER  ::   ji, jj, jk
-      REAL(wp) ::   zremip, zremik , zlam1b
+      REAL(wp) ::   zremip, zremik , zlam1b, zdepbac2
       REAL(wp) ::   zkeq  , zfeequi, zsiremin, zfesatur
-      REAL(wp) ::   zsatur, zsatur2, znusil
+      REAL(wp) ::   zsatur, zsatur2, znusil, zdep, zfactdep
       REAL(wp) ::   zbactfer, zorem, zorem2, zofer
-      REAL(wp) ::   zosil, zdenom1, zscave, zaggdfe
+      REAL(wp) ::   zosil, zdenom1, zscave, zaggdfe, zcoag
 #if ! defined key_kriest
       REAL(wp) ::   zofer2, zdenom, zdenom2
 #endif
       REAL(wp) ::   zlamfac, zonitr, zstep
       CHARACTER (len=25) :: charout
+      REAL(wp), POINTER, DIMENSION(:,:  ) :: ztempbac 
+      REAL(wp), POINTER, DIMENSION(:,:,:) :: zdepbac, zolimi, zolimi2
       !!---------------------------------------------------------------------
-
-      IF(  wrk_in_use(2, 1)  .OR.  wrk_in_use(3, 2,3)  ) THEN
-         CALL ctl_stop('p4z_rem: requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
+      !
+      IF( nn_timing == 1 )  CALL timing_start('p4z_rem')
+      !
+      ! Allocate temporary workspace
+      CALL wrk_alloc( jpi, jpj,      ztempbac                 )
+      CALL wrk_alloc( jpi, jpj, jpk, zdepbac, zolimi, zolimi2 )
 
        ! Initialisation of temprary arrys
        zdepbac (:,:,:) = 0._wp
        zolimi  (:,:,:) = 0._wp
+       zolimi2 (:,:,:) = 0._wp
        ztempbac(:,:)   = 0._wp
 
       !  Computation of the mean phytoplankton concentration as
@@ -92,11 +103,12 @@ CONTAINS
       DO jk = 1, jpkm1
          DO jj = 1, jpj
             DO ji = 1, jpi
-               IF( fsdept(ji,jj,jk) < 120. ) THEN
+               zdep = MAX( hmld(ji,jj), heup(ji,jj) )
+               IF( fsdept(ji,jj,jk) < zdep ) THEN
                   zdepbac(ji,jj,jk) = MIN( 0.7 * ( trn(ji,jj,jk,jpzoo) + 2.* trn(ji,jj,jk,jpmes) ), 4.e-6 )
                   ztempbac(ji,jj)   = zdepbac(ji,jj,jk)
                ELSE
-                  zdepbac(ji,jj,jk) = MIN( 1., 120./ fsdept(ji,jj,jk) ) * ztempbac(ji,jj)
+                  zdepbac(ji,jj,jk) = MIN( 1., zdep / fsdept(ji,jj,jk) ) * ztempbac(ji,jj)
                ENDIF
             END DO
          END DO
@@ -116,60 +128,51 @@ CONTAINS
       DO jk = 1, jpkm1
          DO jj = 1, jpj
             DO ji = 1, jpi
+               zstep   = xstep
 # if defined key_degrad
-               zstep = xstep * facvol(ji,jj,jk)
-# else
-               zstep = xstep
+               zstep = zstep * facvol(ji,jj,jk)
 # endif
                ! DOC ammonification. Depends on depth, phytoplankton biomass
                !     and a limitation term which is supposed to be a parameterization
                !     of the bacterial activity. 
                zremik = xremik * zstep / 1.e-6 * xlimbac(ji,jj,jk) * zdepbac(ji,jj,jk) 
-               zremik = MAX( zremik, 5.5e-4 * xstep )
-
+               zremik = MAX( zremik, 2.e-4 * xstep )
                !     Ammonification in oxic waters with oxygen consumption
                !     -----------------------------------------------------
-               zolimi(ji,jj,jk) = MIN(  ( trn(ji,jj,jk,jpoxy) - rtrn ) / o2ut,  &
-                  &                    zremik * ( 1.- nitrfac(ji,jj,jk) ) * trn(ji,jj,jk,jpdoc)  ) 
-
+               zolimi (ji,jj,jk) = zremik * ( 1.- nitrfac(ji,jj,jk) ) * trn(ji,jj,jk,jpdoc) 
+               zolimi2(ji,jj,jk) = MIN( ( trn(ji,jj,jk,jpoxy) - rtrn ) / o2ut, zolimi(ji,jj,jk) ) 
                !     Ammonification in suboxic waters with denitrification
                !     -------------------------------------------------------
-               denitr(ji,jj,jk) = MIN(  ( trn(ji,jj,jk,jpno3) - rtrn ) / rdenit,   &
+               denitr(ji,jj,jk)  = MIN(  ( trn(ji,jj,jk,jpno3) - rtrn ) / rdenit,   &
                   &                     zremik * nitrfac(ji,jj,jk) * trn(ji,jj,jk,jpdoc)  )
-            END DO
-         END DO
-      END DO
-
-      DO jk = 1, jpkm1
-         DO jj = 1, jpj
-            DO ji = 1, jpi
+               !
                zolimi (ji,jj,jk) = MAX( 0.e0, zolimi (ji,jj,jk) )
+               zolimi2(ji,jj,jk) = MAX( 0.e0, zolimi2(ji,jj,jk) )
                denitr (ji,jj,jk) = MAX( 0.e0, denitr (ji,jj,jk) )
+               !
             END DO
          END DO
       END DO
 
+
       DO jk = 1, jpkm1
          DO jj = 1, jpj
             DO ji = 1, jpi
+               zstep   = xstep
 # if defined key_degrad
-               zstep = xstep * facvol(ji,jj,jk)
-# else
-               zstep = xstep
+               zstep = zstep * facvol(ji,jj,jk)
 # endif
                !    NH4 nitrification to NO3. Ceased for oxygen concentrations
                !    below 2 umol/L. Inhibited at strong light 
                !    ----------------------------------------------------------
-               zonitr  = nitrif * zstep * trn(ji,jj,jk,jpnh4) / ( 1.+ emoy(ji,jj,jk) ) * ( 1.- nitrfac(ji,jj,jk) ) 
-
+               zonitr  =nitrif * zstep * trn(ji,jj,jk,jpnh4) / ( 1.+ emoy(ji,jj,jk) ) * ( 1.- nitrfac(ji,jj,jk) ) 
+               denitnh4(ji,jj,jk) = nitrif * zstep * trn(ji,jj,jk,jpnh4) * nitrfac(ji,jj,jk) 
                !   Update of the tracers trends
                !   ----------------------------
-
-               tra(ji,jj,jk,jpnh4) = tra(ji,jj,jk,jpnh4) - zonitr
-               tra(ji,jj,jk,jpno3) = tra(ji,jj,jk,jpno3) + zonitr
+               tra(ji,jj,jk,jpnh4) = tra(ji,jj,jk,jpnh4) - zonitr - denitnh4(ji,jj,jk)
+               tra(ji,jj,jk,jpno3) = tra(ji,jj,jk,jpno3) + zonitr - rdenita * denitnh4(ji,jj,jk)
                tra(ji,jj,jk,jpoxy) = tra(ji,jj,jk,jpoxy) - o2nit * zonitr
-               tra(ji,jj,jk,jptal) = tra(ji,jj,jk,jptal) - rno3  * zonitr
-
+               tra(ji,jj,jk,jptal) = tra(ji,jj,jk,jptal) - 2 * rno3 * zonitr + rno3 * ( rdenita - 1. ) * denitnh4(ji,jj,jk)
             END DO
          END DO
       END DO
@@ -188,11 +191,11 @@ CONTAINS
                !    Bacteries are obliged to take up iron from the water. Some
                !    studies (especially at Papa) have shown this uptake to be significant
                !    ----------------------------------------------------------
-               zbactfer = 15.e-6 * rfact2 * 4.* 0.4 * prmax(ji,jj,jk)           &
-                  &               * ( xlimphy(ji,jj,jk) * zdepbac(ji,jj,jk))           &
-                  &               * ( xlimphy(ji,jj,jk) * zdepbac(ji,jj,jk))           &
-                  &                  / ( xkgraz2 + zdepbac(ji,jj,jk) )                    &
-                  &                  * ( 0.5 + SIGN( 0.5, trn(ji,jj,jk,jpfer) -2.e-11 )  )
+               zdepbac2 = zdepbac(ji,jj,jk) * zdepbac(ji,jj,jk)
+               zbactfer = 20.e-6 * rfact2 * prmax(ji,jj,jk)                                 &
+                  &              * trn(ji,jj,jk,jpfer) / ( 5E-10 + trn(ji,jj,jk,jpfer) )    &
+                  &              * zdepbac2 / ( xkgraz2 + zdepbac(ji,jj,jk) )               &
+                  &              * ( 0.5 + SIGN( 0.5, trn(ji,jj,jk,jpfer) -2.e-11 )  )
 
                tra(ji,jj,jk,jpfer) = tra(ji,jj,jk,jpfer) - zbactfer
 #if defined key_kriest
@@ -213,14 +216,13 @@ CONTAINS
       DO jk = 1, jpkm1
          DO jj = 1, jpj
             DO ji = 1, jpi
+               zstep   = xstep
 # if defined key_degrad
-               zstep = xstep * facvol(ji,jj,jk)
-# else
-               zstep = xstep
+               zstep = zstep * facvol(ji,jj,jk)
 # endif
                !    POC disaggregation by turbulence and bacterial activity. 
                !    -------------------------------------------------------------
-               zremip = xremip * zstep * tgfunc(ji,jj,jk) * ( 1.- 0.5 * nitrfac(ji,jj,jk) ) 
+               zremip = xremip * zstep * tgfunc(ji,jj,jk) * ( 1.- 0.7 * nitrfac(ji,jj,jk) ) 
 
                !    POC disaggregation rate is reduced in anoxic zone as shown by
                !    sediment traps data. In oxic area, the exponent of the martin s
@@ -265,21 +267,23 @@ CONTAINS
       DO jk = 1, jpkm1
          DO jj = 1, jpj
             DO ji = 1, jpi
+               zstep   = xstep
 # if defined key_degrad
-               zstep = xstep * facvol(ji,jj,jk)
-# else
-               zstep = xstep
+               zstep = zstep * facvol(ji,jj,jk)
 # endif
                !     Remineralization rate of BSi depedant on T and saturation
                !     ---------------------------------------------------------
-               zsatur  = ( sio3eq(ji,jj,jk) - trn(ji,jj,jk,jpsil) ) / ( sio3eq(ji,jj,jk) + rtrn )
-               zsatur  = MAX( rtrn, zsatur )
-               zsatur2 = zsatur * ( 1. + tsn(ji,jj,jk,jp_tem) / 400.)**4
-               znusil  = 0.225  * ( 1. + tsn(ji,jj,jk,jp_tem) / 15.) * zsatur + 0.775 * zsatur2**9
-               zsiremin = xsirem * zstep * znusil
-               zosil = zsiremin * trn(ji,jj,jk,jpdsi)
-
-               tra(ji,jj,jk,jpdsi) = tra(ji,jj,jk,jpdsi) - zosil
+               zsatur   = ( sio3eq(ji,jj,jk) - trn(ji,jj,jk,jpsil) ) / ( sio3eq(ji,jj,jk) + rtrn )
+               zsatur   = MAX( rtrn, zsatur )
+               zsatur2  = zsatur * ( 1. + tsn(ji,jj,jk,jp_tem) / 400.)**4
+               znusil   = 0.225  * ( 1. + tsn(ji,jj,jk,jp_tem) / 15.) * zsatur + 0.775 * zsatur2**9.25
+               zdep     = MAX( hmld(ji,jj), heup(ji,jj) ) 
+               zdep     = MAX( 0., fsdept(ji,jj,jk) - zdep )
+               zfactdep = xsilab * EXP(-( xsiremlab - xsirem ) * zdep / wsbio2 )
+               zsiremin = ( xsiremlab * zfactdep + xsirem * ( 1. - zfactdep ) ) * zstep * znusil
+               zosil    = zsiremin * trn(ji,jj,jk,jpgsi)
+               !
+               tra(ji,jj,jk,jpgsi) = tra(ji,jj,jk,jpgsi) - zosil
                tra(ji,jj,jk,jpsil) = tra(ji,jj,jk,jpsil) + zosil
                !
             END DO
@@ -292,28 +296,25 @@ CONTAINS
          CALL prt_ctl_trc(tab4d=tra, mask=tmask, clinfo=ctrcnm)
        ENDIF
 
-      zfesatur = 0.6e-9
+      zfesatur = ligand
 !CDIR NOVERRCHK
       DO jk = 1, jpkm1
 !CDIR NOVERRCHK
          DO jj = 1, jpj
 !CDIR NOVERRCHK
             DO ji = 1, jpi
+               zstep   = xstep
 # if defined key_degrad
-               zstep = xstep * facvol(ji,jj,jk)
-# else
-               zstep = xstep
+               zstep = zstep * facvol(ji,jj,jk)
 # endif
                !  Compute de different ratios for scavenging of iron
                !  --------------------------------------------------
 
 #if  defined key_kriest
                zdenom1 = trn(ji,jj,jk,jppoc) / &
-           &           ( trn(ji,jj,jk,jppoc) + trn(ji,jj,jk,jpdsi) + trn(ji,jj,jk,jpcal) + rtrn )
+           &           ( trn(ji,jj,jk,jppoc) + trn(ji,jj,jk,jpgsi) + trn(ji,jj,jk,jpcal) + rtrn )
 #else
-               zdenom = 1. / ( trn(ji,jj,jk,jppoc) + trn(ji,jj,jk,jpgoc)  &
-           &            + trn(ji,jj,jk,jpdsi) + trn(ji,jj,jk,jpcal) + rtrn )
-
+               zdenom = 1. / ( trn(ji,jj,jk,jppoc) + trn(ji,jj,jk,jpgoc) + trn(ji,jj,jk,jpgsi) + trn(ji,jj,jk,jpcal) + rtrn )
                zdenom1 = trn(ji,jj,jk,jppoc) * zdenom
                zdenom2 = trn(ji,jj,jk,jpgoc) * zdenom
 #endif
@@ -327,35 +328,33 @@ CONTAINS
 
 #if defined key_kriest
                zlam1b = 3.e-5 + xlam1 * (  trn(ji,jj,jk,jppoc)                   &
-                  &                      + trn(ji,jj,jk,jpcal) + trn(ji,jj,jk,jpdsi)  ) * 1.e6
+                  &                      + trn(ji,jj,jk,jpcal) + trn(ji,jj,jk,jpgsi)  ) * 1.e6
 #else
                zlam1b = 3.e-5 + xlam1 * (  trn(ji,jj,jk,jppoc) + trn(ji,jj,jk,jpgoc)   &
-                  &                      + trn(ji,jj,jk,jpcal) + trn(ji,jj,jk,jpdsi)  ) * 1.e6
+                  &                      + trn(ji,jj,jk,jpcal) + trn(ji,jj,jk,jpgsi)  ) * 1.e6
 #endif
                zscave = zfeequi * zlam1b * zstep
 
                !  Increased scavenging for very high iron concentrations
                !  found near the coasts due to increased lithogenic particles
-               !  and let s say it unknown processes (precipitation, ...)
+               !  and let say it is unknown processes (precipitation, ...)
                !  -----------------------------------------------------------
+               zlam1b  = xlam1 * MAX( 0.e0, ( trn(ji,jj,jk,jpfer) * 1.e9 - 1. ) )
+               zcoag   = zfeequi * zlam1b * zstep
                zlamfac = MAX( 0.e0, ( gphit(ji,jj) + 55.) / 30. )
                zlamfac = MIN( 1.  , zlamfac )
+               zdep    =  MIN(1., 1000. / fsdept(ji,jj,jk) )
 #if ! defined key_kriest
                zlam1b = (  80.* ( trn(ji,jj,jk,jpdoc) + 35.e-6 )                           &
-                  &     + 698.*   trn(ji,jj,jk,jppoc) + 1.05e4 * trn(ji,jj,jk,jpgoc)  )                    &
-                  &   * xdiss(ji,jj,jk) + 1E-4 * (1.-zlamfac)                &
-                  &   + xlam1 * MAX( 0.e0, ( trn(ji,jj,jk,jpfer) * 1.e9 - 1.)  )
+                  &     + 698.*   trn(ji,jj,jk,jppoc) + 1.05e4 * trn(ji,jj,jk,jpgoc)  )    &
+                  &   * xdiss(ji,jj,jk) + 1E-4 * ( 1. - zlamfac ) * zdep
 #else
-               zlam1b = (  80.* (trn(ji,jj,jk,jpdoc) + 35E-6)           &
+               zlam1b = (  80.* (trn(ji,jj,jk,jpdoc) + 35E-6)              &
                   &     + 698.*  trn(ji,jj,jk,jppoc)  )                    &
-                  &   * xdiss(ji,jj,jk) + 1E-4 * (1.-zlamfac)           &
-                  &   + xlam1 * MAX( 0.e0, ( trn(ji,jj,jk,jpfer) * 1.e9 - 1.)  )
+                  &   * xdiss(ji,jj,jk) + 1E-4 * ( 1. - zlamfac ) * zdep
 #endif
-
                zaggdfe = zlam1b * zstep * 0.5 * ( trn(ji,jj,jk,jpfer) - zfeequi )
-
-               tra(ji,jj,jk,jpfer) = tra(ji,jj,jk,jpfer) - zscave - zaggdfe
-
+               tra(ji,jj,jk,jpfer) = tra(ji,jj,jk,jpfer) - zscave - zaggdfe - zcoag
 #if defined key_kriest
                tra(ji,jj,jk,jpsfe) = tra(ji,jj,jk,jpsfe) + zscave * zdenom1
 #else
@@ -377,13 +376,13 @@ CONTAINS
       !     --------------------------------------------------------------------
 
       DO jk = 1, jpkm1
-         tra(:,:,jk,jppo4) = tra(:,:,jk,jppo4) + zolimi(:,:,jk) + denitr(:,:,jk)
-         tra(:,:,jk,jpnh4) = tra(:,:,jk,jpnh4) + zolimi(:,:,jk) + denitr(:,:,jk)
-         tra(:,:,jk,jpno3) = tra(:,:,jk,jpno3) - denitr(:,:,jk) * rdenit
-         tra(:,:,jk,jpdoc) = tra(:,:,jk,jpdoc) - zolimi(:,:,jk) - denitr(:,:,jk)
-         tra(:,:,jk,jpoxy) = tra(:,:,jk,jpoxy) - zolimi(:,:,jk) * o2ut
-         tra(:,:,jk,jpdic) = tra(:,:,jk,jpdic) + zolimi(:,:,jk) + denitr(:,:,jk)
-         tra(:,:,jk,jptal) = tra(:,:,jk,jptal) + denitr(:,:,jk) * rno3 * rdenit
+         tra(:,:,jk,jppo4) = tra(:,:,jk,jppo4) + zolimi (:,:,jk) + denitr(:,:,jk)
+         tra(:,:,jk,jpnh4) = tra(:,:,jk,jpnh4) + zolimi (:,:,jk) + denitr(:,:,jk)
+         tra(:,:,jk,jpno3) = tra(:,:,jk,jpno3) - denitr (:,:,jk) * rdenit
+         tra(:,:,jk,jpdoc) = tra(:,:,jk,jpdoc) - zolimi (:,:,jk) - denitr(:,:,jk)
+         tra(:,:,jk,jpoxy) = tra(:,:,jk,jpoxy) - zolimi2(:,:,jk) * o2ut
+         tra(:,:,jk,jpdic) = tra(:,:,jk,jpdic) + zolimi (:,:,jk) + denitr(:,:,jk)
+         tra(:,:,jk,jptal) = tra(:,:,jk,jptal) + rno3 * ( zolimi(:,:,jk) + ( rdenit + 1.) * denitr(:,:,jk) )
       END DO
 
       IF(ln_ctl)   THEN  ! print mean trends (used for debugging)
@@ -392,8 +391,10 @@ CONTAINS
          CALL prt_ctl_trc(tab4d=tra, mask=tmask, clinfo=ctrcnm)
       ENDIF
       !
-      IF(  wrk_not_released(2, 1)     .OR.   &
-           wrk_not_released(3, 2,3)  )   CALL ctl_stop('p4z_rem: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi, jpj,      ztempbac                 )
+      CALL wrk_dealloc( jpi, jpj, jpk, zdepbac, zolimi, zolimi2 )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('p4z_rem')
       !
    END SUBROUTINE p4z_rem
 
@@ -410,11 +411,11 @@ CONTAINS
       !! ** input   :   Namelist nampisrem
       !!
       !!----------------------------------------------------------------------
-      NAMELIST/nampisrem/ xremik, xremip, nitrif, xsirem, xlam1, oxymin
-      !!----------------------------------------------------------------------
+      NAMELIST/nampisrem/ xremik, xremip, nitrif, xsirem, xsiremlab, xsilab,   &
+      &                   xlam1, oxymin, ligand 
 
-      REWIND( numnat )                     ! read numnat
-      READ  ( numnat, nampisrem )
+      REWIND( numnatp )                     ! read numnatp
+      READ  ( numnatp, nampisrem )
 
       IF(lwp) THEN                         ! control print
          WRITE(numout,*) ' '
@@ -423,13 +424,17 @@ CONTAINS
          WRITE(numout,*) '    remineralisation rate of POC              xremip    =', xremip
          WRITE(numout,*) '    remineralization rate of DOC              xremik    =', xremik
          WRITE(numout,*) '    remineralization rate of Si               xsirem    =', xsirem
+         WRITE(numout,*) '    fast remineralization rate of Si          xsiremlab =', xsiremlab
+         WRITE(numout,*) '    fraction of labile biogenic silica        xsilab    =', xsilab
          WRITE(numout,*) '    scavenging rate of Iron                   xlam1     =', xlam1
          WRITE(numout,*) '    NH4 nitrification rate                    nitrif    =', nitrif
          WRITE(numout,*) '    halk saturation constant for anoxia       oxymin    =', oxymin
+         WRITE(numout,*) '    ligand concentration in the ocean         ligand    =', ligand
       ENDIF
       !
-      nitrfac(:,:,:) = 0._wp
-      denitr (:,:,:) = 0._wp
+      nitrfac (:,:,:) = 0._wp
+      denitr  (:,:,:) = 0._wp
+      denitnh4(:,:,:) = 0._wp
       !
    END SUBROUTINE p4z_rem_init
 
@@ -438,7 +443,7 @@ CONTAINS
       !!----------------------------------------------------------------------
       !!                     ***  ROUTINE p4z_rem_alloc  ***
       !!----------------------------------------------------------------------
-      ALLOCATE( denitr(jpi,jpj,jpk), STAT=p4z_rem_alloc )
+      ALLOCATE( denitr(jpi,jpj,jpk), denitnh4(jpi,jpj,jpk), STAT=p4z_rem_alloc )
       !
       IF( p4z_rem_alloc /= 0 )   CALL ctl_warn('p4z_rem_alloc: failed to allocate arrays')
       !

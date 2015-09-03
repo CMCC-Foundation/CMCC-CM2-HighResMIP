@@ -34,7 +34,7 @@ MODULE trcbbl
 #  include "top_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/TOP 3.3 , NEMO Consortium (2010)
-   !! $Id: trcbbl.F90 2528 2010-12-27 17:33:53Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 
@@ -52,16 +52,18 @@ CONTAINS
       !!----------------------------------------------------------------------  
       INTEGER, INTENT( in ) ::   kt   ! ocean time-step 
       CHARACTER (len=22) :: charout
-      REAL(wp), DIMENSION(:,:,:,:), ALLOCATABLE ::   ztrtrd
+      REAL(wp), POINTER, DIMENSION(:,:,:,:) ::   ztrtrd
       !!----------------------------------------------------------------------
-
-      IF( .NOT. lk_offline ) THEN
-         CALL bbl( kt, 'TRC' )         ! Online coupling with dynamics  : Computation of bbl coef and bbl transport
-         l_bbl = .FALSE.               ! Offline coupling with dynamics : Read bbl coef and bbl transport from input files
+      !
+      IF( nn_timing == 1 )  CALL timing_start('trc_bbl')
+      !
+      IF( .NOT. lk_offline .AND. nn_dttrc == 1 ) THEN
+         CALL bbl( kt, nittrc000, 'TRC' )      ! Online coupling with dynamics  : Computation of bbl coef and bbl transport
+         l_bbl = .FALSE.                       ! Offline coupling with dynamics : Read bbl coef and bbl transport from input files
       ENDIF
 
       IF( l_trdtrc )  THEN
-         ALLOCATE( ztrtrd(jpi,jpj,jpk,jptra) )   ! temporary save of trends
+         CALL wrk_alloc( jpi, jpj, jpk, jptra, ztrtrd ) ! temporary save of trends
          ztrtrd(:,:,:,:)  = tra(:,:,:,:)
       ENDIF
 
@@ -90,10 +92,12 @@ CONTAINS
       IF( l_trdtrc )   THEN                      ! save the horizontal diffusive trends for further diagnostics
         DO jn = 1, jptra
            ztrtrd(:,:,:,jn) = tra(:,:,:,jn) - ztrtrd(:,:,:,jn)
-           CALL trd_tra( kt, 'TRC', jn, jptra_trd_ldf, ztrtrd(:,:,:,jn) )
+           CALL trd_tra( kt, 'TRC', jn, jptra_trd_bbl, ztrtrd(:,:,:,jn) )
         END DO
-        DEALLOCATE( ztrtrd )
+        CALL wrk_dealloc( jpi, jpj, jpk, jptra, ztrtrd ) ! temporary save of trends
       ENDIF
+      !
+      IF( nn_timing == 1 ) CALL timing_stop('trc_bbl')
       !
    END SUBROUTINE trc_bbl
 

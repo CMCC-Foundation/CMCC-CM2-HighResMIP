@@ -27,7 +27,7 @@ MODULE trcrad
 #  include "top_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/TOP 3.3 , NEMO Consortium (2010)
-   !! $Id: trcrad.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
    
@@ -51,8 +51,10 @@ CONTAINS
       INTEGER, INTENT( in ) ::   kt   ! ocean time-step index      
       CHARACTER (len=22) :: charout
       !!----------------------------------------------------------------------
-
-      IF( kt == nit000 ) THEN
+      !
+      IF( nn_timing == 1 )  CALL timing_start('trc_rad')
+      !
+      IF( kt == nittrc000 ) THEN
          IF(lwp) WRITE(numout,*)
          IF(lwp) WRITE(numout,*) 'trc_rad : Correct artificial negative concentrations '
          IF(lwp) WRITE(numout,*) '~~~~~~~ '
@@ -64,13 +66,14 @@ CONTAINS
       IF( lk_pisces  )   CALL trc_rad_sms( kt, trb, trn, jp_pcs0 , jp_pcs1, cpreserv='Y' )  ! PISCES model
       IF( lk_my_trc  )   CALL trc_rad_sms( kt, trb, trn, jp_myt0 , jp_myt1               )  ! MY_TRC model
 
-
       !
       IF(ln_ctl) THEN      ! print mean trends (used for debugging)
          WRITE(charout, FMT="('rad')")
          CALL prt_ctl_trc_info( charout )
          CALL prt_ctl_trc( tab4d=trn, mask=tmask, clinfo=ctrcnm )
       ENDIF
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('trc_rad')
       !
    END SUBROUTINE trc_rad
 
@@ -103,65 +106,39 @@ CONTAINS
          cpreserv          !: flag to preserve content or not
       
       ! Local declarations
-      INTEGER  ::  ji, jj, jk, jn     ! dummy loop indices
-      REAL(wp) :: zvolk, ztrcorb, ztrmasb   ! temporary scalars
+      INTEGER  :: ji, jj, jk, jn     ! dummy loop indices
+      REAL(wp) :: ztrcorb, ztrmasb   ! temporary scalars
       REAL(wp) :: zcoef, ztrcorn, ztrmasn   !    "         "
-      REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::   ztrtrdb  ! workspace arrays
-      REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::   ztrtrdn  ! workspace arrays
+      REAL(wp), POINTER, DIMENSION(:,:,:) ::   ztrtrdb, ztrtrdn   ! workspace arrays
       REAL(wp) :: zs2rdt
       LOGICAL ::   lldebug = .FALSE.
-
       !!----------------------------------------------------------------------
 
-      IF( l_trdtrc ) THEN
-        !
-        ALLOCATE( ztrtrdb(jpi,jpj,jpk) )
-        ALLOCATE( ztrtrdn(jpi,jpj,jpk) )
-        !
-      ENDIF
+ 
+      IF( l_trdtrc )  CALL wrk_alloc( jpi, jpj, jpk, ztrtrdb, ztrtrdn )
       
       IF( PRESENT( cpreserv )  ) THEN   !  total tracer concentration is preserved 
       
          DO jn = jp_sms0, jp_sms1
-         !                                                        ! ===========
+            !                                                        ! ===========
             ztrcorb = 0.e0   ;   ztrmasb = 0.e0
             ztrcorn = 0.e0   ;   ztrmasn = 0.e0
 
-           IF( l_trdtrc ) THEN
-              ztrtrdb(:,:,:) = ptrb(:,:,:,jn)                        ! save input trb for trend computation
-              ztrtrdn(:,:,:) = ptrn(:,:,:,jn)                        ! save input trn for trend computation
-           ENDIF
-
-
-            DO jk = 1, jpkm1
-               DO jj = 1, jpj
-                  DO ji = 1, jpi
-                     zvolk  = cvol(ji,jj,jk)
-# if defined key_degrad
-                     zvolk  = zvolk * facvol(ji,jj,jk)
-# endif
-                     ztrcorb = ztrcorb + MIN( 0., ptrb(ji,jj,jk,jn) ) * zvolk
-                     ztrcorn = ztrcorn + MIN( 0., ptrn(ji,jj,jk,jn) ) * zvolk
-
-                     ptrb(ji,jj,jk,jn) = MAX( 0., ptrb(ji,jj,jk,jn) )
-                     ptrn(ji,jj,jk,jn) = MAX( 0., ptrn(ji,jj,jk,jn) )
-
-                     ztrmasb = ztrmasb + ptrb(ji,jj,jk,jn) * zvolk
-                     ztrmasn = ztrmasn + ptrn(ji,jj,jk,jn) * zvolk
-                  END DO
-               END DO
-            END DO
-
-            IF( lk_mpp ) THEN
-               CALL mpp_sum( ztrcorb )      ! sum over the global domain
-               CALL mpp_sum( ztrcorn )      ! sum over the global domain
-               CALL mpp_sum( ztrmasb )      ! sum over the global domain
-               CALL mpp_sum( ztrmasn )      ! sum over the global domain
+            IF( l_trdtrc ) THEN
+               ztrtrdb(:,:,:) = ptrb(:,:,:,jn)                        ! save input trb for trend computation
+               ztrtrdn(:,:,:) = ptrn(:,:,:,jn)                        ! save input trn for trend computation
             ENDIF
+            !                                                         ! sum over the global domain 
+            ztrcorb = glob_sum( MIN( 0., ptrb(:,:,:,jn) ) * cvol(:,:,:) )
+            ztrcorn = glob_sum( MIN( 0., ptrn(:,:,:,jn) ) * cvol(:,:,:) )
+
+            ztrmasb = glob_sum( MAX( 0., ptrb(:,:,:,jn) ) * cvol(:,:,:) )
+            ztrmasn = glob_sum( MAX( 0., ptrn(:,:,:,jn) ) * cvol(:,:,:) )
 
             IF( ztrcorb /= 0 ) THEN
                zcoef = 1. + ztrcorb / ztrmasb
                DO jk = 1, jpkm1
+                  ptrb(:,:,jk,jn) = MAX( 0., ptrb(:,:,jk,jn) )
                   ptrb(:,:,jk,jn) = ptrb(:,:,jk,jn) * zcoef * tmask(:,:,jk)
                END DO
             ENDIF
@@ -169,6 +146,7 @@ CONTAINS
             IF( ztrcorn /= 0 ) THEN
                zcoef = 1. + ztrcorn / ztrmasn
                DO jk = 1, jpkm1
+                  ptrn(:,:,jk,jn) = MAX( 0., ptrn(:,:,jk,jn) )
                   ptrn(:,:,jk,jn) = ptrn(:,:,jk,jn) * zcoef * tmask(:,:,jk)
                END DO
             ENDIF
@@ -206,7 +184,7 @@ CONTAINS
          
             IF( l_trdtrc ) THEN
                !
-               zs2rdt = 1. / ( 2. * rdt * FLOAT(nn_dttrc) )
+               zs2rdt = 1. / ( 2. * rdt * FLOAT( nn_dttrc ) )
                ztrtrdb(:,:,:) = ( ptrb(:,:,:,jn) - ztrtrdb(:,:,:) ) * zs2rdt
                ztrtrdn(:,:,:) = ( ptrn(:,:,:,jn) - ztrtrdn(:,:,:) ) * zs2rdt 
                CALL trd_tra( kt, 'TRC', jn, jptra_trd_radb, ztrtrdb )       ! Asselin-like trend handling
@@ -218,7 +196,7 @@ CONTAINS
 
       ENDIF
 
-      IF( l_trdtrc )   DEALLOCATE( ztrtrdb, ztrtrdn )
+      IF( l_trdtrc )  CALL wrk_dealloc( jpi, jpj, jpk, ztrtrdb, ztrtrdn )
 
    END SUBROUTINE trc_rad_sms
 #else

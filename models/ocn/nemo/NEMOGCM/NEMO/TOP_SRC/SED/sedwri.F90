@@ -55,7 +55,7 @@ CONTAINS
 
       ! Initialisation
       ! ----------------- 
-      IF( kt == nit000 )   ALLOCATE( ndext52(jpij*jpksed), ndext51(jpij) )
+      IF( kt == nittrc000 )   ALLOCATE( ndext52(jpij*jpksed), ndext51(jpij) )
 
       ! Define frequency of output and means
       zdt = dtsed

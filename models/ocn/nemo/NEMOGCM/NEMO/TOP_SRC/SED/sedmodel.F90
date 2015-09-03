@@ -34,7 +34,7 @@ CONTAINS
       INTEGER, INTENT(in) ::   kt       ! number of iteration
 
 
-      IF( kt == nit000 ) CALL sed_init       ! Initialization of sediment model
+      IF( kt == nittrc000 ) CALL sed_init       ! Initialization of sediment model
 
                          CALL sed_stp( kt )  ! Time stepping of Sediment model
 

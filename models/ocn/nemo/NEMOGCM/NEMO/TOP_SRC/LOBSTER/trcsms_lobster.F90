@@ -30,7 +30,7 @@ MODULE trcsms_lobster
 
    !!----------------------------------------------------------------------
    !! NEMO/TOP 3.3 , NEMO Consortium (2010)
-   !! $Id: trcsms_lobster.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -44,32 +44,28 @@ CONTAINS
       !!
       !! ** Method  : - ???
       !! --------------------------------------------------------------------
-      USE wrk_nemo, ONLY: wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY: ztrlob => wrk_3d_1   ! used for lobster sms trends
       !!
       INTEGER, INTENT( in ) ::   kt      ! ocean time-step index      
+      !
       INTEGER :: jn
       !! --------------------------------------------------------------------
-
-      IF( wrk_in_use(3, 1) ) THEN
-         CALL ctl_stop('trc_sms_lobster : requested workspace array unavailable')   ;   RETURN
-      ENDIF
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('trc_sms_lobster')
+      !
       CALL trc_opt( kt )      ! optical model
       CALL trc_bio( kt )      ! biological model
       CALL trc_sed( kt )      ! sedimentation model
       CALL trc_exp( kt )      ! export
 
       IF( l_trdtrc ) THEN
-          DO jn = jp_lob0, jp_lob1
-            ztrlob(:,:,:) = tra(:,:,:,jn)
-            CALL trd_mod_trc( ztrlob, jn, jptra_trd_sms, kt )   ! save trends
-          END DO
+         DO jn = jp_lob0, jp_lob1
+           CALL trd_mod_trc( tra(:,:,:,jn), jn, jptra_trd_sms, kt )   ! save trends
+         END DO
       END IF
 
       IF( lk_trdmld_trc )  CALL trd_mld_bio( kt )   ! trends: Mixed-layer
-
-      IF( wrk_not_released(3, 1) )   CALL ctl_stop('trc_sms_lobster : failed to release workspace array.')
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('trc_sms_lobster')
       !
    END SUBROUTINE trc_sms_lobster
 

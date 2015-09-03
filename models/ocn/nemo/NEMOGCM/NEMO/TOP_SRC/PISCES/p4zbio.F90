@@ -13,19 +13,19 @@ MODULE p4zbio
    !!   p4z_bio        :   computes the interactions between the different
    !!                      compartments of PISCES
    !!----------------------------------------------------------------------
-   USE oce_trc         !
-   USE trc         ! 
-   USE sms_pisces      ! 
-   USE p4zsink         ! 
-   USE p4zopt          ! 
-   USE p4zlim          ! 
-   USE p4zprod         !
-   USE p4zmort         !
-   USE p4zmicro        ! 
-   USE p4zmeso         ! 
-   USE p4zrem          ! 
-   USE prtctl_trc
-   USE iom
+   USE oce_trc         !  shared variables between ocean and passive tracers
+   USE trc             !  passive tracers common variables 
+   USE sms_pisces      !  PISCES Source Minus Sink variables
+   USE p4zsink         !  vertical flux of particulate matter due to sinking
+   USE p4zopt          !  optical model
+   USE p4zlim          !  Co-limitations of differents nutrients
+   USE p4zprod         !  Growth rate of the 2 phyto groups
+   USE p4zmort         !  Mortality terms for phytoplankton
+   USE p4zmicro        !  Sources and sinks of microzooplankton
+   USE p4zmeso         !  Sources and sinks of mesozooplankton
+   USE p4zrem          !  Remineralisation of organic matter
+   USE prtctl_trc      !  print control for debugging
+   USE iom             !  I/O manager
   
    IMPLICIT NONE
    PRIVATE
@@ -36,7 +36,7 @@ MODULE p4zbio
 #  include "top_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/TOP 3.3 , NEMO Consortium (2010)
-   !! $Id: p4zbio.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 
@@ -61,7 +61,9 @@ CONTAINS
       CHARACTER (len=25) :: charout
 
       !!---------------------------------------------------------------------
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('p4z_bio')
+      !
       !     ASSIGN THE SHEAR RATE THAT IS USED FOR AGGREGATION
       !     OF PHYTOPLANKTON AND DETRITUS
 
@@ -127,6 +129,8 @@ CONTAINS
          CALL prt_ctl_trc_info(charout)
          CALL prt_ctl_trc(tab4d=trn, mask=tmask, clinfo=ctrcnm)
       ENDIF
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('p4z_bio')
       !
    END SUBROUTINE p4z_bio
 

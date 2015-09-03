@@ -12,6 +12,7 @@ MODULE trcnam_trp
    !!----------------------------------------------------------------------
    !!   trc_nam_trp  : read the passive tracer namelist for transport
    !!----------------------------------------------------------------------
+   USE oce_trc
    USE trc                 ! ocean passive tracers variables
    USE in_out_manager      ! ocean dynamics and active tracers variables
 
@@ -35,6 +36,7 @@ MODULE trcnam_trp
    LOGICAL , PUBLIC ::   ln_trcldf_level = .FALSE.    !: iso-level direction
    LOGICAL , PUBLIC ::   ln_trcldf_hor   = .FALSE.    !: horizontal (geopotential) direction
    LOGICAL , PUBLIC ::   ln_trcldf_iso   = .TRUE.     !: iso-neutral direction
+   REAL(wp), PUBLIC ::   rn_ahtrc_0                   !: diffusivity coefficient for passive tracer (m2/s)
    REAL(wp), PUBLIC ::   rn_ahtrb_0                   !: background diffusivity coefficient for passive tracer (m2/s)
 
    !                                                 !!: ** Treatment of Negative concentrations ( nam_trcrad )
@@ -44,8 +46,6 @@ MODULE trcnam_trp
    LOGICAL , PUBLIC ::   ln_trczdf_exp = .FALSE.      !: explicit vertical diffusion scheme flag
    INTEGER , PUBLIC ::   nn_trczdf_exp = 3             !: number of sub-time step (explicit time stepping)
 
-
-#if defined key_trcdmp
    !                                                 !!: ** newtonian damping namelist (nam_trcdmp) **
    INTEGER , PUBLIC ::   nn_hdmp_tr      =   -1       ! = 0/-1/'latitude' for damping over passive tracer
    INTEGER , PUBLIC ::   nn_zdmp_tr      =    0       ! = 0/1/2 flag for damping in the mixed layer
@@ -53,11 +53,10 @@ MODULE trcnam_trp
    REAL(wp), PUBLIC ::   rn_bot_tr       =  360.      ! bottom time scale for internal damping         [days]
    REAL(wp), PUBLIC ::   rn_dep_tr       =  800.      ! depth of transition between rn_surf and rn_bot [meters]
    INTEGER , PUBLIC ::   nn_file_tr      =    2       ! = 1 create a damping.coeff NetCDF file 
-#endif
 
    !!----------------------------------------------------------------------
    !! NEMO/TOP 3.3 , NEMO Consortium (2010)
-   !! $Id: trcnam_trp.F90 2528 2010-12-27 17:33:53Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 
@@ -75,13 +74,11 @@ CONTAINS
 
       NAMELIST/namtrc_ldf/ ln_trcldf_diff , ln_trcldf_lap  ,     &
          &                 ln_trcldf_bilap, ln_trcldf_level,     &
-         &                 ln_trcldf_hor  , ln_trcldf_iso  , rn_ahtrb_0
+         &                 ln_trcldf_hor  , ln_trcldf_iso  , rn_ahtrc_0, rn_ahtrb_0
       NAMELIST/namtrc_zdf/ ln_trczdf_exp  , nn_trczdf_exp
       NAMELIST/namtrc_rad/ ln_trcrad
-#if defined key_trcdmp
       NAMELIST/namtrc_dmp/ nn_hdmp_tr, nn_zdmp_tr, rn_surf_tr, &
         &                  rn_bot_tr , rn_dep_tr , nn_file_tr
-#endif
       !!----------------------------------------------------------------------
 
       IF(lwp) WRITE(numout,*)
@@ -118,6 +115,7 @@ CONTAINS
          WRITE(numout,*) '      iso-level                                          ln_trcldf_level = ', ln_trcldf_level
          WRITE(numout,*) '      horizontal (geopotential)                          ln_trcldf_hor   = ', ln_trcldf_hor
          WRITE(numout,*) '      iso-neutral                                        ln_trcldf_iso   = ', ln_trcldf_iso
+         WRITE(numout,*) '      diffusivity coefficient                                 rn_ahtrc_0 = ', rn_ahtrc_0
          WRITE(numout,*) '      background hor. diffusivity                             rn_ahtrb_0 = ', rn_ahtrb_0
       ENDIF
 
@@ -143,10 +141,9 @@ CONTAINS
       ENDIF
 
 
-# if defined key_trcdmp
       REWIND ( numnat )                  ! Read Namelist namtra_dmp : temperature and salinity damping term
       READ   ( numnat, namtrc_dmp )
-      IF( lzoom )   nn_zdmp_trc = 0           ! restoring to climatology at closed north or south boundaries
+      IF( lzoom )   nn_zdmp_tr = 0           ! restoring to climatology at closed north or south boundaries
 
       IF(lwp) THEN                       ! Namelist print
          WRITE(numout,*)
@@ -160,7 +157,6 @@ CONTAINS
          WRITE(numout,*) '      depth of transition (meters)   rn_dep_tr  = ', rn_dep_tr
          WRITE(numout,*) '      create a damping.coeff file    nn_file_tr = ', nn_file_tr
       ENDIF
-#endif
       !
    END SUBROUTINE trc_nam_trp
    

@@ -6,6 +6,7 @@ MODULE p4zopt
    !! History :   1.0  !  2004     (O. Aumont) Original code
    !!             2.0  !  2007-12  (C. Ethe, G. Madec)  F90
    !!             3.2  !  2009-04  (C. Ethe, G. Madec)  optimisation
+   !!             3.4  !  2011-06  (O. Aumont, C. Ethe) Improve light availability of nano & diat
    !!----------------------------------------------------------------------
 #if defined  key_pisces
    !!----------------------------------------------------------------------
@@ -16,7 +17,7 @@ MODULE p4zopt
    USE trc            ! tracer variables
    USE oce_trc        ! tracer-ocean share variables
    USE sms_pisces     ! Source Minus Sink of PISCES
-   USE iom
+   USE iom            ! I/O manager
 
    IMPLICIT NONE
    PRIVATE
@@ -37,7 +38,7 @@ MODULE p4zopt
 #  include "top_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/TOP 3.3 , NEMO Consortium (2010)
-   !! $Id: p4zopt.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -51,23 +52,22 @@ CONTAINS
       !!
       !! ** Method  : - ???
       !!---------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zdepmoy => wrk_2d_1 , zetmp => wrk_2d_2
-      USE wrk_nemo, ONLY:   zekg    => wrk_3d_2 , zekr  => wrk_3d_3 , zekb => wrk_3d_4
-      USE wrk_nemo, ONLY:   ze0     => wrk_3d_5 , ze1   => wrk_3d_6
-      USE wrk_nemo, ONLY:   ze2     => wrk_3d_7 , ze3   => wrk_3d_8
       !
       INTEGER, INTENT(in) ::   kt, jnt   ! ocean time step
       !
       INTEGER  ::   ji, jj, jk
       INTEGER  ::   irgb
       REAL(wp) ::   zchl, zxsi0r
-      REAL(wp) ::   zc0 , zc1 , zc2, zc3
+      REAL(wp) ::   zc0 , zc1 , zc2, zc3, z1_dep
+      REAL(wp), POINTER, DIMENSION(:,:  ) :: zdepmoy, zetmp, zetmp1, zetmp2
+      REAL(wp), POINTER, DIMENSION(:,:,:) :: zekg, zekr, zekb, ze0, ze1, ze2, ze3
       !!---------------------------------------------------------------------
-
-      IF(  wrk_in_use(2, 1,2)   .OR.   wrk_in_use(3, 2,3,4,5,6,7,8)   ) THEN
-         CALL ctl_stop('p4z_opt: requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
+      !
+      IF( nn_timing == 1 )  CALL timing_start('p4z_opt')
+      !
+      ! Allocate temporary workspace
+      CALL wrk_alloc( jpi, jpj,      zdepmoy, zetmp, zetmp1, zetmp2       )
+      CALL wrk_alloc( jpi, jpj, jpk, zekg, zekr, zekb, ze0, ze1, ze2, ze3 )
 
       !     Initialisation of variables used to compute PAR
       !     -----------------------------------------------
@@ -82,7 +82,7 @@ CONTAINS
 !CDIR NOVERRCHK
             DO ji = 1, jpi
                zchl = ( trn(ji,jj,jk,jpnch) + trn(ji,jj,jk,jpdch) + rtrn ) * 1.e6
-               zchl = MIN(  10. , MAX( 0.03, zchl )  )
+               zchl = MIN(  10. , MAX( 0.05, zchl )  )
                irgb = NINT( 41 + 20.* LOG10( zchl ) + rtrn )
                !                                                         
                zekb(ji,jj,jk) = xkrgb(1,irgb) * fse3t(ji,jj,jk)
@@ -91,10 +91,6 @@ CONTAINS
             END DO
          END DO
       END DO
-
-!!gm  Potential BUG  must discuss with Olivier about this implementation....
-!!gm           the questions are : - PAR at T-point or mean PAR over T-level....
-!!gm                               - shallow water: no penetration of light through the bottom....
 
 
       !                                        !* Photosynthetically Available Radiation (PAR)
@@ -144,7 +140,7 @@ CONTAINS
          ze3  (:,:,1) = parlux * qsr(:,:)
          etot3(:,:,1) =          qsr(:,:) * tmask(:,:,1)
          !
-         DO jk = 2, nksrp+1
+         DO jk = 2, nksrp + 1
 !CDIR NOVERRCHK
             DO jj = 1, jpj
 !CDIR NOVERRCHK
@@ -173,7 +169,7 @@ CONTAINS
       DO jk = 2, nksrp
          DO jj = 1, jpj
            DO ji = 1, jpi
-              IF( etot(ji,jj,jk) >= 0.0043 * qsr(ji,jj) )  THEN
+              IF( etot(ji,jj,jk) * tmask(ji,jj,jk) >= 0.0043 * qsr(ji,jj) )  THEN
                  neln(ji,jj) = jk+1                    ! Euphotic level : 1rst T-level strictly below Euphotic layer
                  !                                     ! nb: ensure the compatibility with nmld_trc definition in trd_mld_trc_zint
                  heup(ji,jj) = fsdepw(ji,jj,jk+1)      ! Euphotic layer depth
@@ -187,7 +183,8 @@ CONTAINS
       !                                        !* mean light over the mixed layer
       zdepmoy(:,:)   = 0.e0                    !  -------------------------------
       zetmp  (:,:)   = 0.e0
-      emoy   (:,:,:) = 0.e0
+      zetmp1 (:,:)   = 0.e0
+      zetmp2 (:,:)   = 0.e0
 
       DO jk = 1, nksrp
 !CDIR NOVERRCHK
@@ -195,7 +192,9 @@ CONTAINS
 !CDIR NOVERRCHK
             DO ji = 1, jpi
                IF( fsdepw(ji,jj,jk+1) <= hmld(ji,jj) ) THEN
-                  zetmp  (ji,jj) = zetmp  (ji,jj) + etot(ji,jj,jk) * fse3t(ji,jj,jk)
+                  zetmp  (ji,jj) = zetmp  (ji,jj) + etot (ji,jj,jk) * fse3t(ji,jj,jk)
+                  zetmp1 (ji,jj) = zetmp1 (ji,jj) + enano(ji,jj,jk) * fse3t(ji,jj,jk)
+                  zetmp2 (ji,jj) = zetmp2 (ji,jj) + ediat(ji,jj,jk) * fse3t(ji,jj,jk)
                   zdepmoy(ji,jj) = zdepmoy(ji,jj) + fse3t(ji,jj,jk)
                ENDIF
             END DO
@@ -209,27 +208,34 @@ CONTAINS
          DO jj = 1, jpj
 !CDIR NOVERRCHK
             DO ji = 1, jpi
-               IF( fsdepw(ji,jj,jk+1) <= hmld(ji,jj) )   emoy(ji,jj,jk) = zetmp(ji,jj) / ( zdepmoy(ji,jj) + rtrn )
+               IF( fsdepw(ji,jj,jk+1) <= hmld(ji,jj) ) THEN
+                  z1_dep = 1. / ( zdepmoy(ji,jj) + rtrn )
+                  emoy (ji,jj,jk) = zetmp (ji,jj) * z1_dep
+                  enano(ji,jj,jk) = zetmp1(ji,jj) * z1_dep
+                  ediat(ji,jj,jk) = zetmp2(ji,jj) * z1_dep
+               ENDIF
             END DO
          END DO
       END DO
 
-#if defined key_diatrc
-# if ! defined key_iomput
-      ! save for outputs
-      trc2d(:,:,  jp_pcs0_2d + 10) = heup(:,:  ) * tmask(:,:,1)  
-      trc3d(:,:,:,jp_pcs0_3d + 3)  = etot(:,:,:) * tmask(:,:,:)
-# else
-      ! write diagnostics 
-      IF( jnt == nrdttrc ) then 
-         CALL iom_put( "Heup", heup(:,:  ) * tmask(:,:,1) )  ! euphotic layer deptht
-         CALL iom_put( "PAR" , etot(:,:,:) * tmask(:,:,:) )  ! Photosynthetically Available Radiation
+      IF( ln_diatrc ) THEN        ! save output diagnostics
+        !
+        IF( lk_iomput ) THEN
+           IF( jnt == nrdttrc ) THEN
+              CALL iom_put( "Heup", heup(:,:  ) * tmask(:,:,1) )  ! euphotic layer deptht
+              CALL iom_put( "PAR" , etot(:,:,:) * tmask(:,:,:) )  ! Photosynthetically Available Radiation
+           ENDIF
+        ELSE
+           trc2d(:,:,  jp_pcs0_2d + 10) = heup(:,:  ) * tmask(:,:,1)  
+           trc3d(:,:,:,jp_pcs0_3d + 3)  = etot(:,:,:) * tmask(:,:,:)
+        ENDIF
+        !
       ENDIF
-# endif
-#endif
       !
-      IF(  wrk_not_released(2, 1,2)           .OR.   &
-           wrk_not_released(3, 2,3,4,5,6,7,8)   )   CALL ctl_stop('p4z_opt: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi, jpj,      zdepmoy, zetmp, zetmp1, zetmp2 )
+      CALL wrk_dealloc( jpi, jpj, jpk, zekg, zekr, zekb, ze0, ze1, ze2, ze3 )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('p4z_opt')
       !
    END SUBROUTINE p4z_opt
 
@@ -241,6 +247,8 @@ CONTAINS
       !! ** Purpose :   Initialization of tabulated attenuation coef
       !!----------------------------------------------------------------------
       !
+      IF( nn_timing == 1 )  CALL timing_start('p4z_opt_init')
+      !
       CALL trc_oce_rgb( xkrgb )                  ! tabulated attenuation coefficients
       nksrp = trc_oce_ext_lev( r_si2, 0.33e2 )     ! max level of light extinction (Blue Chl=0.01)
       !
@@ -251,6 +259,8 @@ CONTAINS
                          ediat(:,:,:) = 0._wp
       IF( ln_qsr_bio )   etot3(:,:,:) = 0._wp
       ! 
+      IF( nn_timing == 1 )  CALL timing_stop('p4z_opt_init')
+      !
    END SUBROUTINE p4z_opt_init
 
 

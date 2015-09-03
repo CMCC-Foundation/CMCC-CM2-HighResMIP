@@ -3,7 +3,7 @@ MODULE trcini_cfc
    !!                         ***  MODULE trcini_cfc  ***
    !! TOP :   initialisation of the CFC tracers
    !!======================================================================
-   !! History :   2.0  !  2007-12  (C. Ethe, G. Madec) from trcini.cfc.h90
+   !! History :   2.0  !  2007-12  (C. Ethe, G. Madec) 
    !!----------------------------------------------------------------------
 #if defined key_cfc
    !!----------------------------------------------------------------------
@@ -29,7 +29,7 @@ MODULE trcini_cfc
 
    !!----------------------------------------------------------------------
    !! NEMO/TOP 3.3 , NEMO Consortium (2010)
-   !! $Id: trcini_cfc.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -42,7 +42,8 @@ CONTAINS
       !!
       !! ** Method  : - Read the namcfc namelist and check the parameter values
       !!----------------------------------------------------------------------
-      INTEGER  ::  ji, jj, jn, jl, jm, js
+      INTEGER  ::  ji, jj, jn, jl, jm, js, io, ierr
+      INTEGER  ::  iskip = 6   ! number of 1st descriptor lines
       REAL(wp) ::  zyy, zyd
       !!----------------------------------------------------------------------
 
@@ -50,7 +51,27 @@ CONTAINS
       IF(lwp) WRITE(numout,*) ' trc_ini_cfc: initialisation of CFC chemical model'
       IF(lwp) WRITE(numout,*) ' ~~~~~~~~~~~'
 
+
+      IF(lwp) WRITE(numout,*) 'read of formatted file cfc1112atm'
+      
+      CALL ctl_opn( inum, clname, 'OLD', 'FORMATTED', 'SEQUENTIAL', -1, numout, .FALSE. )
+      REWIND(inum)
+      
+      ! compute the number of year in the file
+      ! file starts in 1931 do jn represent the year in the century
+      jn = 31 
+      DO 
+        READ(inum,'(1x)',END=100) 
+        jn = jn + 1
+      END DO
+ 100  jpyear = jn - 1 - iskip
+      IF ( lwp) WRITE(numout,*) '    ', jpyear ,' years read'
       !                                ! Allocate CFC arrays
+
+      ALLOCATE( p_cfc(jpyear,jphem,2), STAT=ierr )
+      IF( ierr > 0 ) THEN
+         CALL ctl_stop( 'trc_ini_cfc: unable to allocate p_cfc array' )   ;   RETURN
+      ENDIF
       IF( trc_sms_cfc_alloc() /= 0 )   CALL ctl_stop( 'STOP', 'trc_ini_cfc: unable to allocate CFC arrays' )
 
 
@@ -74,48 +95,33 @@ CONTAINS
          END DO
       ENDIF
 
-
-      !   READ CFC partial pressure atmospheric value :
-      !     p11(year,nt) = PCFC11  in northern (1) and southern (2) hemisphere 
-      !     p12(year,nt) = PCFC12  in northern (1) and southern (2) hemisphere 
-      !--------------------------------------------------------------------
-
-      IF(lwp) WRITE(numout,*) 'read of formatted file cfc1112atm'
-      
-      CALL ctl_opn( inum, clname, 'OLD', 'FORMATTED', 'SEQUENTIAL', -1, numout, .FALSE. )
       REWIND(inum)
       
-      DO jm = 1, 6        ! Skip over 1st six descriptor lines
+      DO jm = 1, iskip        ! Skip over 1st six descriptor lines
          READ(inum,'(1x)')
       END DO
-   
       ! file starts in 1931 do jn represent the year in the century.jhh
       ! Read file till the end
       jn = 31
-      DO WHILE ( 1 /= 2 )
-         READ(inum,*,END=100) zyy, p_cfc(jn,1,1), p_cfc(jn,1,2), p_cfc(jn,2,1), p_cfc(jn,2,2)
-         IF ( lwp) THEN
-           WRITE(numout,'(f7.2, 4f8.2)' ) &
-            &         zyy, p_cfc(jn,1,1), p_cfc(jn,1,2), p_cfc(jn,2,1), p_cfc(jn,2,2)
-         ENDIF
-         jn = jn + 1
+      DO 
+        READ(inum,*, IOSTAT=io) zyy, p_cfc(jn,1,1), p_cfc(jn,1,2), p_cfc(jn,2,1), p_cfc(jn,2,2)
+        IF( io < 0 ) exit
+        jn = jn + 1
       END DO
- 100  npyear = jn - 1
-      IF ( lwp) WRITE(numout,*) '    ', npyear ,' years read'
 
-!      p_cfc(32,1:2,1) = 5.e-4      ! modify the values of the first years
-!      p_cfc(33,1:2,1) = 8.e-4
-!      p_cfc(34,1:2,1) = 1.e-6
-!      p_cfc(35,1:2,1) = 2.e-3
-!      p_cfc(36,1:2,1) = 4.e-3
-!      p_cfc(37,1:2,1) = 6.e-3
-!      p_cfc(38,1:2,1) = 8.e-3
-!      p_cfc(39,1:2,1) = 1.e-2
+      p_cfc(32,1:2,1) = 5.e-4      ! modify the values of the first years
+      p_cfc(33,1:2,1) = 8.e-4
+      p_cfc(34,1:2,1) = 1.e-6
+      p_cfc(35,1:2,1) = 2.e-3
+      p_cfc(36,1:2,1) = 4.e-3
+      p_cfc(37,1:2,1) = 6.e-3
+      p_cfc(38,1:2,1) = 8.e-3
+      p_cfc(39,1:2,1) = 1.e-2
       
       IF(lwp) THEN        ! Control print
          WRITE(numout,*)
-         WRITE(numout,*) ' Year   p11NH    p11SH    p12NH    p12SH '
-         DO jn = 30, 100
+         WRITE(numout,*) ' Year   p11HN    p11HS    p12HN    p12HS '
+         DO jn = 30, jpyear
             WRITE(numout, '( 1I4, 4F9.2)') jn, p_cfc(jn,1,1), p_cfc(jn,2,1), p_cfc(jn,1,2), p_cfc(jn,2,2)
          END DO
       ENDIF

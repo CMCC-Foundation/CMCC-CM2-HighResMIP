@@ -66,15 +66,14 @@ CONTAINS
       INTEGER                              , INTENT(in), OPTIONAL ::   ovlap     ! overlap value
       INTEGER                              , INTENT(in), OPTIONAL ::   kdim      ! k- direction for 4D arrays
       !!
-      REAL(wp), DIMENSION(:,:,:), ALLOCATABLE :: zmask, ztab3d 
       INTEGER  ::   overlap, jn, js, sind, eind, kdir, j_id
       REAL(wp) ::   zsum, zvctl
       CHARACTER (len=20), DIMENSION(jptra) ::   cl
       CHARACTER (len=10) ::   cl2
+      REAL(wp), POINTER, DIMENSION(:,:,:)  :: zmask, ztab3d 
       !!----------------------------------------------------------------------
 
-      ALLOCATE( zmask (jpi,jpj,jpk) )
-      ALLOCATE( ztab3d(jpi,jpj,jpk) )
+      CALL wrk_alloc( jpi, jpj, jpk, zmask, ztab3d )
       !                                      ! Arrays, scalars initialization 
       overlap       = 0
       kdir          = jpkm1
@@ -150,8 +149,7 @@ CONTAINS
          !
       END DO
       !
-      DEALLOCATE( zmask  )
-      DEALLOCATE( ztab3d )
+      CALL wrk_dealloc( jpi, jpj, jpk, zmask, ztab3d )
       !
    END SUBROUTINE prt_ctl_trc
 
@@ -335,9 +333,11 @@ CONTAINS
       INTEGER ::   nlcjl , nbondil, nbondjl
       INTEGER ::   nrecil, nrecjl, nldil, nleil, nldjl, nlejl
       REAL(wp) ::   zidom, zjdom            ! temporary scalars
-      INTEGER, DIMENSION(:,:), ALLOCATABLE ::   iimpptl, ijmpptl, ilcitl, ilcjtl   ! temporary workspace
+      INTEGER, POINTER, DIMENSION(:,:) ::   iimpptl, ijmpptl, ilcitl, ilcjtl   ! temporary workspace
       !!----------------------------------------------------------------------
-
+      !
+      CALL wrk_alloc( isplt, jsplt, ilcitl, ilcjtl, iimpptl, ijmpptl )
+      !
       ! Dimension arrays for subdomains
       ! -------------------------------
       !  Computation of local domain sizes ilcitl() ilcjtl()
@@ -348,9 +348,6 @@ CONTAINS
 
       ijpi = ( jpiglo-2*jpreci + (isplt-1) ) / isplt + 2*jpreci
       ijpj = ( jpjglo-2*jprecj + (jsplt-1) ) / jsplt + 2*jprecj
-
-      ALLOCATE( ilcitl (isplt,jsplt) )
-      ALLOCATE( ilcjtl (isplt,jsplt) )
 
       nrecil  = 2 * jpreci
       nrecjl  = 2 * jprecj
@@ -390,9 +387,6 @@ CONTAINS
       ! Index arrays for subdomains
       ! ---------------------------
 
-      ALLOCATE( iimpptl(isplt,jsplt) )
-      ALLOCATE( ijmpptl(isplt,jsplt) )
-      
       iimpptl(:,:) = 1
       ijmpptl(:,:) = 1
       
@@ -449,11 +443,8 @@ CONTAINS
          nldjtl(js) = nldjl
          nlejtl(js) = nlejl
       END DO
-
-      DEALLOCATE( iimpptl )
-      DEALLOCATE( ijmpptl )
-      DEALLOCATE( ilcitl )
-      DEALLOCATE( ilcjtl )
+      !
+      CALL wrk_dealloc( isplt, jsplt, ilcitl, ilcjtl, iimpptl, ijmpptl )
       !
    END SUBROUTINE sub_dom
  
@@ -465,7 +456,7 @@ CONTAINS
  
    !!----------------------------------------------------------------------
    !! NEMO/TOP 3.3 , NEMO Consortium (2010)
-   !! $Id: prtctl_trc.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence (NEMOGCM/NEMO_CeCILL.txt)
    !!======================================================================   
 END MODULE prtctl_trc

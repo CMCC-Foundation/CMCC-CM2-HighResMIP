@@ -38,6 +38,7 @@ MODULE trcrst
    PUBLIC   trc_rst_opn       ! called by ???
    PUBLIC   trc_rst_read      ! called by ???
    PUBLIC   trc_rst_wri       ! called by ???
+   PUBLIC   trc_rst_cal
 
    INTEGER, PUBLIC ::   numrtr, numrtw   !: logical unit for trc restart (read and write)
 
@@ -59,24 +60,24 @@ CONTAINS
       !!----------------------------------------------------------------------
       !
       IF( lk_offline ) THEN
-         IF( kt == nit000 ) THEN
+         IF( kt == nittrc000 ) THEN
             lrst_trc = .FALSE.
             nitrst = nitend
          ENDIF
 
          IF( MOD( kt - 1, nstock ) == 0 ) THEN
-            ! we use kt - 1 and not kt - nit000 to keep the same periodicity from the beginning of the experiment
+            ! we use kt - 1 and not kt - nittrc000 to keep the same periodicity from the beginning of the experiment
             nitrst = kt + nstock - 1                  ! define the next value of nitrst for restart writing
             IF( nitrst > nitend )   nitrst = nitend   ! make sure we write a restart at the end of the run
          ENDIF
       ELSE
-         IF( kt == nit000 ) lrst_trc = .FALSE.
+         IF( kt == nittrc000 ) lrst_trc = .FALSE.
       ENDIF
 
       ! to get better performances with NetCDF format:
       ! we open and define the tracer restart file one tracer time step before writing the data (-> at nitrst - 2*nn_dttrc + 1)
       ! except if we write tracer restart files every tracer time step or if a tracer restart file was writen at nitend - 2*nn_dttrc + 1
-      IF( kt == nitrst - 2*nn_dttrc + 1 .OR. nstock == nn_dttrc .OR. ( kt == nitend - nn_dttrc + 1 .AND. .NOT. lrst_trc ) ) THEN
+      IF( kt == nitrst - 2*nn_dttrc .OR. nstock == nn_dttrc .OR. ( kt == nitend - nn_dttrc .AND. .NOT. lrst_trc ) ) THEN
          ! beware of the format used to write kt (default is i8.8, that should be large enough)
          IF( nitrst > 1.0e9 ) THEN   ;   WRITE(clkt,*       ) nitrst
          ELSE                        ;   WRITE(clkt,'(i8.8)') nitrst
@@ -98,27 +99,12 @@ CONTAINS
       !! ** purpose  :   read passive tracer fields in restart files
       !!----------------------------------------------------------------------
       INTEGER  ::  jn     
-      INTEGER  ::  jlibalt = jprstlib
-      LOGICAL  ::  llok
 
       !!----------------------------------------------------------------------
-
+      !
       IF(lwp) WRITE(numout,*)
-      IF(lwp) WRITE(numout,*) 'trc_rst_read : read the TOP restart file'
+      IF(lwp) WRITE(numout,*) 'trc_rst_read : read data in the TOP restart file'
       IF(lwp) WRITE(numout,*) '~~~~~~~~~~~~'
-
-      IF ( jprstlib == jprstdimg ) THEN
-        ! eventually read netcdf file (monobloc)  for restarting on different number of processors
-        ! if {cn_trcrst_in}.nc exists, then set jlibalt to jpnf90 
-        INQUIRE( FILE = TRIM(cn_trcrst_in)//'.nc', EXIST = llok )
-        IF ( llok ) THEN ; jlibalt = jpnf90  ; ELSE ; jlibalt = jprstlib ; ENDIF 
-      ENDIF
-
-      CALL iom_open( cn_trcrst_in, numrtr, kiolib = jlibalt ) 
-
-      ! Time domain : restart
-      ! ---------------------
-      CALL trc_rst_cal( nit000, 'READ' )   ! calendar
 
       ! READ prognostic variables and computes diagnostic variable
       DO jn = 1, jptra
@@ -150,8 +136,7 @@ CONTAINS
       INTEGER  :: jn
       REAL(wp) :: zarak0
       !!----------------------------------------------------------------------
-
-
+      !
       CALL trc_rst_cal( kt, 'WRITE' )   ! calendar
       CALL iom_rstput( kt, nitrst, numrtw, 'rdttrc1', rdttrc(1) )   ! surface passive tracer time step
       ! prognostic variables 
@@ -195,12 +180,12 @@ CONTAINS
       !!       ndastp    : date at the end of the current(previous) run (coded as yyyymmdd integer)
       !!
       !!   According to namelist parameter nrstdt,
-      !!       nn_rsttr = 0  no control on the date (nit000 is  arbitrary).
-      !!       nn_rsttr = 1  we verify that nit000 is equal to the last
+      !!       nn_rsttr = 0  no control on the date (nittrc000 is  arbitrary).
+      !!       nn_rsttr = 1  we verify that nittrc000 is equal to the last
       !!                   time step of previous run + 1.
       !!       In both those options, the  exact duration of the experiment
       !!       since the beginning (cumulated duration of all previous restart runs)
-      !!       is not stored in the restart and is assumed to be (nit000-1)*rdt.
+      !!       is not stored in the restart and is assumed to be (nittrc000-1)*rdt.
       !!       This is valid is the time step has remained constant.
       !!
       !!       nn_rsttr = 2  the duration of the experiment in days (adatrj)
@@ -209,6 +194,8 @@ CONTAINS
       INTEGER         , INTENT(in) ::   kt         ! ocean time-step
       CHARACTER(len=*), INTENT(in) ::   cdrw       ! "READ"/"WRITE" flag
       !
+      INTEGER  ::  jlibalt = jprstlib
+      LOGICAL  ::  llok
       REAL(wp) ::  zkt, zrdttrc1
       REAL(wp) ::  zndastp
 
@@ -216,21 +203,35 @@ CONTAINS
       ! ---------------------
 
       IF( TRIM(cdrw) == 'READ' ) THEN
+
+         IF(lwp) WRITE(numout,*)
+         IF(lwp) WRITE(numout,*) 'trc_rst_cal : read the TOP restart file for calendar'
+         IF(lwp) WRITE(numout,*) '~~~~~~~~~~~~'
+
+         IF ( jprstlib == jprstdimg ) THEN
+           ! eventually read netcdf file (monobloc)  for restarting on different number of processors
+           ! if {cn_trcrst_in}.nc exists, then set jlibalt to jpnf90 
+           INQUIRE( FILE = TRIM(cn_trcrst_in)//'.nc', EXIST = llok )
+           IF ( llok ) THEN ; jlibalt = jpnf90  ; ELSE ; jlibalt = jprstlib ; ENDIF
+         ENDIF
+
+         CALL iom_open( cn_trcrst_in, numrtr, kiolib = jlibalt )
+
          CALL iom_get ( numrtr, 'kt', zkt )   ! last time-step of previous run
          IF(lwp) THEN
             WRITE(numout,*) ' *** Info read in restart : '
             WRITE(numout,*) '   previous time-step                               : ', NINT( zkt )
             WRITE(numout,*) ' *** restart option'
             SELECT CASE ( nn_rsttr )
-            CASE ( 0 )   ;   WRITE(numout,*) ' nn_rsttr = 0 : no control of nit000'
-            CASE ( 1 )   ;   WRITE(numout,*) ' nn_rsttr = 1 : no control the date at nit000 (use ndate0 read in the namelist)'
+            CASE ( 0 )   ;   WRITE(numout,*) ' nn_rsttr = 0 : no control of nittrc000'
+            CASE ( 1 )   ;   WRITE(numout,*) ' nn_rsttr = 1 : no control the date at nittrc000 (use ndate0 read in the namelist)'
             CASE ( 2 )   ;   WRITE(numout,*) ' nn_rsttr = 2 : calendar parameters read in restart'
             END SELECT
             WRITE(numout,*)
          ENDIF
          ! Control of date 
-         IF( nit000  - NINT( zkt ) /= 1 .AND.  nn_rsttr /= 0 )                                  &
-            &   CALL ctl_stop( ' ===>>>> : problem with nit000 for the restart',                 &
+         IF( nittrc000  - NINT( zkt ) /= nn_dttrc .AND.  nn_rsttr /= 0 )                                  &
+            &   CALL ctl_stop( ' ===>>>> : problem with nittrc000 for the restart',                 &
             &                  ' verify the restart file or rerun with nn_rsttr = 0 (namelist)' )
          IF( lk_offline ) THEN      ! set the date in offline mode
             ! Check dynamics and tracer time-step consistency and force Euler restart if changed
@@ -245,7 +246,7 @@ CONTAINS
                CALL iom_get( numrtr, 'adatrj', adatrj  )
             ELSE
                ndastp = ndate0 - 1     ! ndate0 read in the namelist in dom_nam
-               adatrj = ( REAL( nit000-1, wp ) * rdttra(1) ) / rday
+               adatrj = ( REAL( nittrc000-1, wp ) * rdttra(1) ) / rday
                ! note this is wrong if time step has changed during run
             ENDIF
             !
@@ -282,42 +283,32 @@ CONTAINS
       !!
       !! ** purpose  :   Compute tracers statistics
       !!----------------------------------------------------------------------
-
-      INTEGER  :: jn
-      REAL(wp) :: zdiag_var, zdiag_varmin, zdiag_varmax, zdiag_tot
-      REAL(wp) :: zder
+      INTEGER  :: jk, jn
+      REAL(wp) :: ztraf, zmin, zmax, zmean, zdrift
       !!----------------------------------------------------------------------
-
 
       IF( lwp ) THEN
          WRITE(numout,*) 
          WRITE(numout,*) '           ----TRACER STAT----             '
          WRITE(numout,*) 
       ENDIF
-      
-      zdiag_tot = 0.e0
+      !
       DO jn = 1, jptra
-#  if defined key_degrad
-         zdiag_var = glob_sum( trn(:,:,:,jn) * cvol(:,:,:) * facvol(:,:,:) )
-#  else
-         zdiag_var = glob_sum( trn(:,:,:,jn) * cvol(:,:,:)  )
-#  endif
-         zdiag_varmin = MINVAL( trn(:,:,:,jn), mask= ((tmask*SPREAD(tmask_i,DIM=3,NCOPIES=jpk).NE.0.)) )
-         zdiag_varmax = MAXVAL( trn(:,:,:,jn), mask= ((tmask*SPREAD(tmask_i,DIM=3,NCOPIES=jpk).NE.0.)) )
+         ztraf = glob_sum( trn(:,:,:,jn) * cvol(:,:,:) )
+         zmin  = MINVAL( trn(:,:,:,jn), mask= ((tmask*SPREAD(tmask_i,DIM=3,NCOPIES=jpk).NE.0.)) )
+         zmax  = MAXVAL( trn(:,:,:,jn), mask= ((tmask*SPREAD(tmask_i,DIM=3,NCOPIES=jpk).NE.0.)) )
          IF( lk_mpp ) THEN
-            CALL mpp_min( zdiag_varmin )      ! min over the global domain
-            CALL mpp_max( zdiag_varmax )      ! max over the global domain
+            CALL mpp_min( zmin )      ! min over the global domain
+            CALL mpp_max( zmax )      ! max over the global domain
          END IF
-         zdiag_tot = zdiag_tot + zdiag_var
-         zdiag_var = zdiag_var / areatot
-         IF(lwp) WRITE(numout,*) '   MEAN NO ', jn, ctrcnm(jn), ' = ', zdiag_var,   &
-            &                    ' MIN = ', zdiag_varmin, ' MAX = ', zdiag_varmax
+         zmean  = ztraf / areatot
+         zdrift = ( ( ztraf - trai(jn) ) / ( trai(jn) + 1.e-12 )  ) * 100._wp
+         IF(lwp) WRITE(numout,9000) jn, TRIM( ctrcnm(jn) ), zmean, zmin, zmax, zdrift
       END DO
-      
-      zder = ( ( zdiag_tot - trai ) / ( trai + 1.e-12 )  ) * 100._wp
-      IF(lwp) WRITE(numout,*) '   Integral of all tracers over the full domain  = ', zdiag_tot
-      IF(lwp) WRITE(numout,*) '   Drift of the sum of all tracers =', zder, ' %'
-      
+      WRITE(numout,*) 
+9000  FORMAT(' tracer nb :',i2,'    name :',a10,'    mean :',e18.10,'    min :',e18.10, &
+      &      '    max :',e18.10,'    drift :',e18.10, ' %')
+      !
    END SUBROUTINE trc_rst_stat
 
 #else
@@ -335,7 +326,7 @@ CONTAINS
 
    !!----------------------------------------------------------------------
    !! NEMO/TOP 3.3 , NEMO Consortium (2010)
-   !! $Id: trcrst.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence (NEMOGCM/NEMO_CeCILL.txt)
    !!======================================================================
 END MODULE trcrst

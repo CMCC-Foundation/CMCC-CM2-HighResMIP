@@ -27,17 +27,17 @@ MODULE trcsms_cfc
    PUBLIC   trc_sms_cfc         ! called in ???    
    PUBLIC   trc_sms_cfc_alloc   ! called in trcini_cfc.F90
 
-   INTEGER , PUBLIC, PARAMETER ::   jpyear = 150   ! temporal parameter 
    INTEGER , PUBLIC, PARAMETER ::   jphem  =   2   ! parameter for the 2 hemispheres
-   INTEGER , PUBLIC    ::   ndate_beg      ! initial calendar date (aammjj) for CFC
-   INTEGER , PUBLIC    ::   nyear_res      ! restoring time constant (year)
-   INTEGER , PUBLIC    ::   nyear_beg      ! initial year (aa) 
-   INTEGER , PUBLIC    ::   npyear         ! Number of years read in CFC1112 file
+   INTEGER , PUBLIC            ::   jpyear         ! Number of years read in CFC1112 file
+   INTEGER , PUBLIC            ::   ndate_beg      ! initial calendar date (aammjj) for CFC
+   INTEGER , PUBLIC            ::   nyear_res      ! restoring time constant (year)
+   INTEGER , PUBLIC            ::   nyear_beg      ! initial year (aa) 
    
-   REAL(wp), PUBLIC, DIMENSION(jpyear,jphem, 2    )      ::   p_cfc    ! partial hemispheric pressure for CFC
+   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   p_cfc    ! partial hemispheric pressure for CFC
    REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:)   ::   xphem    ! spatial interpolation factor for patm
    REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   qtr_cfc  ! flux at surface
    REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   qint_cfc ! cumulative flux 
+   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:)   ::   patm     ! atmospheric function
 
    REAL(wp), DIMENSION(4,2) ::   soa   ! coefficient for solubility of CFC [mol/l/atm]
    REAL(wp), DIMENSION(3,2) ::   sob   !    "               "
@@ -53,7 +53,7 @@ MODULE trcsms_cfc
 #  include "top_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/TOP 3.3 , NEMO Consortium (2010)
-   !! $Id: trcsms_cfc.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -74,14 +74,12 @@ CONTAINS
       !!              - the input function is in pico-mol/m3/s and the
       !!                CFC concentration in pico-mol/m3
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   ztrcfc => wrk_3d_1        ! use for CFC sms trend
       !
       INTEGER, INTENT(in) ::   kt    ! ocean time-step index
       !
       INTEGER  ::   ji, jj, jn, jl, jm, js
       INTEGER  ::   iyear_beg, iyear_end
-      INTEGER  ::   im1, im2
+      INTEGER  ::   im1, im2, ierr
       REAL(wp) ::   ztap, zdtap        
       REAL(wp) ::   zt1, zt2, zt3, zv2
       REAL(wp) ::   zsol      ! solubility
@@ -89,14 +87,18 @@ CONTAINS
       REAL(wp) ::   zpp_cfc   ! atmospheric partial pressure of CFC
       REAL(wp) ::   zca_cfc   ! concentration at equilibrium
       REAL(wp) ::   zak_cfc   ! transfert coefficients
-      REAL(wp), DIMENSION(jphem,jp_cfc) ::   zpatm   ! atmospheric function
+      REAL(wp), ALLOCATABLE, DIMENSION(:,:)  ::   zpatm     ! atmospheric function
       !!----------------------------------------------------------------------
       !
-      IF( wrk_in_use(3, 1) ) THEN
-         CALL ctl_stop('trc_sms_cfc: requested workspace array unavailable')   ;   RETURN
+      !
+      IF( nn_timing == 1 )  CALL timing_start('trc_sms_cfc')
+      !
+      ALLOCATE( zpatm(jphem,jp_cfc), STAT=ierr )
+      IF( ierr > 0 ) THEN
+         CALL ctl_stop( 'trc_sms_cfc: unable to allocate zpatm array' )   ;   RETURN
       ENDIF
 
-      IF( kt == nit000 )   CALL trc_cfc_cst
+      IF( kt == nittrc000 )   CALL trc_cfc_cst
 
       ! Temporal interpolation
       ! ----------------------
@@ -157,13 +159,12 @@ CONTAINS
                zak_cfc = ( 0.39 * xconv2 * zv2 / SQRT(zsch) ) * tmask(ji,jj,1)
 
                ! Input function  : speed *( conc. at equil - concen at surface )
-               ! trn in pico-mol/l idem qtr; ak in en m/s
+               ! trn in pico-mol/l idem qtr; ak in en m/a
                qtr_cfc(ji,jj,jl) = -zak_cfc * ( trb(ji,jj,1,jn) - zca_cfc )   &
 #if defined key_degrad
                   &                         * facvol(ji,jj,1)                           &
 #endif
                   &                         * tmask(ji,jj,1) * ( 1. - fr_i(ji,jj) )
-
                ! Add the surface flux to the trend
                tra(ji,jj,1,jn) = tra(ji,jj,1,jn) + qtr_cfc(ji,jj,jl) / fse3t(ji,jj,1) 
 
@@ -175,26 +176,25 @@ CONTAINS
          !                                                  !----------------!
       END DO                                                !  end CFC loop  !
       !                                                     !----------------!
-
-#if defined key_diatrc 
-      ! Save diagnostics , just for CFC11
-# if  defined key_iomput
-      CALL iom_put( "qtrCFC11"  , qtr_cfc (:,:,1) )
-      CALL iom_put( "qintCFC11" , qint_cfc(:,:,1) )
-# else
-      trc2d(:,:,jp_cfc0_2d    ) = qtr_cfc (:,:,1)
-      trc2d(:,:,jp_cfc0_2d + 1) = qint_cfc(:,:,1)
-# endif
-#endif
-
+      IF( ln_diatrc ) THEN
+        !
+        IF( lk_iomput ) THEN
+           CALL iom_put( "qtrCFC11"  , qtr_cfc (:,:,1) )
+           CALL iom_put( "qintCFC11" , qint_cfc(:,:,1) )
+        ELSE
+           trc2d(:,:,jp_cfc0_2d    ) = qtr_cfc (:,:,1)
+           trc2d(:,:,jp_cfc0_2d + 1) = qint_cfc(:,:,1)
+        END IF
+        !
+      END IF
+ 
       IF( l_trdtrc ) THEN
           DO jn = jp_cfc0, jp_cfc1
-            ztrcfc(:,:,:) = tra(:,:,:,jn)
-            CALL trd_mod_trc( ztrcfc, jn, jptra_trd_sms, kt )   ! save trends
+            CALL trd_mod_trc( tra(:,:,:,jn), jn, jptra_trd_sms, kt )   ! save trends
           END DO
       END IF
       !
-      IF( wrk_not_released(3, 1) )   CALL ctl_stop('trc_sms_cfc: failed to release workspace array')
+      IF( nn_timing == 1 )  CALL timing_stop('trc_sms_cfc')
       !
    END SUBROUTINE trc_sms_cfc
 

@@ -6,7 +6,7 @@ MODULE par_pisces
    !! History :   2.0  !  2007-12  (C. Ethe, G. Madec)  revised architecture
    !!----------------------------------------------------------------------
    !! NEMO/TOP 3.3 , NEMO Consortium (2010)
-   !! $Id: par_pisces.F90 2528 2010-12-27 17:33:53Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
    USE par_lobster, ONLY : jp_lobster      !: number of tracers in LOBSTER
@@ -28,8 +28,8 @@ MODULE par_pisces
    LOGICAL, PUBLIC, PARAMETER ::   lk_pisces     = .TRUE.  !: PISCES flag 
    LOGICAL, PUBLIC, PARAMETER ::   lk_kriest     = .TRUE.  !: Kriest flag 
    INTEGER, PUBLIC, PARAMETER ::   jp_pisces     =  23     !: number of passive tracers
-   INTEGER, PUBLIC, PARAMETER ::   jp_pisces_2d  =  13     !: additional 2d output ('key_diatrc')
-   INTEGER, PUBLIC, PARAMETER ::   jp_pisces_3d  =  18     !: additional 3d output ('key_diatrc')
+   INTEGER, PUBLIC, PARAMETER ::   jp_pisces_2d  =  13     !: additional 2d output 
+   INTEGER, PUBLIC, PARAMETER ::   jp_pisces_3d  =  18     !: additional 3d output 
    INTEGER, PUBLIC, PARAMETER ::   jp_pisces_trd =   1     !: number of sms trends for PISCES
 
    ! assign an index in trc arrays for each LOBSTER prognostic variables
@@ -47,12 +47,12 @@ MODULE par_pisces
    INTEGER, PUBLIC, PARAMETER ::   jpdoc = jp_lp + 10    !: dissolved organic carbon concentration 
    INTEGER, PUBLIC, PARAMETER ::   jpdia = jp_lp + 11    !: Diatoms Concentration
    INTEGER, PUBLIC, PARAMETER ::   jpmes = jp_lp + 12    !: Mesozooplankton Concentration
-   INTEGER, PUBLIC, PARAMETER ::   jpbsi = jp_lp + 13    !: (big) Silicate Concentration
+   INTEGER, PUBLIC, PARAMETER ::   jpdsi = jp_lp + 13    !: (big) Silicate Concentration
    INTEGER, PUBLIC, PARAMETER ::   jpfer = jp_lp + 14    !: Iron Concentration
    INTEGER, PUBLIC, PARAMETER ::   jpnum = jp_lp + 15    !: Big iron particles Concentration
    INTEGER, PUBLIC, PARAMETER ::   jpsfe = jp_lp + 16    !: number of particulate organic phosphate concentration
    INTEGER, PUBLIC, PARAMETER ::   jpdfe = jp_lp + 17    !: Diatoms iron Concentration
-   INTEGER, PUBLIC, PARAMETER ::   jpdsi = jp_lp + 18    !: Diatoms Silicate Concentration
+   INTEGER, PUBLIC, PARAMETER ::   jpgsi = jp_lp + 18    !: Diatoms Silicate Concentration
    INTEGER, PUBLIC, PARAMETER ::   jpnfe = jp_lp + 19    !: Nano iron Concentration
    INTEGER, PUBLIC, PARAMETER ::   jpnch = jp_lp + 20    !: Nano Chlorophyll Concentration
    INTEGER, PUBLIC, PARAMETER ::   jpdch = jp_lp + 21    !: Diatoms Chlorophyll Concentration
@@ -66,8 +66,8 @@ MODULE par_pisces
    LOGICAL, PUBLIC, PARAMETER ::   lk_pisces     = .TRUE.  !: PISCES flag 
    LOGICAL, PUBLIC, PARAMETER ::   lk_kriest     = .FALSE. !: Kriest flag 
    INTEGER, PUBLIC, PARAMETER ::   jp_pisces     = 24      !: number of PISCES passive tracers
-   INTEGER, PUBLIC, PARAMETER ::   jp_pisces_2d  = 13      !: additional 2d output ('key_diatrc')
-   INTEGER, PUBLIC, PARAMETER ::   jp_pisces_3d  = 11      !: additional 3d output ('key_diatrc')
+   INTEGER, PUBLIC, PARAMETER ::   jp_pisces_2d  = 13      !: additional 2d output 
+   INTEGER, PUBLIC, PARAMETER ::   jp_pisces_3d  = 11      !: additional 3d output 
    INTEGER, PUBLIC, PARAMETER ::   jp_pisces_trd =  1      !: number of sms trends for PISCES
 
    ! assign an index in trc arrays for each LOBSTER prognostic variables
@@ -85,13 +85,13 @@ MODULE par_pisces
    INTEGER, PUBLIC, PARAMETER ::   jpdoc = jp_lp + 10    !: dissolved organic carbon concentration 
    INTEGER, PUBLIC, PARAMETER ::   jpdia = jp_lp + 11    !: Diatoms Concentration
    INTEGER, PUBLIC, PARAMETER ::   jpmes = jp_lp + 12    !: Mesozooplankton Concentration
-   INTEGER, PUBLIC, PARAMETER ::   jpbsi = jp_lp + 13    !: (big) Silicate Concentration
+   INTEGER, PUBLIC, PARAMETER ::   jpdsi = jp_lp + 13    !: (big) Silicate Concentration
    INTEGER, PUBLIC, PARAMETER ::   jpfer = jp_lp + 14    !: Iron Concentration
    INTEGER, PUBLIC, PARAMETER ::   jpbfe = jp_lp + 15    !: Big iron particles Concentration
    INTEGER, PUBLIC, PARAMETER ::   jpgoc = jp_lp + 16    !: big particulate organic phosphate concentration
    INTEGER, PUBLIC, PARAMETER ::   jpsfe = jp_lp + 17    !: Small iron particles Concentration
    INTEGER, PUBLIC, PARAMETER ::   jpdfe = jp_lp + 18    !: Diatoms iron Concentration
-   INTEGER, PUBLIC, PARAMETER ::   jpdsi = jp_lp + 19    !: Diatoms Silicate Concentration
+   INTEGER, PUBLIC, PARAMETER ::   jpgsi = jp_lp + 19    !: Diatoms Silicate Concentration
    INTEGER, PUBLIC, PARAMETER ::   jpnfe = jp_lp + 20    !: Nano iron Concentration
    INTEGER, PUBLIC, PARAMETER ::   jpnch = jp_lp + 21    !: Nano Chlorophyll Concentration
    INTEGER, PUBLIC, PARAMETER ::   jpdch = jp_lp + 22    !: Diatoms Chlorophyll Concentration

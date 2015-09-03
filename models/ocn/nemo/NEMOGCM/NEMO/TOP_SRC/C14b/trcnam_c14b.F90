@@ -15,6 +15,7 @@ MODULE trcnam_c14b
    USE par_trc         ! TOP parameters
    USE trc             ! TOP variables
    USE trcsms_c14b     ! C14b specific variable
+   USE iom             ! I/O manager
 
    IMPLICIT NONE
    PRIVATE
@@ -23,7 +24,7 @@ MODULE trcnam_c14b
 
    !!----------------------------------------------------------------------
    !! NEMO/TOP 3.3 , NEMO Consortium (2010)
-   !! $Id: trcnam_c14b.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 
@@ -36,29 +37,19 @@ CONTAINS
       !! ** Purpose :   Definition some run parameter for C14 model
       !!
       !! ** Method  :   Read the namc14 namelist and check the parameter 
-      !!       values called at the first timestep (nit000)
+      !!       values called at the first timestep (nittrc000)
       !!
       !! ** input   :   Namelist namelist_c14b
       !!----------------------------------------------------------------------
       INTEGER ::   numnatb
 
-#if defined key_diatrc && ! defined key_iomput
       ! definition of additional diagnostic as a structure
-      INTEGER ::   jl, jn
-      TYPE DIAG
-         CHARACTER(len = 20)  :: snamedia   !: short name
-         CHARACTER(len = 80 ) :: lnamedia   !: long name
-         CHARACTER(len = 20 ) :: unitdia    !: unit
-      END TYPE DIAG
-
-      TYPE(DIAG) , DIMENSION(jp_c14b_2d) :: c14dia2d
-      TYPE(DIAG) , DIMENSION(jp_c14b_3d) :: c14dia3d
-#endif
+      INTEGER :: jl, jn
+      TYPE(DIAG), DIMENSION(jp_c14b_2d) :: c14dia2d
+      TYPE(DIAG), DIMENSION(jp_c14b_3d) :: c14dia3d
       !!
       NAMELIST/namc14date/ ndate_beg_b, nyear_res_b
-#if defined key_diatrc && ! defined key_iomput
-      NAMELIST/namc14dia/nn_writedia, c14dia2d, c14dia3d     ! additional diagnostics
-#endif
+      NAMELIST/namc14dia/  c14dia2d, c14dia3d     ! additional diagnostics
       !!-------------------------------------------------------------------
 
       ndate_beg_b = 650101            ! default namelist value
@@ -79,67 +70,58 @@ CONTAINS
       nyear_beg_b = ndate_beg_b / 10000
       IF(lwp) WRITE(numout,*) '    initial year (aa)                  nyear_beg_b = ', nyear_beg_b
       !
-#if defined key_diatrc && ! defined key_iomput
-
-      ! Namelist namc14dia
-      ! -------------------
-      nn_writedia = 10                   ! default values
-
-      DO jl = 1, jp_c14b_2d
-         jn = jp_c14b0_2d + jl - 1
-         WRITE(ctrc2d(jn),'("2D_",I1)') jn                      ! short name
-         WRITE(ctrc2l(jn),'("2D DIAGNOSTIC NUMBER ",I2)') jn    ! long name
-         ctrc2u(jn) = ' '                                       ! units
-      END DO
-      !                                 ! 3D output arrays
-      DO jl = 1, jp_c14b_3d
-         jn = jp_c14b0_3d + jl - 1
-         WRITE(ctrc3d(jn),'("3D_",I1)') jn                      ! short name
-         WRITE(ctrc3l(jn),'("3D DIAGNOSTIC NUMBER ",I2)') jn    ! long name
-         ctrc3u(jn) = ' '                                       ! units
-      END DO
-
-      REWIND( numnatb )               ! read natrtd
-      READ  ( numnatb, namc14dia )
-
-      DO jl = 1, jp_c14b_2d
-         jn = jp_c14b0_2d + jl - 1
-         ctrc2d(jn) = c14dia2d(jl)%snamedia
-         ctrc2l(jn) = c14dia2d(jl)%lnamedia
-         ctrc2u(jn) = c14dia2d(jl)%unitdia
-      END DO
-
-      DO jl = 1, jp_c14b_3d
-         jn = jp_c14b0_3d + jl - 1
-         ctrc3d(jn) = c14dia3d(jl)%snamedia
-         ctrc3l(jn) = c14dia3d(jl)%lnamedia
-         ctrc3u(jn) = c14dia3d(jl)%unitdia
-      END DO
-
-      IF(lwp) THEN                   ! control print
-         WRITE(numout,*)
-         WRITE(numout,*) ' Namelist : natadd'
-         WRITE(numout,*) '    frequency of outputs for additional arrays nn_writedia = ', nn_writedia
-         DO jl = 1, jp_c14b_3d
-            jn = jp_c14b0_3d + jl - 1
-            WRITE(numout,*) '   3d output field No : ',jn
-            WRITE(numout,*) '   short name         : ', TRIM(ctrc3d(jn))
-            WRITE(numout,*) '   long name          : ', TRIM(ctrc3l(jn))
-            WRITE(numout,*) '   unit               : ', TRIM(ctrc3u(jn))
-            WRITE(numout,*) ' '
+      IF( .NOT.lk_iomput .AND. ln_diatrc ) THEN
+         !
+         ! Namelist namc14dia
+         ! -------------------
+         DO jl = 1, jp_c14b_2d
+            WRITE(c14dia2d(jl)%sname,'("2D_",I1)') jl                      ! short name
+            WRITE(c14dia2d(jl)%lname,'("2D DIAGNOSTIC NUMBER ",I2)') jl    ! long name
+            c14dia2d(jl)%units = ' '                                       ! units
          END DO
+         !                                 ! 3D output arrays
+         DO jl = 1, jp_c14b_3d
+            WRITE(c14dia3d(jl)%sname,'("3D_",I1)') jl                      ! short name
+            WRITE(c14dia3d(jl)%lname,'("3D DIAGNOSTIC NUMBER ",I2)') jl    ! long name
+            c14dia3d(jl)%units = ' '                                       ! units
+         END DO
+
+         REWIND( numnatb )               ! 
+         READ  ( numnatb, namc14dia )
 
          DO jl = 1, jp_c14b_2d
             jn = jp_c14b0_2d + jl - 1
-            WRITE(numout,*) '   2d output field No : ',jn
-            WRITE(numout,*) '   short name         : ', TRIM(ctrc2d(jn))
-            WRITE(numout,*) '   long name          : ', TRIM(ctrc2l(jn))
-            WRITE(numout,*) '   unit               : ', TRIM(ctrc2u(jn))
-            WRITE(numout,*) ' '
+            ctrc2d(jn) = c14dia2d(jl)%sname
+            ctrc2l(jn) = c14dia2d(jl)%lname
+            ctrc2u(jn) = c14dia2d(jl)%units
          END DO
-      ENDIF
 
-#endif
+         DO jl = 1, jp_c14b_3d
+            jn = jp_c14b0_3d + jl - 1
+            ctrc3d(jn) = c14dia3d(jl)%sname
+            ctrc3l(jn) = c14dia3d(jl)%lname
+            ctrc3u(jn) = c14dia3d(jl)%units
+         END DO
+
+         IF(lwp) THEN                   ! control print
+            WRITE(numout,*)
+            WRITE(numout,*) ' Namelist : natadd'
+            DO jl = 1, jp_c14b_3d
+               jn = jp_c14b0_3d + jl - 1
+               WRITE(numout,*) '  3d diag nb : ', jn, '    short name : ', ctrc3d(jn), &
+                 &             '  long name  : ', ctrc3l(jn), '   unit : ', ctrc3u(jn)
+            END DO
+            WRITE(numout,*) ' '
+
+            DO jl = 1, jp_c14b_2d
+               jn = jp_c14b0_2d + jl - 1
+               WRITE(numout,*) '  2d diag nb : ', jn, '    short name : ', ctrc2d(jn), &
+                 &             '  long name  : ', ctrc2l(jn), '   unit : ', ctrc2u(jn)
+            END DO
+            WRITE(numout,*) ' '
+         ENDIF
+         !
+      ENDIF
 
    END SUBROUTINE trc_nam_c14b
    

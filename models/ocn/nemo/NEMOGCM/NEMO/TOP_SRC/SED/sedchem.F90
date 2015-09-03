@@ -6,8 +6,9 @@ MODULE sedchem
    !! sediment :   Variable for chemistry of the CO2 cycle
    !!======================================================================
    !!   modules used
-   USE sed     ! sediment global variable
+   USE sed            ! sediment global variable
    USE sedarr
+   USE lib_fortran    ! Fortran utilities (allows no signed zero when 'key_nosignedzero' defined)
 
    !! * Accessibility
    PUBLIC sed_chem   

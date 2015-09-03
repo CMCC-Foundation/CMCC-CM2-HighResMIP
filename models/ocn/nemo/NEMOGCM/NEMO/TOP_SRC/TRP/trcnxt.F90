@@ -47,7 +47,7 @@ MODULE trcnxt
 
    !!----------------------------------------------------------------------
    !! NEMO/TOP 3.3 , NEMO Consortium (2010)
-   !! $Id: trcnxt.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -92,10 +92,12 @@ CONTAINS
       INTEGER  ::   jk, jn   ! dummy loop indices
       REAL(wp) ::   zfact            ! temporary scalar
       CHARACTER (len=22) :: charout
-      REAL(wp), DIMENSION(:,:,:,:), ALLOCATABLE ::  ztrdt 
+      REAL(wp), POINTER, DIMENSION(:,:,:,:) ::  ztrdt 
       !!----------------------------------------------------------------------
-
-      IF( kt == nit000 .AND. lwp ) THEN
+      !
+      IF( nn_timing == 1 )  CALL timing_start('trc_nxt')
+      !
+      IF( kt == nittrc000 .AND. lwp ) THEN
          WRITE(numout,*)
          WRITE(numout,*) 'trc_nxt : time stepping on passive tracers'
       ENDIF
@@ -118,18 +120,18 @@ CONTAINS
 
 
       ! set time step size (Euler/Leapfrog)
-      IF( neuler == 0 .AND. kt ==  nit000) THEN  ;  r2dt(:) =     rdttrc(:)   ! at nit000             (Euler)
-      ELSEIF( kt <= nit000 + 1 )           THEN  ;  r2dt(:) = 2.* rdttrc(:)   ! at nit000 or nit000+1 (Leapfrog)
+      IF( neuler == 0 .AND. kt ==  nittrc000 ) THEN  ;  r2dt(:) =     rdttrc(:)   ! at nittrc000             (Euler)
+      ELSEIF( kt <= nittrc000 + 1 )            THEN  ;  r2dt(:) = 2.* rdttrc(:)   ! at nit000 or nit000+1 (Leapfrog)
       ENDIF
 
       ! trends computation initialisation
       IF( l_trdtrc )  THEN
-         ALLOCATE( ztrdt(jpi,jpj,jpk,jptra) )  !* store now fields before applying the Asselin filter
+         CALL wrk_alloc( jpi, jpj, jpk, jptra, ztrdt )  !* store now fields before applying the Asselin filter
          ztrdt(:,:,:,:)  = trn(:,:,:,:)
       ENDIF
       ! Leap-Frog + Asselin filter time stepping
-      IF( neuler == 0 .AND. kt == nit000 ) THEN        ! Euler time-stepping at first time-step
-         !                                             ! (only swap)
+      IF( neuler == 0 .AND. kt == nittrc000 ) THEN        ! Euler time-stepping at first time-step
+         !                                                ! (only swap)
          DO jn = 1, jptra
             DO jk = 1, jpkm1
                trn(:,:,jk,jn) = tra(:,:,jk,jn)
@@ -138,8 +140,8 @@ CONTAINS
          !                                              
       ELSE
          ! Leap-Frog + Asselin filter time stepping
-         IF( lk_vvl ) THEN   ;   CALL tra_nxt_vvl( kt, 'TRC', trb, trn, tra, jptra )      ! variable volume level (vvl) 
-         ELSE                ;   CALL tra_nxt_fix( kt, 'TRC', trb, trn, tra, jptra )      ! fixed    volume level 
+         IF( lk_vvl ) THEN   ;   CALL tra_nxt_vvl( kt, nittrc000, 'TRC', trb, trn, tra, jptra )      ! variable volume level (vvl) 
+         ELSE                ;   CALL tra_nxt_fix( kt, nittrc000, 'TRC', trb, trn, tra, jptra )      ! fixed    volume level 
          ENDIF
       ENDIF
 
@@ -157,7 +159,7 @@ CONTAINS
                CALL trd_tra( kt, 'TRC', jn, jptra_trd_atf, ztrdt )
             END DO
          END DO
-         DEALLOCATE( ztrdt )
+         CALL wrk_dealloc( jpi, jpj, jpk, jptra, ztrdt ) 
       END IF
       !
       IF(ln_ctl)   THEN  ! print mean trends (used for debugging)
@@ -165,6 +167,8 @@ CONTAINS
          CALL prt_ctl_trc_info(charout)
          CALL prt_ctl_trc(tab4d=trn, mask=tmask, clinfo=ctrcnm)
       ENDIF
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('trc_nxt')
       !
    END SUBROUTINE trc_nxt
 

@@ -18,6 +18,7 @@ MODULE trcnam_pisces
    USE par_trc         ! TOP parameters
    USE trc             ! TOP variables
    USE sms_pisces      ! sms trends
+   USE iom             ! I/O manager
 
 
    IMPLICIT NONE
@@ -28,7 +29,7 @@ MODULE trcnam_pisces
 
    !!----------------------------------------------------------------------
    !! NEMO/TOP 3.3 , NEMO Consortium (2010)
-   !! $Id: trcnam_pisces.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 
@@ -45,27 +46,16 @@ CONTAINS
       !!                       natkriest ("key_kriest")
       !!----------------------------------------------------------------------
       !!
-#if defined key_diatrc && ! defined key_iomput
-      INTEGER ::  jl, jn
-      ! definition of additional diagnostic as a structure
-      TYPE DIAG
-         CHARACTER(len = 20)  :: snamedia   !: short name
-         CHARACTER(len = 80 ) :: lnamedia   !: long name
-         CHARACTER(len = 20 ) :: unitdia    !: unit
-      END TYPE DIAG
-
-      TYPE(DIAG) , DIMENSION(jp_pisces_2d) :: pisdia2d
-      TYPE(DIAG) , DIMENSION(jp_pisces_3d) :: pisdia3d
-#endif
-
-      NAMELIST/nampisbio/ part, nrdttrc, wsbio, xkmort, ferat3, wsbio2
+      INTEGER :: jl, jn
+      TYPE(DIAG), DIMENSION(jp_pisces_2d) :: pisdia2d
+      TYPE(DIAG), DIMENSION(jp_pisces_3d) :: pisdia3d
+      !!
+      NAMELIST/nampisbio/ nrdttrc, wsbio, xkmort, ferat3, wsbio2
 #if defined key_kriest
       NAMELIST/nampiskrp/ xkr_eta, xkr_zeta, xkr_mass_min, xkr_mass_max
 #endif
-#if defined key_diatrc && ! defined key_iomput
-      NAMELIST/nampisdia/ nn_writedia, pisdia3d, pisdia2d     ! additional diagnostics
-#endif
-      NAMELIST/nampisdmp/ ln_pisdmp, ln_pisclo
+      NAMELIST/nampisdia/ pisdia3d, pisdia2d     ! additional diagnostics
+      NAMELIST/nampisdmp/ ln_pisdmp, nn_pisdmp
 
       !!----------------------------------------------------------------------
 
@@ -76,14 +66,13 @@ CONTAINS
 
       !                               ! Open the namelist file
       !                               ! ----------------------
-      CALL ctl_opn( numnat, 'namelist_pisces', 'OLD', 'FORMATTED', 'SEQUENTIAL', -1, numout, .FALSE. )
+      CALL ctl_opn( numnatp, 'namelist_pisces', 'OLD', 'FORMATTED', 'SEQUENTIAL', -1, numout, .FALSE. )
 
-      REWIND( numnat )                    
-      READ  ( numnat, nampisbio )
+      REWIND( numnatp )                    
+      READ  ( numnatp, nampisbio )
 
       IF(lwp) THEN                         ! control print
          WRITE(numout,*) ' Namelist : nampisbio'
-         WRITE(numout,*) '    part of calcite not dissolved in guts     part      =', part
          WRITE(numout,*) '    frequence pour la biologie                nrdttrc   =', nrdttrc
          WRITE(numout,*) '    POC sinking speed                         wsbio     =', wsbio
          WRITE(numout,*) '    half saturation constant for mortality    xkmort    =', xkmort
@@ -100,8 +89,8 @@ CONTAINS
       xkr_mass_min = 0.0002     
       xkr_mass_max = 1.      
 
-      REWIND( numnat )                     ! read natkriest
-      READ  ( numnat, nampiskrp )
+      REWIND( numnatp )                     ! read natkriest
+      READ  ( numnatp, nampiskrp )
 
       IF(lwp) THEN
          WRITE(numout,*)
@@ -119,75 +108,67 @@ CONTAINS
 
 #endif
       !
-#if defined key_diatrc && ! defined key_iomput
-
-      ! Namelist namlobdia
-      ! -------------------
-      nn_writedia = 10                   ! default values
-
-      DO jl = 1, jp_pisces_2d
-         jn = jp_pcs0_2d + jl - 1
-         WRITE(ctrc2d(jn),'("2D_",I1)') jn                      ! short name
-         WRITE(ctrc2l(jn),'("2D DIAGNOSTIC NUMBER ",I2)') jn    ! long name
-         ctrc2u(jn) = ' '                                       ! units
-      END DO
-      !                                 ! 3D output arrays
-      DO jl = 1, jp_pisces_3d
-         jn = jp_pcs0_3d + jl - 1
-         WRITE(ctrc3d(jn),'("3D_",I1)') jn                      ! short name
-         WRITE(ctrc3l(jn),'("3D DIAGNOSTIC NUMBER ",I2)') jn    ! long name
-         ctrc3u(jn) = ' '                                       ! units
-      END DO
-
-      REWIND( numnat )               ! read natrtd
-      READ  ( numnat, nampisdia )
-
-      DO jl = 1, jp_pisces_2d
-         jn = jp_pcs0_2d + jl - 1
-         ctrc2d(jn) = pisdia2d(jl)%snamedia
-         ctrc2l(jn) = pisdia2d(jl)%lnamedia
-         ctrc2u(jn) = pisdia2d(jl)%unitdia
-      END DO
-
-      DO jl = 1, jp_pisces_3d
-         jn = jp_pcs0_3d + jl - 1
-         ctrc3d(jn) = pisdia3d(jl)%snamedia
-         ctrc3l(jn) = pisdia3d(jl)%lnamedia
-         ctrc3u(jn) = pisdia3d(jl)%unitdia
-      END DO
-
-      IF(lwp) THEN                   ! control print
-         WRITE(numout,*)
-         WRITE(numout,*) ' Namelist : natadd'
-         WRITE(numout,*) '    frequency of outputs for additional arrays nn_writedia = ', nn_writedia
-         DO jl = 1, jp_pisces_3d
-            jn = jp_pcs0_3d + jl - 1
-            WRITE(numout,*) '   3d output field No : ',jn
-            WRITE(numout,*) '   short name         : ', TRIM(ctrc3d(jn))
-            WRITE(numout,*) '   long name          : ', TRIM(ctrc3l(jn))
-            WRITE(numout,*) '   unit               : ', TRIM(ctrc3u(jn))
-            WRITE(numout,*) ' '
+      IF( .NOT.lk_iomput .AND. ln_diatrc ) THEN
+         !
+         ! Namelist nampisdia
+         ! -------------------
+         DO jl = 1, jp_pisces_2d
+            WRITE(pisdia2d(jl)%sname,'("2D_",I2.2)') jl                      ! short name
+            WRITE(pisdia2d(jl)%lname,'("2D DIAGNOSTIC NUMBER ",I2.2)') jl    ! long name
+            pisdia2d(jl)%units = ' '                                       ! units
          END DO
+         !                                 ! 3D output arrays
+         DO jl = 1, jp_pisces_3d
+            WRITE(pisdia3d(jl)%sname,'("3D_",I2.2)') jl                      ! short name
+            WRITE(pisdia3d(jl)%lname,'("3D DIAGNOSTIC NUMBER ",I2.2)') jl    ! long name
+            pisdia3d(jl)%units = ' '                                       ! units
+         END DO
+
+         REWIND( numnatp )               ! 
+         READ  ( numnatp, nampisdia )
 
          DO jl = 1, jp_pisces_2d
             jn = jp_pcs0_2d + jl - 1
-            WRITE(numout,*) '   2d output field No : ',jn
-            WRITE(numout,*) '   short name         : ', TRIM(ctrc2d(jn))
-            WRITE(numout,*) '   long name          : ', TRIM(ctrc2l(jn))
-            WRITE(numout,*) '   unit               : ', TRIM(ctrc2u(jn))
-            WRITE(numout,*) ' '
+            ctrc2d(jn) = pisdia2d(jl)%sname
+            ctrc2l(jn) = pisdia2d(jl)%lname
+            ctrc2u(jn) = pisdia2d(jl)%units
          END DO
-      ENDIF
-#endif
 
-      REWIND( numnat )
-      READ  ( numnat, nampisdmp )
+         DO jl = 1, jp_pisces_3d
+            jn = jp_pcs0_3d + jl - 1
+            ctrc3d(jn) = pisdia3d(jl)%sname
+            ctrc3l(jn) = pisdia3d(jl)%lname
+            ctrc3u(jn) = pisdia3d(jl)%units
+         END DO
+
+         IF(lwp) THEN                   ! control print
+            WRITE(numout,*)
+            WRITE(numout,*) ' Namelist : natadd'
+            DO jl = 1, jp_pisces_3d
+               jn = jp_pcs0_3d + jl - 1
+               WRITE(numout,*) '  3d diag nb : ', jn, '    short name : ', ctrc3d(jn), &
+                 &             '  long name  : ', ctrc3l(jn), '   unit : ', ctrc3u(jn)
+            END DO
+            WRITE(numout,*) ' '
+
+            DO jl = 1, jp_pisces_2d
+               jn = jp_pcs0_2d + jl - 1
+               WRITE(numout,*) '  2d diag nb : ', jn, '    short name : ', ctrc2d(jn), &
+                 &             '  long name  : ', ctrc2l(jn), '   unit : ', ctrc2u(jn)
+            END DO
+            WRITE(numout,*) ' '
+         ENDIF
+         !
+      ENDIF
+
+      REWIND( numnatp )
+      READ  ( numnatp, nampisdmp )
 
       IF(lwp) THEN                         ! control print
          WRITE(numout,*)
          WRITE(numout,*) ' Namelist : nampisdmp'
-         WRITE(numout,*) '    Relaxation of tracer to glodap mean value            ln_pisdmp      =', ln_pisdmp
-         WRITE(numout,*) '    Restoring of tracer to initial value  on closed seas  ln_pisclo      =', ln_pisclo
+         WRITE(numout,*) '    Relaxation of tracer to glodap mean value             ln_pisdmp      =', ln_pisdmp
+         WRITE(numout,*) '    Frequency of Relaxation                               nn_pisdmp      =', nn_pisdmp
          WRITE(numout,*) ' '
       ENDIF
 

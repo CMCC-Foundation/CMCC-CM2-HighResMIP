@@ -23,7 +23,7 @@ MODULE trcini_my_trc
 
    !!----------------------------------------------------------------------
    !! NEMO/TOP 3.3 , NEMO Consortium (2010)
-   !! $Id: trcini_my_trc.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -40,8 +40,6 @@ CONTAINS
       !                       ! Allocate MY_TRC arrays
       IF( trc_sms_my_trc_alloc() /= 0 )   CALL ctl_stop( 'STOP', 'trc_ini_my_trc: unable to allocate MY_TRC arrays' )
 
-      CALL trc_ctl_my_trc     ! Control consitency
-
       IF(lwp) WRITE(numout,*)
       IF(lwp) WRITE(numout,*) ' trc_ini_my_trc: initialisation of MY_TRC model'
       IF(lwp) WRITE(numout,*) ' ~~~~~~~~~~~~~~'
@@ -49,28 +47,6 @@ CONTAINS
       IF( .NOT. ln_rsttr ) trn(:,:,:,jp_myt0:jp_myt1) = 0.
       !
    END SUBROUTINE trc_ini_my_trc
-
-
-   SUBROUTINE trc_ctl_my_trc
-      !!----------------------------------------------------------------------
-      !!                     ***  ROUTINE trc_ctl_pisces  ***
-      !!
-      !! ** Purpose :   control the cpp options, namelist and files 
-      !!----------------------------------------------------------------------
-      INTEGER :: jl, jn
-      !!----------------------------------------------------------------------
-      !
-      IF(lwp) WRITE(numout,*)
-      IF(lwp) WRITE(numout,*) ' use COLOR tracer '
-      !
-      DO jl = 1, jp_my_trc
-         jn = jp_myt0 + jl - 1
-         WRITE( ctrcnm(jn),'(a,i2.2)' ) 'CLR', jn
-         ctrcnl(jn)='Color concentration'
-         ctrcun(jn)='N/A'
-      END DO
-      !
-   END SUBROUTINE trc_ctl_my_trc
 
 #else
    !!----------------------------------------------------------------------

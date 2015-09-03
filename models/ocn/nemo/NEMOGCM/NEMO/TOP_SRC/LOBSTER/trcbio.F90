@@ -32,7 +32,7 @@ MODULE trcbio
 #  include "top_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/TOP 3.3 , NEMO Consortium (2010)
-   !! $Id: trcbio.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 
@@ -59,8 +59,6 @@ CONTAINS
       !!              IF 'key_diabio' defined , the biogeochemical trends
       !!              for passive tracers are saved for futher diagnostics.
       !!---------------------------------------------------------------------
-      USE wrk_nemo, ONLY: wrk_in_use,  wrk_not_released
-      USE wrk_nemo, ONLY: wrk_3d_2, wrk_4d_1
       !!
       INTEGER, INTENT( in ) ::   kt      ! ocean time-step index      
       !!
@@ -73,48 +71,29 @@ CONTAINS
       REAL(wp) ::   znh4no3, zdomnh4, zppz, zpdz, zpppz, zppdz, zfood
       REAL(wp) ::   zfilpz, zfildz, zphya, zzooa, zno3a
       REAL(wp) ::   znh4a, zdeta, zdoma, zzoobod, zboddet, zdomaju
-#if defined key_diatrc
       REAL(wp) ::   ze3t
-#endif
-#if defined key_diatrc && defined key_iomput
       REAL(wp), POINTER,   DIMENSION(:,:,:) :: zw2d
       REAL(wp), POINTER, DIMENSION(:,:,:,:) :: zw3d
-#endif
-      REAL(wp), DIMENSION(:,:,:,:), ALLOCATABLE ::   ztrbio
       CHARACTER (len=25) :: charout
       !!---------------------------------------------------------------------
+      !
+      IF( nn_timing == 1 )  CALL timing_start('trc_bio')
+      !
+      IF( ln_diatrc ) THEN
+         CALL wrk_alloc( jpi, jpj,     17, zw2d )
+         CALL wrk_alloc( jpi, jpj, jpk, 3, zw3d )
+      ENDIF
 
-#if defined key_diatrc && defined key_iomput
-      IF( ( wrk_in_use(3, 2) ) .OR. ( wrk_in_use(4, 1) ) ) THEN
-         CALL ctl_stop('trc_bio : requested workspace arrays unavailable.')
-         RETURN
-      END IF
-      ! Set-up pointers into sub-arrays of workspaces
-      zw2d => wrk_3d_2(:,:,1:17)
-      zw3d => wrk_4d_1(:,:,:,1:3)
-#endif
-
-      IF( kt == nit000 ) THEN
+      IF( kt == nittrc000 ) THEN
          IF(lwp) WRITE(numout,*)
          IF(lwp) WRITE(numout,*) ' trc_bio: LOBSTER bio-model'
          IF(lwp) WRITE(numout,*) ' ~~~~~~~'
       ENDIF
 
       fbod(:,:) = 0.e0
-#if defined key_diatrc && ! defined key_iomput
-#  if defined key_iomput
-      zw2d  (:,:,:) = 0.e0
-      zw3d(:,:,:,:) = 0.e0
-#  else
-      DO jl = jp_lob0_2d, jp_lob1_2d
-         trc2d(:,:,jl) = 0.e0
-      END DO 
-#  endif
-#endif
-
-      IF( l_trdtrc )THEN
-         ALLOCATE( ztrbio(jpi,jpj,jpk,jp_lobster_trd) )
-         ztrbio(:,:,:,:) = 0.
+      IF( ln_diatrc ) THEN
+         zw2d  (:,:,:) = 0.e0
+         zw3d(:,:,:,:) = 0.e0
       ENDIF
 
       !                                      ! -------------------------- !
@@ -138,7 +117,7 @@ CONTAINS
                zle   = 1. - EXP( -xpar(ji,jj,jk) / aki / zlt )
                ! psinut,akno3,aknh4 added by asklod AS Kremeur 2005-03
                zlno3 = zno3 * EXP( -psinut * znh4 ) / ( akno3 + zno3 )
-               zlnh4 = znh4 / (znh4+aknh4) 
+               zlnh4 = znh4 / (znh4+aknh4)  
 
                ! sinks and sources
                !    phytoplankton production and exsudation
@@ -148,7 +127,6 @@ CONTAINS
                !    fphylab added by asklod AS Kremeur 2005-03
                zphydom = rgamma * (1 - fphylab) * (zno3phy + znh4phy)
                zphynh4 = rgamma * fphylab * (zno3phy + znh4phy)
-
                ! zooplankton production
                !    preferences
                zppz = rppz
@@ -156,7 +134,7 @@ CONTAINS
                zpppz = ( zppz * zphy ) / ( ( zppz * zphy + zpdz * zdet ) + 1.e-13 )
                zppdz = ( zpdz * zdet ) / ( ( zppz * zphy + zpdz * zdet ) + 1.e-13 )
                zfood = zpppz * zphy + zppdz * zdet
-               !    filtration
+               !    filtration 
                zfilpz = taus * zpppz / (aks + zfood)
                zfildz = taus * zppdz / (aks + zfood)
                !    grazing
@@ -165,13 +143,13 @@ CONTAINS
 
                ! fecal pellets production
                zzoodet = rpnaz * zphyzoo + rdnaz * zdetzoo
- 
+
                ! zooplankton liquide excretion
-               zzoonh4 = tauzn * fzoolab * zzoo 
+               zzoonh4 = tauzn * fzoolab * zzoo  
                zzoodom = tauzn * (1 - fzoolab) * zzoo
 
                ! mortality
-               !    phytoplankton mortality 
+               !    phytoplankton mortality
                zphydet = tmminp * zphy
 
                !    zooplankton mortality
@@ -182,15 +160,15 @@ CONTAINS
 
                ! detritus and dom breakdown
                zdetnh4 = taudn * fdetlab * zdet
-               zdetdom = taudn * (1 - fdetlab) * zdet 
+               zdetdom = taudn * (1 - fdetlab) * zdet
 
                zdomnh4 = taudomn * zdom
 
-               ! flux added to express how the excess of nitrogen from
+               ! flux added to express how the excess of nitrogen from 
                ! PHY, ZOO and DET to DOM goes directly to NH4 (flux of ajustment)
                zdomaju = (1 - redf/reddom) * (zphydom + zzoodom + zdetdom)
 
-               ! Nitrification
+               ! Nitrification 
                znh4no3 = taunn * znh4
 
                ! determination of trends
@@ -210,99 +188,52 @@ CONTAINS
                tra(ji,jj,jk,jp_lob_nh4) = tra(ji,jj,jk,jp_lob_nh4) + znh4a
                tra(ji,jj,jk,jp_lob_dom) = tra(ji,jj,jk,jp_lob_dom) + zdoma
 
-#if defined key_diabio
-               trbio(ji,jj,jk,jp_lob0_trd     ) = zno3phy
-               trbio(ji,jj,jk,jp_lob0_trd +  1) = znh4phy
-               trbio(ji,jj,jk,jp_lob0_trd +  2) = zphynh4
-               trbio(ji,jj,jk,jp_lob0_trd +  3) = zphydom
-               trbio(ji,jj,jk,jp_lob0_trd +  4) = zphyzoo
-               trbio(ji,jj,jk,jp_lob0_trd +  5) = zphydet
-               trbio(ji,jj,jk,jp_lob0_trd +  6) = zdetzoo
-               trbio(ji,jj,jk,jp_lob0_trd +  8) = zzoodet
-               trbio(ji,jj,jk,jp_lob0_trd +  9) = zzoobod
-               trbio(ji,jj,jk,jp_lob0_trd + 10) = zzoonh4
-               trbio(ji,jj,jk,jp_lob0_trd + 11) = zzoodom
-               trbio(ji,jj,jk,jp_lob0_trd + 12) = znh4no3
-               trbio(ji,jj,jk,jp_lob0_trd + 13) = zdomnh4
-               trbio(ji,jj,jk,jp_lob0_trd + 14) = zdetnh4
-               trbio(ji,jj,jk,jp_lob0_trd + 15) = zdetdom
-#endif
-               IF( l_trdtrc ) THEN
-                  ztrbio(ji,jj,jk,jp_lob0_trd     ) = zno3phy
-                  ztrbio(ji,jj,jk,jp_lob0_trd +  1) = znh4phy
-                  ztrbio(ji,jj,jk,jp_lob0_trd +  2) = zphynh4
-                  ztrbio(ji,jj,jk,jp_lob0_trd +  3) = zphydom
-                  ztrbio(ji,jj,jk,jp_lob0_trd +  4) = zphyzoo
-                  ztrbio(ji,jj,jk,jp_lob0_trd +  5) = zphydet
-                  ztrbio(ji,jj,jk,jp_lob0_trd +  6) = zdetzoo
+
+               IF( ( ln_diabio .AND. .NOT. lk_iomput ) .OR. l_trdtrc ) THEN
+                  trbio(ji,jj,jk,jp_lob0_trd     ) = zno3phy
+                  trbio(ji,jj,jk,jp_lob0_trd +  1) = znh4phy
+                  trbio(ji,jj,jk,jp_lob0_trd +  2) = zphynh4
+                  trbio(ji,jj,jk,jp_lob0_trd +  3) = zphydom
+                  trbio(ji,jj,jk,jp_lob0_trd +  4) = zphyzoo
+                  trbio(ji,jj,jk,jp_lob0_trd +  5) = zphydet
+                  trbio(ji,jj,jk,jp_lob0_trd +  6) = zdetzoo
                   !  trend number 8 in trcsed
-                  ztrbio(ji,jj,jk,jp_lob0_trd +  8) = zzoodet
-                  ztrbio(ji,jj,jk,jp_lob0_trd +  9) = zzoobod
-                  ztrbio(ji,jj,jk,jp_lob0_trd + 10) = zzoonh4
-                  ztrbio(ji,jj,jk,jp_lob0_trd + 11) = zzoodom
-                  ztrbio(ji,jj,jk,jp_lob0_trd + 12) = znh4no3
-                  ztrbio(ji,jj,jk,jp_lob0_trd + 13) = zdomnh4
-                  ztrbio(ji,jj,jk,jp_lob0_trd + 14) = zdetnh4
-                  ztrbio(ji,jj,jk,jp_lob0_trd + 15) = zdetdom
+                  trbio(ji,jj,jk,jp_lob0_trd +  8) = zzoodet
+                  trbio(ji,jj,jk,jp_lob0_trd +  9) = zzoobod
+                  trbio(ji,jj,jk,jp_lob0_trd + 10) = zzoonh4
+                  trbio(ji,jj,jk,jp_lob0_trd + 11) = zzoodom
+                  trbio(ji,jj,jk,jp_lob0_trd + 12) = znh4no3
+                  trbio(ji,jj,jk,jp_lob0_trd + 13) = zdomnh4
+                  trbio(ji,jj,jk,jp_lob0_trd + 14) = zdetnh4
+                  trbio(ji,jj,jk,jp_lob0_trd + 15) = zdetdom
                   !  trend number 17 in trcexp
                 ENDIF
-
-#if defined key_diatrc
-               ! convert fluxes in per day
-               ze3t = fse3t(ji,jj,jk) * 86400.
-#if ! defined key_iomput
-               trc2d(ji,jj,jp_lob0_2d    ) = trc2d(ji,jj, jp_lob0_2d    ) + zno3phy * ze3t 
-               trc2d(ji,jj,jp_lob0_2d + 1) = trc2d(ji,jj, jp_lob0_2d + 1) + znh4phy * ze3t
-               trc2d(ji,jj,jp_lob0_2d + 2) = trc2d(ji,jj, jp_lob0_2d + 2) + zphydom * ze3t
-               trc2d(ji,jj,jp_lob0_2d + 3) = trc2d(ji,jj, jp_lob0_2d + 3) + zphynh4 * ze3t
-               trc2d(ji,jj,jp_lob0_2d + 4) = trc2d(ji,jj, jp_lob0_2d + 4) + zphyzoo * ze3t
-               trc2d(ji,jj,jp_lob0_2d + 5) = trc2d(ji,jj, jp_lob0_2d + 5) + zphydet * ze3t
-               trc2d(ji,jj,jp_lob0_2d + 6) = trc2d(ji,jj, jp_lob0_2d + 6) + zdetzoo * ze3t
-               ! trend number 8 is in trcsed.F            
-               trc2d(ji,jj,jp_lob0_2d +  8) = trc2d(ji,jj,jp_lob0_2d +  8) + zzoodet * ze3t
-               trc2d(ji,jj,jp_lob0_2d +  9) = trc2d(ji,jj,jp_lob0_2d +  9) + zzoobod * ze3t
-               trc2d(ji,jj,jp_lob0_2d + 10) = trc2d(ji,jj,jp_lob0_2d + 10) + zzoonh4 * ze3t
-               trc2d(ji,jj,jp_lob0_2d + 11) = trc2d(ji,jj,jp_lob0_2d + 11) + zzoodom * ze3t
-               trc2d(ji,jj,jp_lob0_2d + 12) = trc2d(ji,jj,jp_lob0_2d + 12) + znh4no3 * ze3t
-               trc2d(ji,jj,jp_lob0_2d + 13) = trc2d(ji,jj,jp_lob0_2d + 13) + zdomnh4 * ze3t
-               trc2d(ji,jj,jp_lob0_2d + 14) = trc2d(ji,jj,jp_lob0_2d + 14) + zdetnh4 * ze3t             
-               trc2d(ji,jj,jp_lob0_2d + 15) = trc2d(ji,jj,jp_lob0_2d + 15) + (  zno3phy + znh4phy - zphynh4   &
-                  &                                 - zphydom - zphyzoo - zphydet ) * ze3t
-               trc2d(ji,jj,jp_lob0_2d + 16) = trc2d(ji,jj,jp_lob0_2d + 16) + (  zphyzoo + zdetzoo - zzoodet   &
-                  &                                 - zzoobod - zzoonh4 - zzoodom ) * ze3t
-               trc2d(ji,jj,jp_lob0_2d + 17) = trc2d(ji,jj,jp_lob0_2d + 17) + zdetdom * ze3t
-               ! trend number 19 is in trcexp.F
-#else
-               zw2d(ji,jj,1)  = zw2d(ji,jj,1)  + zno3phy * ze3t 
-               zw2d(ji,jj,2)  = zw2d(ji,jj,2)  + znh4phy * ze3t
-               zw2d(ji,jj,3)  = zw2d(ji,jj,3)  + zphydom * ze3t
-               zw2d(ji,jj,4)  = zw2d(ji,jj,4)  + zphynh4 * ze3t
-               zw2d(ji,jj,5)  = zw2d(ji,jj,5)  + zphyzoo * ze3t
-               zw2d(ji,jj,6)  = zw2d(ji,jj,6)  + zphydet * ze3t
-               zw2d(ji,jj,7)  = zw2d(ji,jj,7)  + zdetzoo * ze3t
-               zw2d(ji,jj,8)  = zw2d(ji,jj,8)  + zzoodet * ze3t
-               zw2d(ji,jj,9)  = zw2d(ji,jj,9)  + zzoobod * ze3t
-               zw2d(ji,jj,10) = zw2d(ji,jj,10) + zzoonh4 * ze3t
-               zw2d(ji,jj,11) = zw2d(ji,jj,11) + zzoodom * ze3t
-               zw2d(ji,jj,12) = zw2d(ji,jj,12) + znh4no3 * ze3t
-               zw2d(ji,jj,13) = zw2d(ji,jj,13) + zdomnh4 * ze3t
-               zw2d(ji,jj,14) = zw2d(ji,jj,14) + zdetnh4 * ze3t             
-               zw2d(ji,jj,15) = zw2d(ji,jj,15) + ( zno3phy + znh4phy - zphynh4 - zphydom - zphyzoo - zphydet ) * ze3t
-               zw2d(ji,jj,16) = zw2d(ji,jj,16) + ( zphyzoo + zdetzoo - zzoodet - zzoobod - zzoonh4 - zzoodom ) * ze3t
-               zw2d(ji,jj,17) = zw2d(ji,jj,17) + zdetdom * ze3t
-#endif
-#if defined key_diatrc 
-# if ! defined key_iomput
-               trc3d(ji,jj,jk,jp_lob0_3d    ) = zno3phy * 86400     
-               trc3d(ji,jj,jk,jp_lob0_3d + 1) = znh4phy * 86400     
-               trc3d(ji,jj,jk,jp_lob0_3d + 2) = znh4no3 * 86400   
-# else
-               zw3d(ji,jj,jk,1) = zno3phy * 86400     
-               zw3d(ji,jj,jk,2) = znh4phy * 86400     
-               zw3d(ji,jj,jk,3) = znh4no3 * 86400   
-# endif
-#endif  
-#endif
+                IF( ln_diatrc ) THEN
+                  ! convert fluxes in per day
+                  ze3t = fse3t(ji,jj,jk) * 86400.
+                  zw2d(ji,jj,1)  = zw2d(ji,jj,1)  + zno3phy * ze3t
+                  zw2d(ji,jj,2)  = zw2d(ji,jj,2)  + znh4phy * ze3t
+                  zw2d(ji,jj,3)  = zw2d(ji,jj,3)  + zphydom * ze3t
+                  zw2d(ji,jj,4)  = zw2d(ji,jj,4)  + zphynh4 * ze3t
+                  zw2d(ji,jj,5)  = zw2d(ji,jj,5)  + zphyzoo * ze3t
+                  zw2d(ji,jj,6)  = zw2d(ji,jj,6)  + zphydet * ze3t
+                  zw2d(ji,jj,7)  = zw2d(ji,jj,7)  + zdetzoo * ze3t
+                  zw2d(ji,jj,8)  = zw2d(ji,jj,8)  + zzoodet * ze3t
+                  zw2d(ji,jj,9)  = zw2d(ji,jj,9)  + zzoobod * ze3t
+                  zw2d(ji,jj,10) = zw2d(ji,jj,10) + zzoonh4 * ze3t
+                  zw2d(ji,jj,11) = zw2d(ji,jj,11) + zzoodom * ze3t
+                  zw2d(ji,jj,12) = zw2d(ji,jj,12) + znh4no3 * ze3t
+                  zw2d(ji,jj,13) = zw2d(ji,jj,13) + zdomnh4 * ze3t
+                  zw2d(ji,jj,14) = zw2d(ji,jj,14) + zdetnh4 * ze3t
+                  zw2d(ji,jj,15) = zw2d(ji,jj,15) + ( zno3phy + znh4phy - zphynh4 - zphydom - zphyzoo - zphydet ) * ze3t
+                  zw2d(ji,jj,16) = zw2d(ji,jj,16) + ( zphyzoo + zdetzoo - zzoodet - zzoobod - zzoonh4 - zzoodom ) * ze3t
+                  zw2d(ji,jj,17) = zw2d(ji,jj,17) + zdetdom * ze3t
+                  !   
+                  zw3d(ji,jj,jk,1) = zno3phy * 86400
+                  zw3d(ji,jj,jk,2) = znh4phy * 86400     
+                  zw3d(ji,jj,jk,3) = znh4no3 * 86400   
+                   ! 
+                ENDIF
             END DO
          END DO
       END DO
@@ -346,14 +277,14 @@ CONTAINS
                zzoodom = tauzn * (1 - fzoolab) * zzoo
 
                !    mortality
-               zphydet = tmminp * zphy      ! phytoplankton mortality 
+               zphydet = tmminp * zphy      ! phytoplankton mortality
 
                zzoobod = 0.e0               ! zooplankton mortality
                zboddet = 0.e0               ! closure : flux fbod is redistributed below level jpkbio
 
                !    detritus and dom breakdown
                zdetnh4 = taudn * fdetlab * zdet
-               zdetdom = taudn * (1 - fdetlab) * zdet 
+               zdetdom = taudn * (1 - fdetlab) * zdet
 
                zdomnh4 = taudomn * zdom
                zdomaju = (1 - redf/reddom) * (zphydom + zzoodom + zdetdom)
@@ -366,7 +297,7 @@ CONTAINS
                !     total trend for each biological tracer
                zphya =   zno3phy + znh4phy - zphynh4 - zphydom - zphyzoo - zphydet
                zzooa =   zphyzoo + zdetzoo - zzoodet - zzoodom - zzoonh4 - zzoobod
-               zno3a = - zno3phy + znh4no3
+               zno3a = - zno3phy + znh4no3 
                znh4a = - znh4phy - znh4no3 + zphynh4 + zzoonh4 + zdomnh4 + zdetnh4 + zdomaju
                zdeta = zphydet + zzoodet  - zdetzoo - zdetnh4 - zdetdom + zboddet
                zdoma = zphydom + zzoodom + zdetdom - zdomnh4 - zdomaju
@@ -379,119 +310,125 @@ CONTAINS
                tra(ji,jj,jk,jp_lob_nh4) = tra(ji,jj,jk,jp_lob_nh4) + znh4a
                tra(ji,jj,jk,jp_lob_dom) = tra(ji,jj,jk,jp_lob_dom) + zdoma
                !
-#if defined key_diabio
-               trbio(ji,jj,jk,jp_lob0_trd     ) = zno3phy
-               trbio(ji,jj,jk,jp_lob0_trd +  1) = znh4phy
-               trbio(ji,jj,jk,jp_lob0_trd +  2) = zphynh4
-               trbio(ji,jj,jk,jp_lob0_trd +  3) = zphydom
-               trbio(ji,jj,jk,jp_lob0_trd +  4) = zphyzoo
-               trbio(ji,jj,jk,jp_lob0_trd +  5) = zphydet
-               trbio(ji,jj,jk,jp_lob0_trd +  6) = zdetzoo
-               trbio(ji,jj,jk,jp_lob0_trd +  8) = zzoodet
-               trbio(ji,jj,jk,jp_lob0_trd +  9) = zzoobod
-               trbio(ji,jj,jk,jp_lob0_trd + 10) = zzoonh4
-               trbio(ji,jj,jk,jp_lob0_trd + 11) = zzoodom
-               trbio(ji,jj,jk,jp_lob0_trd + 12) = znh4no3
-               trbio(ji,jj,jk,jp_lob0_trd + 13) = zdomnh4
-               trbio(ji,jj,jk,jp_lob0_trd + 14) = zdetnh4
-               trbio(ji,jj,jk,jp_lob0_trd + 15) = zdetdom
-#endif
-               IF( l_trdtrc ) THEN
-                  ztrbio(ji,jj,jk,jp_lob0_trd     ) = zno3phy
-                  ztrbio(ji,jj,jk,jp_lob0_trd +  1) = znh4phy
-                  ztrbio(ji,jj,jk,jp_lob0_trd +  2) = zphynh4
-                  ztrbio(ji,jj,jk,jp_lob0_trd +  3) = zphydom
-                  ztrbio(ji,jj,jk,jp_lob0_trd +  4) = zphyzoo
-                  ztrbio(ji,jj,jk,jp_lob0_trd +  5) = zphydet
-                  ztrbio(ji,jj,jk,jp_lob0_trd +  6) = zdetzoo
+               IF( ( ln_diabio .AND. .NOT. lk_iomput ) .OR. l_trdtrc ) THEN
+                  trbio(ji,jj,jk,jp_lob0_trd     ) = zno3phy
+                  trbio(ji,jj,jk,jp_lob0_trd +  1) = znh4phy
+                  trbio(ji,jj,jk,jp_lob0_trd +  2) = zphynh4
+                  trbio(ji,jj,jk,jp_lob0_trd +  3) = zphydom
+                  trbio(ji,jj,jk,jp_lob0_trd +  4) = zphyzoo
+                  trbio(ji,jj,jk,jp_lob0_trd +  5) = zphydet
+                  trbio(ji,jj,jk,jp_lob0_trd +  6) = zdetzoo
                   !  trend number 8 in trcsed
-                  ztrbio(ji,jj,jk,jp_lob0_trd +  8) = zzoodet
-                  ztrbio(ji,jj,jk,jp_lob0_trd +  9) = zzoobod
-                  ztrbio(ji,jj,jk,jp_lob0_trd + 10) = zzoonh4
-                  ztrbio(ji,jj,jk,jp_lob0_trd + 11) = zzoodom
-                  ztrbio(ji,jj,jk,jp_lob0_trd + 12) = znh4no3
-                  ztrbio(ji,jj,jk,jp_lob0_trd + 13) = zdomnh4
-                  ztrbio(ji,jj,jk,jp_lob0_trd + 14) = zdetnh4
-                  ztrbio(ji,jj,jk,jp_lob0_trd + 15) = zdetdom
-                  !  trend number 17 in trcexp
+                  trbio(ji,jj,jk,jp_lob0_trd +  8) = zzoodet
+                  trbio(ji,jj,jk,jp_lob0_trd +  9) = zzoobod
+                  trbio(ji,jj,jk,jp_lob0_trd + 10) = zzoonh4
+                  trbio(ji,jj,jk,jp_lob0_trd + 11) = zzoodom
+                  trbio(ji,jj,jk,jp_lob0_trd + 12) = znh4no3
+                  trbio(ji,jj,jk,jp_lob0_trd + 13) = zdomnh4
+                  trbio(ji,jj,jk,jp_lob0_trd + 14) = zdetnh4
+                  trbio(ji,jj,jk,jp_lob0_trd + 15) = zdetdom
+                  !  trend number 17 in trcexp 
                 ENDIF
-#if defined key_diatrc
-# if ! defined key_iomput
-               trc3d(ji,jj,jk,jp_lob0_3d    ) =  zno3phy * 86400     
-               trc3d(ji,jj,jk,jp_lob0_3d + 1) =  znh4phy * 86400     
-               trc3d(ji,jj,jk,jp_lob0_3d + 2) =  znh4no3 * 86400     
-# else
-               zw3d(ji,jj,jk,1) = zno3phy * 86400     
-               zw3d(ji,jj,jk,2) = znh4phy * 86400     
-               zw3d(ji,jj,jk,3) = znh4no3 * 86400   
-# endif
-#endif
+                IF( ln_diatrc ) THEN
+                  ! convert fluxes in per day
+                  ze3t = fse3t(ji,jj,jk) * 86400.
+                  zw2d(ji,jj,1)  = zw2d(ji,jj,1)  + zno3phy * ze3t
+                  zw2d(ji,jj,2)  = zw2d(ji,jj,2)  + znh4phy * ze3t
+                  zw2d(ji,jj,3)  = zw2d(ji,jj,3)  + zphydom * ze3t
+                  zw2d(ji,jj,4)  = zw2d(ji,jj,4)  + zphynh4 * ze3t
+                  zw2d(ji,jj,5)  = zw2d(ji,jj,5)  + zphyzoo * ze3t
+                  zw2d(ji,jj,6)  = zw2d(ji,jj,6)  + zphydet * ze3t
+                  zw2d(ji,jj,7)  = zw2d(ji,jj,7)  + zdetzoo * ze3t
+                  zw2d(ji,jj,8)  = zw2d(ji,jj,8)  + zzoodet * ze3t
+                  zw2d(ji,jj,9)  = zw2d(ji,jj,9)  + zzoobod * ze3t
+                  zw2d(ji,jj,10) = zw2d(ji,jj,10) + zzoonh4 * ze3t
+                  zw2d(ji,jj,11) = zw2d(ji,jj,11) + zzoodom * ze3t
+                  zw2d(ji,jj,12) = zw2d(ji,jj,12) + znh4no3 * ze3t
+                  zw2d(ji,jj,13) = zw2d(ji,jj,13) + zdomnh4 * ze3t
+                  zw2d(ji,jj,14) = zw2d(ji,jj,14) + zdetnh4 * ze3t
+                  zw2d(ji,jj,15) = zw2d(ji,jj,15) + ( zno3phy + znh4phy - zphynh4 - zphydom - zphyzoo - zphydet ) * ze3t
+                  zw2d(ji,jj,16) = zw2d(ji,jj,16) + ( zphyzoo + zdetzoo - zzoodet - zzoobod - zzoonh4 - zzoodom ) * ze3t
+                  zw2d(ji,jj,17) = zw2d(ji,jj,17) + zdetdom * ze3t
+                  !   
+                  zw3d(ji,jj,jk,1) = zno3phy * 86400
+                  zw3d(ji,jj,jk,2) = znh4phy * 86400
+                  zw3d(ji,jj,jk,3) = znh4no3 * 86400
+                   !
+                ENDIF
             END DO
          END DO
       END DO
 
-#if defined key_diatrc
-      ! Lateral boundary conditions 
-# if ! defined key_iomput
-      DO jl = jp_lob0_2d, jp_lob1_2d
-          CALL lbc_lnk( trc2d(:,:,jl),'T', 1. )
-      END DO 
-# else
-      DO jl = 1, 17 
-          CALL lbc_lnk( zw2d(:,:,jl),'T', 1. )
-      END DO
-      ! Save diagnostics
-      CALL iom_put( "TNO3PHY", zw2d(:,:,1) )
-      CALL iom_put( "TNH4PHY", zw2d(:,:,2) )
-      CALL iom_put( "TPHYDOM", zw2d(:,:,3) )
-      CALL iom_put( "TPHYNH4", zw2d(:,:,4) )
-      CALL iom_put( "TPHYZOO", zw2d(:,:,5) )
-      CALL iom_put( "TPHYDET", zw2d(:,:,6) )
-      CALL iom_put( "TDETZOO", zw2d(:,:,7) )
-      CALL iom_put( "TZOODET", zw2d(:,:,8) )
-      CALL iom_put( "TZOOBOD", zw2d(:,:,9) )
-      CALL iom_put( "TZOONH4", zw2d(:,:,10) )
-      CALL iom_put( "TZOODOM", zw2d(:,:,11) )
-      CALL iom_put( "TNH4NO3", zw2d(:,:,12) )
-      CALL iom_put( "TDOMNH4", zw2d(:,:,13) )
-      CALL iom_put( "TDETNH4", zw2d(:,:,14) )
-      CALL iom_put( "TPHYTOT", zw2d(:,:,15) )
-      CALL iom_put( "TZOOTOT", zw2d(:,:,16) )
-      CALL iom_put( "TDETDOM", zw2d(:,:,17) )
-# endif
-#endif
+      IF( ln_diatrc ) THEN
+         !
+         DO jl = 1, 17 
+            CALL lbc_lnk( zw2d(:,:,jl),'T', 1. )
+         END DO
+         DO jl = 1, 3
+            CALL lbc_lnk( zw3d(:,:,:,jl),'T', 1. )
+         END DO
+         IF( lk_iomput ) THEN
+            ! Save diagnostics
+            CALL iom_put( "TNO3PHY", zw2d(:,:,1) )
+            CALL iom_put( "TNH4PHY", zw2d(:,:,2) )
+            CALL iom_put( "TPHYDOM", zw2d(:,:,3) )
+            CALL iom_put( "TPHYNH4", zw2d(:,:,4) )
+            CALL iom_put( "TPHYZOO", zw2d(:,:,5) )
+            CALL iom_put( "TPHYDET", zw2d(:,:,6) )
+            CALL iom_put( "TDETZOO", zw2d(:,:,7) )
+            CALL iom_put( "TZOODET", zw2d(:,:,8) )
+            CALL iom_put( "TZOOBOD", zw2d(:,:,9) )
+            CALL iom_put( "TZOONH4", zw2d(:,:,10) )
+            CALL iom_put( "TZOODOM", zw2d(:,:,11) )
+            CALL iom_put( "TNH4NO3", zw2d(:,:,12) )
+            CALL iom_put( "TDOMNH4", zw2d(:,:,13) )
+            CALL iom_put( "TDETNH4", zw2d(:,:,14) )
+            CALL iom_put( "TPHYTOT", zw2d(:,:,15) )
+            CALL iom_put( "TZOOTOT", zw2d(:,:,16) )
+            ! 
+            CALL iom_put( "FNO3PHY", zw3d(:,:,:,1) )
+            CALL iom_put( "FNH4PHY", zw3d(:,:,:,2) )
+            CALL iom_put( "FNH4NO3", zw3d(:,:,:,3) )
+            !
+         ELSE
+            !
+            trc2d(:,:,jp_lob0_2d    ) = zw2d(:,:,1) 
+            trc2d(:,:,jp_lob0_2d + 1) = zw2d(:,:,2) 
+            trc2d(:,:,jp_lob0_2d + 2) = zw2d(:,:,3) 
+            trc2d(:,:,jp_lob0_2d + 3) = zw2d(:,:,4) 
+            trc2d(:,:,jp_lob0_2d + 4) = zw2d(:,:,5) 
+            trc2d(:,:,jp_lob0_2d + 5) = zw2d(:,:,6) 
+            trc2d(:,:,jp_lob0_2d + 6) = zw2d(:,:,7) 
+                     ! trend number 8 is in trcsed.F
+            trc2d(:,:,jp_lob0_2d +  8) = zw2d(:,:,8) 
+            trc2d(:,:,jp_lob0_2d +  9) = zw2d(:,:,9) 
+            trc2d(:,:,jp_lob0_2d + 10) = zw2d(:,:,10) 
+            trc2d(:,:,jp_lob0_2d + 11) = zw2d(:,:,11) 
+            trc2d(:,:,jp_lob0_2d + 12) = zw2d(:,:,12) 
+            trc2d(:,:,jp_lob0_2d + 13) = zw2d(:,:,13) 
+            trc2d(:,:,jp_lob0_2d + 14) = zw2d(:,:,14) 
+            trc2d(:,:,jp_lob0_2d + 15) = zw2d(:,:,15) 
+            trc2d(:,:,jp_lob0_2d + 16) = zw2d(:,:,16) 
+            trc2d(:,:,jp_lob0_2d + 17) = zw2d(:,:,17) 
+            ! trend number 19 is in trcexp.F
+            trc3d(:,:,:,jp_lob0_3d    ) = zw3d(:,:,:,1) 
+            trc3d(:,:,:,jp_lob0_3d + 1) = zw3d(:,:,:,2) 
+            trc3d(:,:,:,jp_lob0_3d + 2) = zw3d(:,:,:,3) 
+         ENDIF
+        !
+      ENDIF
 
-#if defined key_diatrc
-      ! Lateral boundary conditions 
-# if ! defined key_iomput
-      DO jl = jp_lob0_3d, jp_lob1_3d
-          CALL lbc_lnk( trc3d(:,:,1,jl),'T', 1. )
-      END DO 
-# else
-      DO jl = 1, 3
-          CALL lbc_lnk( zw3d(:,:,:,jl),'T', 1. )
-      END DO
-      ! save diagnostics
-      CALL iom_put( "FNO3PHY", zw3d(:,:,:,1) )
-      CALL iom_put( "FNH4PHY", zw3d(:,:,:,2) )
-      CALL iom_put( "FNH4NO3", zw3d(:,:,:,3) )
-# endif 
-#endif
-
-#if defined key_diabio
-      ! Lateral boundary conditions on trcbio
-      DO jl = jp_lob0_trd, jp_lob1_trd
-          CALL lbc_lnk( trbio(:,:,1,jl),'T', 1. )
-      END DO 
-#endif
+      IF( ln_diabio .AND. .NOT. lk_iomput )  THEN
+         DO jl = jp_lob0_trd, jp_lob1_trd
+            CALL lbc_lnk( trbio(:,:,1,jl),'T', 1. )
+         END DO 
+      ENDIF
       !
       IF( l_trdtrc ) THEN
          DO jl = jp_lob0_trd, jp_lob1_trd
-            CALL trd_mod_trc( ztrbio(:,:,:,jl), jl, kt )   ! handle the trend
+            CALL trd_mod_trc( trbio(:,:,:,jl), jl, kt )   ! handle the trend
          END DO
       ENDIF
-
-      IF( l_trdtrc ) DEALLOCATE( ztrbio )
 
       IF(ln_ctl)   THEN  ! print mean trends (used for debugging)
          WRITE(charout, FMT="('bio')")
@@ -499,10 +436,12 @@ CONTAINS
          CALL prt_ctl_trc(tab4d=tra, mask=tmask, clinfo=ctrcnm)
       ENDIF
       !
-#if defined key_diatrc && defined key_iomput
-      IF( ( wrk_not_released(3, 2) ) .OR. ( wrk_not_released(4, 1) ) )  &
-        &   CALL ctl_stop('trc_bio : failed to release workspace arrays.')
-#endif
+      IF( ln_diatrc ) THEN
+         CALL wrk_dealloc( jpi, jpj,     17, zw2d )
+         CALL wrk_dealloc( jpi, jpj, jpk, 3, zw3d )
+      ENDIF
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('trc_bio')
       !
    END SUBROUTINE trc_bio
 

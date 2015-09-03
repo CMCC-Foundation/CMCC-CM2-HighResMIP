@@ -1,19 +1,24 @@
 MODULE p4zsink
    !!======================================================================
    !!                         ***  MODULE p4zsink  ***
-   !! TOP :   PISCES Compute vertical flux of particulate matter due to gravitational sinking
+   !! TOP :  PISCES  vertical flux of particulate matter due to gravitational sinking
    !!======================================================================
    !! History :   1.0  !  2004     (O. Aumont) Original code
    !!             2.0  !  2007-12  (C. Ethe, G. Madec)  F90
+   !!             3.4  !  2011-06  (O. Aumont, C. Ethe) Change aggregation formula
+   !!----------------------------------------------------------------------
 #if defined key_pisces
    !!----------------------------------------------------------------------
    !!   p4z_sink       :  Compute vertical flux of particulate matter due to gravitational sinking
+   !!   p4z_sink_init  :  Unitialisation of sinking speed parameters
+   !!   p4z_sink_alloc :  Allocate sinking speed variables
    !!----------------------------------------------------------------------
-   USE trc
-   USE oce_trc         !
-   USE sms_pisces
-   USE prtctl_trc
-   USE iom
+   USE oce_trc         !  shared variables between ocean and passive tracers
+   USE trc             !  passive tracers common variables 
+   USE sms_pisces      !  PISCES Source Minus Sink variables
+   USE prtctl_trc      !  print control for debugging
+   USE iom             !  I/O manager
+   USE lib_fortran     ! Fortran utilities (allows no signed zero when 'key_nosignedzero' defined)
 
    IMPLICIT NONE
    PRIVATE
@@ -60,7 +65,7 @@ MODULE p4zsink
 #  include "top_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/TOP 3.3 , NEMO Consortium (2010)
-   !! $Id: p4zsink.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -79,8 +84,6 @@ CONTAINS
       !!
       !! ** Method  : - ???
       !!---------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   znum3d => wrk_3d_2
       !
       INTEGER, INTENT(in) :: kt, jnt
       !
@@ -90,17 +93,16 @@ CONTAINS
       REAL(wp) :: znum , zeps, zfm, zgm, zsm
       REAL(wp) :: zdiv , zdiv1, zdiv2, zdiv3, zdiv4, zdiv5
       REAL(wp) :: zval1, zval2, zval3, zval4
-#if defined key_diatrc
       REAL(wp) :: zrfact2
       INTEGER  :: ik1
-#endif
       CHARACTER (len=25) :: charout
+      REAL(wp), POINTER, DIMENSION(:,:,:) :: znum3d 
       !!---------------------------------------------------------------------
       !
-      IF( wrk_in_use(3, 2 ) ) THEN
-         CALL ctl_stop('p4z_sink: requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
-      
+      IF( nn_timing == 1 )  CALL timing_start('p4z_sink')
+      !
+      CALL wrk_alloc( jpi, jpj, jpk, znum3d )
+      !
       !     Initialisation of variables used to compute Sinking Speed
       !     ---------------------------------------------------------
 
@@ -154,7 +156,7 @@ CONTAINS
       CALL p4z_sink2( wsbio3, sinking , jppoc )
       CALL p4z_sink2( wsbio4, sinking2, jpnum )
       CALL p4z_sink2( wsbio3, sinkfer , jpsfe )
-      CALL p4z_sink2( wscal , sinksil , jpdsi )
+      CALL p4z_sink2( wscal , sinksil , jpgsi )
       CALL p4z_sink2( wscal , sinkcal , jpcal )
 
      !  Exchange between organic matter compartments due to coagulation/disaggregation
@@ -192,57 +194,33 @@ CONTAINS
                      &            * 2.*( (zfm-1.)*(zfm*xkr_mass_max**3-xkr_mass_min**3)    &
                      &            * (zeps-1)/zdiv1 + 3.*(zfm*xkr_mass_max-xkr_mass_min)    &
                      &            * (zfm*xkr_mass_max**2-xkr_mass_min**2)                  &
-                     &            * (zeps-1.)**2/(zdiv2*zdiv3))            &
-# if defined key_degrad
-                     &                 *facvol(ji,jj,jk)       &
-# endif
-                     &    )
-
-                  zagg2 = (  2*0.163*trn(ji,jj,jk,jpnum)**2*zfm*                       &
+                     &            * (zeps-1.)**2/(zdiv2*zdiv3)) 
+                  zagg2 =  2*0.163*trn(ji,jj,jk,jpnum)**2*zfm*                       &
                      &                   ((xkr_mass_max**3+3.*(xkr_mass_max**2          &
                      &                    *xkr_mass_min*(zeps-1.)/zdiv2                 &
                      &                    +xkr_mass_max*xkr_mass_min**2*(zeps-1.)/zdiv3)    &
                      &                    +xkr_mass_min**3*(zeps-1)/zdiv1)                  &
                      &                    -zfm*xkr_mass_max**3*(1.+3.*((zeps-1.)/           &
-                     &                    (zeps-2.)+(zeps-1.)/zdiv3)+(zeps-1.)/zdiv1))      &
-#    if defined key_degrad
-                     &                 *facvol(ji,jj,jk)             &
-#    endif
-                     &    )
+                     &                    (zeps-2.)+(zeps-1.)/zdiv3)+(zeps-1.)/zdiv1))    
 
-                  zagg3 = (  0.163*trn(ji,jj,jk,jpnum)**2*zfm**2*8. * xkr_mass_max**3   &
-#    if defined key_degrad
-                     &                 *facvol(ji,jj,jk)             &
-#    endif
-                     &    )
-
-                  zaggsh = ( zagg1 + zagg2 + zagg3 ) * rfact2 * xdiss(ji,jj,jk) / 1000.
-
+                  zagg3 =  0.163*trn(ji,jj,jk,jpnum)**2*zfm**2*8. * xkr_mass_max**3  
+                  
                  !    Aggregation of small into large particles
                  !    Part II : Differential settling
                  !    ----------------------------------------------
 
-                  zagg4 = (  2.*3.141*0.125*trn(ji,jj,jk,jpnum)**2*                       &
+                  zagg4 =  2.*3.141*0.125*trn(ji,jj,jk,jpnum)**2*                       &
                      &                 xkr_wsbio_min*(zeps-1.)**2                         &
                      &                 *(xkr_mass_min**2*((1.-zsm*zfm)/(zdiv3*zdiv4)      &
                      &                 -(1.-zfm)/(zdiv*(zeps-1.)))-                       &
                      &                 ((zfm*zfm*xkr_mass_max**2*zsm-xkr_mass_min**2)     &
-                     &                 *xkr_eta)/(zdiv*zdiv3*zdiv5) )                     &
-# if defined key_degrad
-                     &                 *facvol(ji,jj,jk)        &
-# endif
-                     &    )
+                     &                 *xkr_eta)/(zdiv*zdiv3*zdiv5) )   
 
-                  zagg5 = (  2.*3.141*0.125*trn(ji,jj,jk,jpnum)**2                         &
+                  zagg5 =   2.*3.141*0.125*trn(ji,jj,jk,jpnum)**2                         &
                      &                 *(zeps-1.)*zfm*xkr_wsbio_min                        &
                      &                 *(zsm*(xkr_mass_min**2-zfm*xkr_mass_max**2)         &
                      &                 /zdiv3-(xkr_mass_min**2-zfm*zsm*xkr_mass_max**2)    &
-                     &                 /zdiv)                   &
-# if defined key_degrad
-                     &                 *facvol(ji,jj,jk)        &
-# endif
-                     &    )
-
+                     &                 /zdiv)  
                   zaggsi = ( zagg4 + zagg5 ) * xstep / 10.
 
                   zagg = 0.5 * xkr_stick * ( zaggsh + zaggsi )
@@ -252,11 +230,20 @@ CONTAINS
 
                   zaggdoc = ( 0.4 * trn(ji,jj,jk,jpdoc)               &
                      &        + 1018.  * trn(ji,jj,jk,jppoc)  ) * xstep    &
-# if defined key_degrad
-                     &        * facvol(ji,jj,jk)                              &
-# endif
                      &        * xdiss(ji,jj,jk) * trn(ji,jj,jk,jpdoc)
 
+# if defined key_degrad
+                   zagg1   = zagg1   * facvol(ji,jj,jk)                 
+                   zagg2   = zagg2   * facvol(ji,jj,jk)                 
+                   zagg3   = zagg3   * facvol(ji,jj,jk)                 
+                   zagg4   = zagg4   * facvol(ji,jj,jk)                 
+                   zagg5   = zagg5   * facvol(ji,jj,jk)                 
+                   zaggdoc = zaggdoc * facvol(ji,jj,jk)                 
+# endif
+                  zaggsh = ( zagg1 + zagg2 + zagg3 ) * rfact2 * xdiss(ji,jj,jk) / 1000.
+                  zaggsi = ( zagg4 + zagg5 ) * xstep / 10.
+                  zagg = 0.5 * xkr_stick * ( zaggsh + zaggsi )
+                  !
                   znumdoc = trn(ji,jj,jk,jpnum) / ( trn(ji,jj,jk,jppoc) + rtrn )
                   tra(ji,jj,jk,jppoc) = tra(ji,jj,jk,jppoc) + zaggdoc
                   tra(ji,jj,jk,jpnum) = tra(ji,jj,jk,jpnum) + zaggdoc * znumdoc - zagg
@@ -267,40 +254,35 @@ CONTAINS
          END DO
       END DO
 
-#if defined key_diatrc
-      zrfact2 = 1.e3 * rfact2r
-      ik1 = iksed + 1
-#  if ! defined key_iomput
-      trc2d(:,:  ,jp_pcs0_2d + 4)  = sinking (:,:,ik1) * zrfact2 * tmask(:,:,1)
-      trc2d(:,:  ,jp_pcs0_2d + 5)  = sinking2(:,:,ik1) * zrfact2 * tmask(:,:,1)
-      trc2d(:,:  ,jp_pcs0_2d + 6)  = sinkfer (:,:,ik1) * zrfact2 * tmask(:,:,1)
-      trc2d(:,:  ,jp_pcs0_2d + 7)  = sinksil (:,:,ik1) * zrfact2 * tmask(:,:,1)
-      trc2d(:,:  ,jp_pcs0_2d + 8)  = sinkcal (:,:,ik1) * zrfact2 * tmask(:,:,1)
-      trc3d(:,:,:,jp_pcs0_3d + 11) = sinking (:,:,:)      * zrfact2 * tmask(:,:,:)
-      trc3d(:,:,:,jp_pcs0_3d + 12) = sinking2(:,:,:)      * zrfact2 * tmask(:,:,:)
-      trc3d(:,:,:,jp_pcs0_3d + 13) = sinksil (:,:,:)      * zrfact2 * tmask(:,:,:)
-      trc3d(:,:,:,jp_pcs0_3d + 14) = sinkcal (:,:,:)      * zrfact2 * tmask(:,:,:)
-      trc3d(:,:,:,jp_pcs0_3d + 15) = znum3d  (:,:,:)                * tmask(:,:,:)
-      trc3d(:,:,:,jp_pcs0_3d + 16) = wsbio3  (:,:,:)                * tmask(:,:,:)
-      trc3d(:,:,:,jp_pcs0_3d + 17) = wsbio4  (:,:,:)                * tmask(:,:,:)
-#else
-      IF( jnt == nrdttrc ) then
-        CALL iom_put( "POCFlx"  , sinking (:,:,:)      * zrfact2 * tmask(:,:,:) )  ! POC export
-        CALL iom_put( "NumFlx"  , sinking2 (:,:,:)     * zrfact2 * tmask(:,:,:) )  ! Num export
-        CALL iom_put( "SiFlx"   , sinksil (:,:,:)      * zrfact2 * tmask(:,:,:) )  ! Silica export
-        CALL iom_put( "CaCO3Flx", sinkcal (:,:,:)      * zrfact2 * tmask(:,:,:) )  ! Calcite export
-        CALL iom_put( "xnum"    , znum3d  (:,:,:)                * tmask(:,:,:) )  ! Number of particles in aggregats
-        CALL iom_put( "W1"      , wsbio3  (:,:,:)                * tmask(:,:,:) )  ! sinking speed of POC
-        CALL iom_put( "W2"      , wsbio4  (:,:,:)                * tmask(:,:,:) )  ! sinking speed of aggregats
-        CALL iom_put( "PMO"     , sinking (:,:,ik1) * zrfact2 * tmask(:,:,1) )  ! POC export at 100m
-        CALL iom_put( "PMO2"    , sinking2(:,:,ik1) * zrfact2 * tmask(:,:,1) )  ! Num export at 100m
-        CALL iom_put( "ExpFe1"  , sinkfer (:,:,ik1) * zrfact2 * tmask(:,:,1) )  ! Export of iron at 100m
-        CALL iom_put( "ExpSi"   , sinksil (:,:,ik1) * zrfact2 * tmask(:,:,1) )  ! export of silica at 100m
-        CALL iom_put( "ExpCaCO3", sinkcal (:,:,ik1) * zrfact2 * tmask(:,:,1) )  ! export of calcite at 100m
-     ENDIF
-#  endif
-
-#endif
+      IF( ln_diatrc ) THEN
+         !
+         ik1 = iksed + 1
+         zrfact2 = 1.e3 * rfact2r
+         IF( jnt == nrdttrc ) THEN
+           CALL iom_put( "POCFlx"  , sinking (:,:,:)      * zrfact2 * tmask(:,:,:) )  ! POC export
+           CALL iom_put( "NumFlx"  , sinking2 (:,:,:)     * zrfact2 * tmask(:,:,:) )  ! Num export
+           CALL iom_put( "SiFlx"   , sinksil (:,:,:)      * zrfact2 * tmask(:,:,:) )  ! Silica export
+           CALL iom_put( "CaCO3Flx", sinkcal (:,:,:)      * zrfact2 * tmask(:,:,:) )  ! Calcite export
+           CALL iom_put( "xnum"    , znum3d  (:,:,:)                * tmask(:,:,:) )  ! Number of particles in aggregats
+           CALL iom_put( "W1"      , wsbio3  (:,:,:)                * tmask(:,:,:) )  ! sinking speed of POC
+           CALL iom_put( "W2"      , wsbio4  (:,:,:)                * tmask(:,:,:) )  ! sinking speed of aggregats
+         ENDIF
+# if ! defined key_iomput
+         trc2d(:,:  ,jp_pcs0_2d + 4)  = sinking (:,:,ik1)    * zrfact2 * tmask(:,:,1)
+         trc2d(:,:  ,jp_pcs0_2d + 5)  = sinking2(:,:,ik1)    * zrfact2 * tmask(:,:,1)
+         trc2d(:,:  ,jp_pcs0_2d + 6)  = sinkfer (:,:,ik1)    * zrfact2 * tmask(:,:,1)
+         trc2d(:,:  ,jp_pcs0_2d + 7)  = sinksil (:,:,ik1)    * zrfact2 * tmask(:,:,1)
+         trc2d(:,:  ,jp_pcs0_2d + 8)  = sinkcal (:,:,ik1)    * zrfact2 * tmask(:,:,1)
+         trc3d(:,:,:,jp_pcs0_3d + 11) = sinking (:,:,:)      * zrfact2 * tmask(:,:,:)
+         trc3d(:,:,:,jp_pcs0_3d + 12) = sinking2(:,:,:)      * zrfact2 * tmask(:,:,:)
+         trc3d(:,:,:,jp_pcs0_3d + 13) = sinksil (:,:,:)      * zrfact2 * tmask(:,:,:)
+         trc3d(:,:,:,jp_pcs0_3d + 14) = sinkcal (:,:,:)      * zrfact2 * tmask(:,:,:)
+         trc3d(:,:,:,jp_pcs0_3d + 15) = znum3d  (:,:,:)                * tmask(:,:,:)
+         trc3d(:,:,:,jp_pcs0_3d + 16) = wsbio3  (:,:,:)                * tmask(:,:,:)
+         trc3d(:,:,:,jp_pcs0_3d + 17) = wsbio4  (:,:,:)                * tmask(:,:,:)
+# endif
+        !
+      ENDIF
       !
       IF(ln_ctl)   THEN  ! print mean trends (used for debugging)
          WRITE(charout, FMT="('sink')")
@@ -308,7 +290,9 @@ CONTAINS
          CALL prt_ctl_trc(tab4d=tra, mask=tmask, clinfo=ctrcnm)
       ENDIF
       !
-      IF( wrk_not_released(3, 2 ) )   CALL ctl_stop('p4z_sink: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi, jpj, jpk, znum3d )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('p4z_sink')
       !
    END SUBROUTINE p4z_sink
 
@@ -334,8 +318,10 @@ CONTAINS
          &                xkr_nnano, xkr_ndiat, xkr_nmeso, xkr_naggr
       !!----------------------------------------------------------------------
       !
-      REWIND( numnat )                     ! read nampiskrs
-      READ  ( numnat, nampiskrs )
+      IF( nn_timing == 1 )  CALL timing_start('p4z_sink_init')
+      !
+      REWIND( numnatp )                     ! read nampiskrs
+      READ  ( numnatp, nampiskrs )
 
       IF(lwp) THEN
          WRITE(numout,*)
@@ -440,6 +426,8 @@ iflag:   DO jn = 1, kiter
          !
       END DO
       !
+      IF( nn_timing == 1 )  CALL timing_stop('p4z_sink_init')
+      !
   END SUBROUTINE p4z_sink_init
 
 #else
@@ -456,22 +444,25 @@ iflag:   DO jn = 1, kiter
       INTEGER, INTENT(in) :: kt, jnt
       INTEGER  ::   ji, jj, jk
       REAL(wp) ::   zagg1, zagg2, zagg3, zagg4
-      REAL(wp) ::   zagg , zaggfe, zaggdoc, zaggdoc2
-      REAL(wp) ::   zfact, zwsmax, zstep
-#if defined key_diatrc
+      REAL(wp) ::   zagg , zaggfe, zaggdoc, zaggdoc2, zaggdoc3
+      REAL(wp) ::   zfact, zwsmax, zmax, zstep
       REAL(wp) ::   zrfact2
       INTEGER  ::   ik1
-#endif
       CHARACTER (len=25) :: charout
       !!---------------------------------------------------------------------
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('p4z_sink')
+      !
       !    Sinking speeds of detritus is increased with depth as shown
       !    by data and from the coagulation theory
       !    -----------------------------------------------------------
       DO jk = 1, jpkm1
          DO jj = 1, jpj
-            DO ji=1,jpi
-               zfact = MAX( 0., fsdepw(ji,jj,jk+1) - hmld(ji,jj) ) / 4000._wp
+            DO ji = 1,jpi
+      !         zmax  = MAX( heup(ji,jj), hmld(ji,jj) )
+      !         zfact = MAX( 0., fsdepw(ji,jj,jk+1) - zmax ) / 5000._wp
+               zmax = hmld(ji,jj)
+               zfact = MAX( 0., fsdepw(ji,jj,jk+1) - zmax ) / 4000._wp
                wsbio4(ji,jj,jk) = wsbio2 + ( 200.- wsbio2 ) * zfact
             END DO
          END DO
@@ -490,7 +481,7 @@ iflag:   DO jn = 1, kiter
       DO jk = 1,jpkm1
          DO jj = 1, jpj
             DO ji = 1, jpi
-               zwsmax = 0.8 * fse3t(ji,jj,jk) / xstep
+               zwsmax = 0.5 * fse3t(ji,jj,jk) / xstep
                wsbio4(ji,jj,jk) = MIN( wsbio4(ji,jj,jk), zwsmax )
                wsbio3(ji,jj,jk) = MIN( wsbio3(ji,jj,jk), zwsmax )
             END DO
@@ -516,7 +507,7 @@ iflag:   DO jn = 1, kiter
       CALL p4z_sink2( wsbio3, sinkfer , jpsfe )
       CALL p4z_sink2( wsbio4, sinking2, jpgoc )
       CALL p4z_sink2( wsbio4, sinkfer2, jpbfe )
-      CALL p4z_sink2( wsbio4, sinksil , jpdsi )
+      CALL p4z_sink2( wsbio4, sinksil , jpgsi )
       CALL p4z_sink2( wscal , sinkcal , jpcal )
 
       !  Exchange between organic matter compartments due to coagulation/disaggregation
@@ -525,59 +516,60 @@ iflag:   DO jn = 1, kiter
       DO jk = 1, jpkm1
          DO jj = 1, jpj
             DO ji = 1, jpi
-# if defined key_degrad
-               zstep = xstep * facvol(ji,jj,jk)
-# else
+               !
                zstep = xstep 
+# if defined key_degrad
+               zstep = zstep * facvol(ji,jj,jk)
 # endif
                zfact = zstep * xdiss(ji,jj,jk)
                !  Part I : Coagulation dependent on turbulence
-               zagg1 = 940.* zfact * trn(ji,jj,jk,jppoc) * trn(ji,jj,jk,jppoc)
-               zagg2 = 1.054e4 * zfact * trn(ji,jj,jk,jppoc) * trn(ji,jj,jk,jpgoc)
+               zagg1 = 354.  * zfact * trn(ji,jj,jk,jppoc) * trn(ji,jj,jk,jppoc)
+               zagg2 = 4452. * zfact * trn(ji,jj,jk,jppoc) * trn(ji,jj,jk,jpgoc)
 
                ! Part II : Differential settling
 
                !  Aggregation of small into large particles
-               zagg3 = 0.66 * zstep * trn(ji,jj,jk,jppoc) * trn(ji,jj,jk,jpgoc)
-               zagg4 = 0.e0 * zstep * trn(ji,jj,jk,jppoc) * trn(ji,jj,jk,jppoc)
+               zagg3 =  4.7 * zstep * trn(ji,jj,jk,jppoc) * trn(ji,jj,jk,jpgoc)
+               zagg4 =  0.4 * zstep * trn(ji,jj,jk,jppoc) * trn(ji,jj,jk,jppoc)
 
                zagg   = zagg1 + zagg2 + zagg3 + zagg4
                zaggfe = zagg * trn(ji,jj,jk,jpsfe) / ( trn(ji,jj,jk,jppoc) + rtrn )
 
                ! Aggregation of DOC to small particles
-               zaggdoc = ( 80.* trn(ji,jj,jk,jpdoc) + 698. * trn(ji,jj,jk,jppoc) ) *  zfact * trn(ji,jj,jk,jpdoc) 
-               zaggdoc2 = 1.05e4 * zfact * trn(ji,jj,jk,jpgoc) * trn(ji,jj,jk,jpdoc)
+               zaggdoc  = ( 0.83 * trn(ji,jj,jk,jpdoc) + 271. * trn(ji,jj,jk,jppoc) ) * zfact * trn(ji,jj,jk,jpdoc)
+               zaggdoc2 = 1.07e4 * zfact * trn(ji,jj,jk,jpgoc) * trn(ji,jj,jk,jpdoc)
+               zaggdoc3 =   0.02 * ( 16706. * trn(ji,jj,jk,jppoc) + 231. * trn(ji,jj,jk,jpdoc) ) * zstep * trn(ji,jj,jk,jpdoc)
 
                !  Update the trends
-               tra(ji,jj,jk,jppoc) = tra(ji,jj,jk,jppoc) - zagg + zaggdoc
+               tra(ji,jj,jk,jppoc) = tra(ji,jj,jk,jppoc) - zagg + zaggdoc + zaggdoc3
                tra(ji,jj,jk,jpgoc) = tra(ji,jj,jk,jpgoc) + zagg + zaggdoc2
                tra(ji,jj,jk,jpsfe) = tra(ji,jj,jk,jpsfe) - zaggfe
                tra(ji,jj,jk,jpbfe) = tra(ji,jj,jk,jpbfe) + zaggfe
-               tra(ji,jj,jk,jpdoc) = tra(ji,jj,jk,jpdoc) - zaggdoc - zaggdoc2
+               tra(ji,jj,jk,jpdoc) = tra(ji,jj,jk,jpdoc) - zaggdoc - zaggdoc2 - zaggdoc3
                !
             END DO
          END DO
       END DO
 
-#if defined key_diatrc
-      zrfact2 = 1.e3 * rfact2r
-      ik1  = iksed + 1
-#  if ! defined key_iomput
-      trc2d(:,:,jp_pcs0_2d + 4) = sinking (:,:,ik1) * zrfact2 * tmask(:,:,1)
-      trc2d(:,:,jp_pcs0_2d + 5) = sinking2(:,:,ik1) * zrfact2 * tmask(:,:,1)
-      trc2d(:,:,jp_pcs0_2d + 6) = sinkfer (:,:,ik1) * zrfact2 * tmask(:,:,1)
-      trc2d(:,:,jp_pcs0_2d + 7) = sinkfer2(:,:,ik1) * zrfact2 * tmask(:,:,1)
-      trc2d(:,:,jp_pcs0_2d + 8) = sinksil (:,:,ik1) * zrfact2 * tmask(:,:,1)
-      trc2d(:,:,jp_pcs0_2d + 9) = sinkcal (:,:,ik1) * zrfact2 * tmask(:,:,1)
-#  else
-      IF( jnt == nrdttrc )  then
-         CALL iom_put( "EPC100"  , ( sinking(:,:,ik1) + sinking2(:,:,ik1) ) * zrfact2 * tmask(:,:,1) ) ! Export of carbon at 100m
-         CALL iom_put( "EPFE100" , ( sinkfer(:,:,ik1) + sinkfer2(:,:,ik1) ) * zrfact2 * tmask(:,:,1) ) ! Export of iron at 100m
-         CALL iom_put( "EPCAL100",   sinkcal(:,:,ik1)                       * zrfact2 * tmask(:,:,1) ) ! Export of calcite  at 100m
-         CALL iom_put( "EPSI100" ,   sinksil(:,:,ik1)                       * zrfact2 * tmask(:,:,1) ) ! Export of biogenic silica at 100m
+      IF( ln_diatrc ) THEN
+         zrfact2 = 1.e3 * rfact2r
+         ik1  = iksed + 1
+         IF( lk_iomput ) THEN
+           IF( jnt == nrdttrc ) THEN
+              CALL iom_put( "EPC100"  , ( sinking(:,:,ik1) + sinking2(:,:,ik1) ) * zrfact2 * tmask(:,:,1) ) ! Export of carbon at 100m
+              CALL iom_put( "EPFE100" , ( sinkfer(:,:,ik1) + sinkfer2(:,:,ik1) ) * zrfact2 * tmask(:,:,1) ) ! Export of iron at 100m
+              CALL iom_put( "EPCAL100",   sinkcal(:,:,ik1)                       * zrfact2 * tmask(:,:,1) ) ! Export of calcite  at 100m
+              CALL iom_put( "EPSI100" ,   sinksil(:,:,ik1)                       * zrfact2 * tmask(:,:,1) ) ! Export of biogenic silica at 100m
+           ENDIF
+         ELSE
+           trc2d(:,:,jp_pcs0_2d + 4) = sinking (:,:,ik1) * zrfact2 * tmask(:,:,1)
+           trc2d(:,:,jp_pcs0_2d + 5) = sinking2(:,:,ik1) * zrfact2 * tmask(:,:,1)
+           trc2d(:,:,jp_pcs0_2d + 6) = sinkfer (:,:,ik1) * zrfact2 * tmask(:,:,1)
+           trc2d(:,:,jp_pcs0_2d + 7) = sinkfer2(:,:,ik1) * zrfact2 * tmask(:,:,1)
+           trc2d(:,:,jp_pcs0_2d + 8) = sinksil (:,:,ik1) * zrfact2 * tmask(:,:,1)
+           trc2d(:,:,jp_pcs0_2d + 9) = sinkcal (:,:,ik1) * zrfact2 * tmask(:,:,1)
+         ENDIF
       ENDIF
-#endif
-#endif
       !
       IF(ln_ctl)   THEN  ! print mean trends (used for debugging)
          WRITE(charout, FMT="('sink')")
@@ -585,8 +577,9 @@ iflag:   DO jn = 1, kiter
          CALL prt_ctl_trc(tab4d=tra, mask=tmask, clinfo=ctrcnm)
       ENDIF
       !
+      IF( nn_timing == 1 )  CALL timing_stop('p4z_sink')
+      !
    END SUBROUTINE p4z_sink
-
 
    SUBROUTINE p4z_sink_init
       !!----------------------------------------------------------------------
@@ -595,6 +588,8 @@ iflag:   DO jn = 1, kiter
    END SUBROUTINE p4z_sink_init
 
 #endif
+
+
 
    SUBROUTINE p4z_sink2( pwsink, psinkflx, jp_tra )
       !!---------------------------------------------------------------------
@@ -607,8 +602,6 @@ iflag:   DO jn = 1, kiter
       !! ** Method  : - this ROUTINE compute not exactly the advection but the
       !!      transport term, i.e.  div(u*tra).
       !!---------------------------------------------------------------------
-      USE wrk_nemo, ONLY: wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY: ztraz => wrk_3d_2, zakz => wrk_3d_3, zwsink2 => wrk_3d_4
       !
       INTEGER , INTENT(in   )                         ::   jp_tra    ! tracer index index      
       REAL(wp), INTENT(in   ), DIMENSION(jpi,jpj,jpk) ::   pwsink    ! sinking speed
@@ -616,26 +609,27 @@ iflag:   DO jn = 1, kiter
       !!
       INTEGER  ::   ji, jj, jk, jn
       REAL(wp) ::   zigma,zew,zign, zflx, zstep
+      REAL(wp), POINTER, DIMENSION(:,:,:) :: ztraz, zakz, zwsink2, ztrb 
       !!---------------------------------------------------------------------
-
-      IF(  wrk_in_use(3, 2,3,4 ) ) THEN
-         CALL ctl_stop('p4z_sink2: requested workspace arrays unavailable')
-         RETURN
-      END IF
+      !
+      IF( nn_timing == 1 )  CALL timing_start('p4z_sink2')
+      !
+      ! Allocate temporary workspace
+      CALL wrk_alloc( jpi, jpj, jpk, ztraz, zakz, zwsink2, ztrb )
 
       zstep = rfact2 / 2.
 
       ztraz(:,:,:) = 0.e0
       zakz (:,:,:) = 0.e0
+      ztrb (:,:,:) = trn(:,:,:,jp_tra)
 
       DO jk = 1, jpkm1
-# if defined key_degrad
-         zwsink2(:,:,jk+1) = -pwsink(:,:,jk) / rday * tmask(:,:,jk+1) * facvol(:,:,jk)
-# else
-         zwsink2(:,:,jk+1) = -pwsink(:,:,jk) / rday * tmask(:,:,jk+1)
-# endif
+         zwsink2(:,:,jk+1) = -pwsink(:,:,jk) / rday * tmask(:,:,jk+1) 
       END DO
       zwsink2(:,:,1) = 0.e0
+      IF( lk_degrad ) THEN
+         zwsink2(:,:,:) = zwsink2(:,:,:) * facvol(:,:,:)
+      ENDIF
 
 
       ! Vertical advective flux
@@ -697,15 +691,17 @@ iflag:   DO jn = 1, kiter
          DO jj = 1,jpj
             DO ji = 1, jpi
                zflx = ( psinkflx(ji,jj,jk) - psinkflx(ji,jj,jk+1) ) / fse3t(ji,jj,jk)
-               trb(ji,jj,jk,jp_tra) = trb(ji,jj,jk,jp_tra) + 2. * zflx
+               ztrb(ji,jj,jk) = ztrb(ji,jj,jk) + 2. * zflx
             END DO
          END DO
       END DO
 
-      trn     (:,:,:,jp_tra) = trb(:,:,:,jp_tra)
+      trn     (:,:,:,jp_tra) = ztrb(:,:,:)
       psinkflx(:,:,:)        = 2. * psinkflx(:,:,:)
       !
-      IF( wrk_not_released(3, 2,3,4) )   CALL ctl_stop('p4z_sink2: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi, jpj, jpk, ztraz, zakz, zwsink2, ztrb )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('p4z_sink2')
       !
    END SUBROUTINE p4z_sink2
 

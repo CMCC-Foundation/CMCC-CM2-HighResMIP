@@ -93,9 +93,6 @@ CONTAINS
       !!      bomb C-14 but changes due to the Suess effect.
       !!
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zatmbc14 => wrk_2d_1
-      USE wrk_nemo, ONLY:   zw3d     => wrk_3d_1
       !
       INTEGER, INTENT(in) ::   kt    ! ocean time-step index
       !
@@ -112,13 +109,17 @@ CONTAINS
       REAL(wp) :: zv2               ! wind speed ( square)
       REAL(wp) :: zpv               ! piston velocity 
       REAL(wp) :: zdemi, ztra
-      !!----------------------------------------------------------------------
+      REAL(wp), POINTER, DIMENSION(:,:  ) :: zatmbc14  
+      REAL(wp), POINTER, DIMENSION(:,:,:) :: zdecay
+      !!---------------------------------------------------------------------
+      !
+      IF( nn_timing == 1 )  CALL timing_start('trc_sms_c14b')
+      !
+      ! Allocate temporary workspace
+      CALL wrk_alloc( jpi, jpj,      zatmbc14 )
+      CALL wrk_alloc( jpi, jpj, jpk, zdecay   )
 
-      IF( wrk_in_use(2, 1) .OR. wrk_in_use(3, 1) ) THEN
-         CALL ctl_stop('trc_sms_c14b : requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
-
-      IF( kt == nit000 )  THEN         ! Computation of decay coeffcient
+      IF( kt == nittrc000 )  THEN         ! Computation of decay coeffcient
          zdemi   = 5730._wp
          xlambda = LOG(2.) / zdemi / ( nyear_len(1) * rday )
          xdecay  = EXP( - xlambda * rdt )
@@ -245,18 +246,12 @@ CONTAINS
                  &                       * facvol(ji,jj,1)                           &
 #endif
                   &                      * tmask(ji,jj,1) * ( 1. - fr_i(ji,jj) ) / 2.
-
             ! Add the surface flux to the trend
             tra(ji,jj,1,jpc14) = tra(ji,jj,1,jpc14) + qtr_c14(ji,jj) / fse3t(ji,jj,1) 
             
             ! cumulation of surface flux at each time step
             qint_c14(ji,jj) = qint_c14(ji,jj) + qtr_c14(ji,jj) * rdt
-
-# if defined key_diatrc && ! defined key_iomput
-            ! Save 2D diagnostics
-            trc2d(ji,jj,jp_c14b0_2d    ) = qtr_c14 (ji,jj)
-            trc2d(ji,jj,jp_c14b0_2d + 1) = qint_c14(ji,jj)
-# endif 
+            !
          END DO
       END DO
 
@@ -264,35 +259,35 @@ CONTAINS
       DO jk = 1, jpk
          DO jj = 1, jpj
             DO ji = 1, jpi
-#if ! defined key_degrad
-               ztra = trn(ji,jj,jk,jpc14) * xaccum
+#if defined key_degrad
+               zdecay(ji,jj,jk) = trn(ji,jj,jk,jpc14) * ( 1. - EXP( -xlambda * rdt * facvol(ji,jj,jk) ) )
 #else
-               ztra = trn(ji,jj,jk,jpc14) * ( 1. - EXP( -xlambda * rdt * facvol(ji,jj,jk) ) )
+               zdecay(ji,jj,jk) = trn(ji,jj,jk,jpc14) * xaccum
 #endif
-               tra(ji,jj,jk,jpc14) = tra(ji,jj,jk,jpc14) - ztra / rdt
-#if defined key_diatrc
-               ! Save 3D diagnostics
-# if ! defined key_iomput
-               trc3d(ji,jj,jk,jp_c14b0_3d ) = ztra    !  radioactive decay
-# else 
-               zw3d(ji,jj,jk) = ztra    !  radioactive decay
-# endif
-#endif
+               tra(ji,jj,jk,jpc14) = tra(ji,jj,jk,jpc14) - zdecay(ji,jj,jk) / rdt
+               !
             END DO
          END DO
       END DO
 
-#if defined key_diatrc  && defined key_iomput
-      CALL iom_put( "qtrC14b"  , qtr_c14  )
-      CALL iom_put( "qintC14b" , qint_c14 )
-#endif
-#if defined key_diatrc  && defined key_iomput
-      CALL iom_put( "fdecay" , zw3d )
-#endif
-      IF( l_trdtrc )   CALL trd_mod_trc( tra(:,:,:,jpc14), jpc14, jptra_trd_sms, kt )   ! save trends
+      IF( ln_diatrc ) THEN
+         IF( lk_iomput ) THEN
+            CALL iom_put( "qtrC14b"  , qtr_c14  )
+            CALL iom_put( "qintC14b" , qint_c14 )
+            CALL iom_put( "fdecay"   , zdecay   )
+          ELSE
+            trc2d(:,:  ,jp_c14b0_2d     ) = qtr_c14 (:,:)
+            trc2d(:,:  ,jp_c14b0_2d + 1 ) = qint_c14(:,:)
+            trc3d(:,:,:,jp_c14b0_3d     ) = zdecay  (:,:,:)
+          ENDIF
+      ENDIF
 
-      IF( wrk_not_released(2, 1) .OR.   &
-          wrk_not_released(3, 1) )   CALL ctl_stop('trc_sms_c14b : failed to release workspace arrays')
+      IF( l_trdtrc )  CALL trd_mod_trc( tra(:,:,:,jpc14), jpc14, jptra_trd_sms, kt )   ! save trends
+
+      CALL wrk_dealloc( jpi, jpj,      zatmbc14 )
+      CALL wrk_dealloc( jpi, jpj, jpk, zdecay   )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('trc_sms_c14b')
       !
    END SUBROUTINE trc_sms_c14b
 

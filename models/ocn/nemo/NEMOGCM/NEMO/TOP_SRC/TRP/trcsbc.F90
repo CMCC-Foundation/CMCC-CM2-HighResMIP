@@ -30,7 +30,7 @@ MODULE trcsbc
 #  include "top_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/TOP 3.3 , NEMO Consortium (2010)
-   !! $Id: trcsbc.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -49,44 +49,44 @@ CONTAINS
       !!         and thus the concentration of a tracer as :
       !!            tra = tra + emp * trn / e3t   for k=1
       !!         where emp, the surface freshwater budget (evaporation minus
-      !!         precipitation minus runoff) given in kg/m2/s is divided
+      !!         precipitation ) given in kg/m2/s is divided
       !!         by 1035 kg/m3 (density of ocean water) to obtain m/s.
       !!
       !! ** Action  : - Update the 1st level of tra with the trend associated
       !!                with the tracer surface boundary condition 
       !!
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zemps  => wrk_2d_1
-      USE wrk_nemo, ONLY:   ztrtrd => wrk_3d_1
       !
       INTEGER, INTENT( in ) ::   kt          ! ocean time-step index
       !
       INTEGER  ::   ji, jj, jn           ! dummy loop indices
       REAL(wp) ::   zsrau, zse3t   ! temporary scalars
       CHARACTER (len=22) :: charout
-      !!----------------------------------------------------------------------
+      REAL(wp), POINTER, DIMENSION(:,:  ) :: zemps
+      REAL(wp), POINTER, DIMENSION(:,:,:) :: ztrtrd
+      !!---------------------------------------------------------------------
+      !
+      IF( nn_timing == 1 )  CALL timing_start('trc_sbc')
+      !
+      ! Allocate temporary workspace
+                      CALL wrk_alloc( jpi, jpj,      zemps  )
+      IF( l_trdtrc )  CALL wrk_alloc( jpi, jpj, jpk, ztrtrd )
 
-      IF( wrk_in_use(2, 1) .OR.  wrk_in_use(3, 1) ) THEN
-         CALL ctl_stop('trc_sbc: requested workspace array unavailable.')   ;   RETURN
-      END IF
-
-      IF( kt == nit000 ) THEN
+      IF( kt == nittrc000 ) THEN
          IF(lwp) WRITE(numout,*)
          IF(lwp) WRITE(numout,*) 'trc_sbc : Passive tracers surface boundary condition'
          IF(lwp) WRITE(numout,*) '~~~~~~~ '
       ENDIF
 
+      ! Coupling online : river runoff is added to the horizontal divergence (hdivn) in the subroutine sbc_rnf_div 
+      ! one only consider the concentration/dilution effect due to evaporation minus precipitation + freezing/melting of sea-ice
 
-      IF( lk_offline ) THEN          ! emps in dynamical files contains emps - rnf
-         zemps(:,:) = emps(:,:)  
-      ELSE                           ! Concentration dilution effect on tracer due to evaporation, precipitation, and river runoff
-         IF( lk_vvl ) THEN                      ! volume variable
-            zemps(:,:) = emps(:,:) - emp(:,:)   
-!!ch         zemps(:,:) = 0.
-         ELSE                                   ! linear free surface
-            zemps(:,:) = emps(:,:)
-         ENDIF 
+      ! Coupling in offline, hdivn is computed from ocean horizontal velocities only ; the runoff are not included.
+      ! emps in dynamical files contains (emps - rnf)
+      IF( .NOT. lk_offline .AND. lk_vvl ) THEN  ! online coupling + volume variable 
+         zemps(:,:) = emps(:,:) - emp(:,:)   
+      ELSE
+         zemps(:,:) = emps(:,:)
       ENDIF 
 
       ! 0. initialization
@@ -113,10 +113,11 @@ CONTAINS
          WRITE(charout, FMT="('sbc ')") ;  CALL prt_ctl_trc_info(charout)
                                            CALL prt_ctl_trc( tab4d=tra, mask=tmask, clinfo=ctrcnm, clinfo2='trd' )
       ENDIF
-
-      IF( wrk_not_released(2, 1) .OR. wrk_not_released(3, 1) )   &
-      &       CALL ctl_stop('trc_sbc: failed to release workspace array.')
-
+                      CALL wrk_dealloc( jpi, jpj,      zemps  )
+      IF( l_trdtrc )  CALL wrk_dealloc( jpi, jpj, jpk, ztrtrd )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('trc_sbc')
+      !
    END SUBROUTINE trc_sbc
 
 #else

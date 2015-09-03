@@ -16,17 +16,22 @@ MODULE trcini_pisces
    !! trc_ini_pisces   : PISCES biochemical model initialisation
    !!----------------------------------------------------------------------
    USE par_trc         ! TOP parameters
-   USE sms_pisces      ! Source Minus Sink variables
-   USE trc
-   USE oce_trc         ! ocean variables
-   USE p4zche 
-   USE p4zche          ! 
-   USE p4zsink         ! 
-   USE p4zopt          ! 
-   USE p4zprod         !
-   USE p4zrem          ! 
-   USE p4zsed          ! 
-   USE p4zflx          ! 
+   USE oce_trc         !  shared variables between ocean and passive tracers
+   USE trc             !  passive tracers common variables 
+   USE sms_pisces      !  PISCES Source Minus Sink variables
+   USE p4zche          !  Chemical model
+   USE p4zsink         !  vertical flux of particulate matter due to sinking
+   USE p4zopt          !  optical model
+   USE p4zrem          !  Remineralisation of organic matter
+   USE p4zflx          !  Gas exchange
+   USE p4zsed          !  Sedimentation
+   USE p4zlim          !  Co-limitations of differents nutrients
+   USE p4zprod         !  Growth rate of the 2 phyto groups
+   USE p4zmicro        !  Sources and sinks of microzooplankton
+   USE p4zmeso         !  Sources and sinks of mesozooplankton
+   USE p4zmort         !  Mortality terms for phytoplankton
+   USE p4zlys          !  Calcite saturation
+   USE p4zsed          !  Sedimentation
 
    IMPLICIT NONE
    PRIVATE
@@ -39,12 +44,12 @@ MODULE trcini_pisces
    REAL(wp) :: po4    =  2.174e-6_wp 
    REAL(wp) :: bioma0 =  1.000e-8_wp  
    REAL(wp) :: silic1 =  91.65e-6_wp  
-   REAL(wp) :: no3    =  31.04e-6_wp * 7.6_wp
+   REAL(wp) :: no3    =  31.04e-6_wp * 7.625_wp
 
 #  include "top_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/TOP 3.3 , NEMO Consortium (2010)
-   !! $Id: trcini_pisces.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -55,7 +60,7 @@ CONTAINS
       !!
       !! ** Purpose :   Initialisation of the PISCES biochemical model
       !!----------------------------------------------------------------------
-      !
+
       IF(lwp) WRITE(numout,*)
       IF(lwp) WRITE(numout,*) ' trc_ini_pisces :   PISCES biochemical model initialisation'
       IF(lwp) WRITE(numout,*) ' ~~~~~~~~~~~~~~'
@@ -75,11 +80,12 @@ CONTAINS
 
       ! Set biological ratios
       ! ---------------------
-      rno3   = (16.+2.) / 122.
-      po4r   =   1.e0   / 122.
-      o2nit  =  32.     / 122.
-      rdenit =  97.6    /  16.
-      o2ut   = 140.     / 122.
+      rno3    =  16._wp / 122._wp
+      po4r    =   1._wp / 122._wp
+      o2nit   =  32._wp / 122._wp
+      rdenit  = 105._wp /  16._wp
+      rdenita =   3._wp /  5._wp
+      o2ut    = 131._wp / 122._wp
 
       CALL p4z_che        ! initialize the chemical constants
 
@@ -101,8 +107,8 @@ CONTAINS
          trn(:,:,:,jpnum) = bioma0 / ( 6. * xkr_massp )
 #  endif
          trn(:,:,:,jpsil) = silic1
-         trn(:,:,:,jpbsi) = bioma0 * 0.15
-         trn(:,:,:,jpdsi) = bioma0 * 5.e-6
+         trn(:,:,:,jpdsi) = bioma0 * 0.15
+         trn(:,:,:,jpgsi) = bioma0 * 5.e-6
          trn(:,:,:,jpphy) = bioma0
          trn(:,:,:,jpdia) = bioma0
          trn(:,:,:,jpzoo) = bioma0
@@ -123,8 +129,26 @@ CONTAINS
 
       ENDIF
 
+      ! Time step duration for biology
+      xstep = rfact2 / rday
+
+      CALL p4z_sink_init      !  vertical flux of particulate organic matter
+      CALL p4z_opt_init       !  Optic: PAR in the water column
+      CALL p4z_lim_init       !  co-limitations by the various nutrients
+      CALL p4z_prod_init      !  phytoplankton growth rate over the global ocean.
+      CALL p4z_rem_init       !  remineralisation
+      CALL p4z_mort_init      !  phytoplankton mortality 
+      CALL p4z_micro_init     !  microzooplankton
+      CALL p4z_meso_init      !  mesozooplankton
+      CALL p4z_sed_init       !  sedimentation 
+      CALL p4z_lys_init       !  calcite saturation
+      CALL p4z_flx_init       !  gas exchange 
+
+      ndayflxtr = 0
+
+      IF(lwp) WRITE(numout,*) 
       IF(lwp) WRITE(numout,*) 'Initialization of PISCES tracers done'
-      IF(lwp) WRITE(numout,*) ' '
+      IF(lwp) WRITE(numout,*) 
       !
    END SUBROUTINE trc_ini_pisces
 
@@ -135,26 +159,18 @@ CONTAINS
       !!
       !! ** Purpose :   Allocate all the dynamic arrays of PISCES 
       !!----------------------------------------------------------------------
-      USE p4zint , ONLY : p4z_int_alloc      
-      USE p4zsink, ONLY : p4z_sink_alloc      
-      USE p4zopt , ONLY : p4z_opt_alloc           
-      USE p4zprod, ONLY : p4z_prod_alloc         
-      USE p4zrem , ONLY : p4z_rem_alloc           
-      USE p4zsed , ONLY : p4z_sed_alloc          
-      USE p4zflx , ONLY : p4z_flx_alloc
       !
       INTEGER :: ierr
       !!----------------------------------------------------------------------
       !
       ierr =         sms_pisces_alloc()          ! Start of PISCES-related alloc routines...
-      ierr = ierr +     p4z_che_alloc()
-      ierr = ierr +     p4z_int_alloc()
-      ierr = ierr +    p4z_sink_alloc()
-      ierr = ierr +     p4z_opt_alloc()
-      ierr = ierr +    p4z_prod_alloc()
-      ierr = ierr +     p4z_rem_alloc()
-      ierr = ierr +     p4z_sed_alloc()
-      ierr = ierr +     p4z_flx_alloc()
+      ierr = ierr +  p4z_che_alloc()
+      ierr = ierr +  p4z_sink_alloc()
+      ierr = ierr +  p4z_opt_alloc()
+      ierr = ierr +  p4z_prod_alloc()
+      ierr = ierr +  p4z_rem_alloc()
+      ierr = ierr +  p4z_sed_alloc()
+      ierr = ierr +  p4z_flx_alloc()
       !
       IF( lk_mpp    )   CALL mpp_sum( ierr )
       IF( ierr /= 0 )   CALL ctl_stop( 'STOP', 'pisces_alloc: unable to allocate PISCES arrays' )

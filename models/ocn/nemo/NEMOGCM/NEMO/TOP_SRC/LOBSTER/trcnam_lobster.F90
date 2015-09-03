@@ -11,10 +11,12 @@ MODULE trcnam_lobster
    !!----------------------------------------------------------------------
    !! trc_nam_lobster   : LOBSTER model namelist read
    !!----------------------------------------------------------------------
-   USE oce_trc          ! Ocean variables
-   USE par_trc          ! TOP parameters
-   USE trc              ! TOP variables
-   USE sms_lobster      ! sms trends
+   USE oce_trc                                   ! Ocean variables
+   USE par_trc                                   ! TOP parameters
+   USE trc                                       ! TOP variables
+   USE trdmod_trc_oce , ONLY :  lk_trdmld_trc    !  tracers  trend flag
+   USE sms_lobster                               ! sms trends
+   USE iom                                       ! I/O manager
 
    IMPLICIT NONE
    PRIVATE
@@ -23,7 +25,7 @@ MODULE trcnam_lobster
 
    !!----------------------------------------------------------------------
    !! NEMO/TOP 3.3 , NEMO Consortium (2010)
-   !! $Id: trcnam_lobster.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 
@@ -40,29 +42,10 @@ CONTAINS
       !!----------------------------------------------------------------------
       INTEGER ::   numnatl
       !!
-#if defined key_diatrc && ! defined key_iomput
       INTEGER :: jl, jn
-      ! definition of additional diagnostic as a structure
-      TYPE DIAG
-         CHARACTER(len = 20)  :: snamedia   !: short name
-         CHARACTER(len = 80 ) :: lnamedia   !: long name
-         CHARACTER(len = 20 ) :: unitdia    !: unit
-      END TYPE DIAG
-
-      TYPE(DIAG) , DIMENSION(jp_lobster_2d) :: lobdia2d
-      TYPE(DIAG) , DIMENSION(jp_lobster_3d) :: lobdia3d
-#endif
-#if defined key_diabio || defined key_trdmld_trc
-      INTEGER :: js, jd
-      ! definition of additional diagnostic as a structure
-      TYPE DIABIO
-         CHARACTER(len = 20)  :: snamebio   !: short name
-         CHARACTER(len = 80 ) :: lnamebio   !: long name
-         CHARACTER(len = 20 ) :: unitbio    !: unit
-      END TYPE DIABIO
-
-      TYPE(DIABIO) , DIMENSION(jp_lobster_trd) :: lobdiabio
-#endif
+      TYPE(DIAG), DIMENSION(jp_lobster_2d )  :: lobdia2d
+      TYPE(DIAG), DIMENSION(jp_lobster_3d )  :: lobdia3d
+      TYPE(DIAG), DIMENSION(jp_lobster_trd)  :: lobdiabio
 
       NAMELIST/namlobphy/ apmin, tmumax, rgamma, fphylab, tmmaxp, tmminp, &
          &                rcchl, aki, toptp 
@@ -76,12 +59,8 @@ CONTAINS
          &                filmax, toptgz, tmaxgz, anumin, afdmin
 
       NAMELIST/namlobopt/ xkg0, xkr0, xkgp, xkrp, xlg, xlr, rpig
-#if defined key_diatrc && ! defined key_iomput
-      NAMELIST/namlobdia/nn_writedia, lobdia3d, lobdia2d     ! additional diagnostics
-#endif
-#if defined key_diabio || defined key_trdmld_trc
-      NAMELIST/namlobdbi/nwritebio, lobdiabio
-#endif
+      NAMELIST/namlobdia/ lobdia3d, lobdia2d     ! additional diagnostics
+      NAMELIST/namlobdbi/ lobdiabio
       !!----------------------------------------------------------------------
 
       IF(lwp) WRITE(numout,*)
@@ -277,105 +256,95 @@ CONTAINS
          WRITE(numout,*) ' '
       ENDIF
 
-#if defined key_diatrc && ! defined key_iomput
-
-      ! Namelist namlobdia
-      ! -------------------
-      nn_writedia = 10                   ! default values
-
-      DO jl = 1, jp_lobster_2d
-         jn = jp_lob0_2d + jl - 1
-         WRITE(ctrc2d(jn),'("2D_",I1)') jn                      ! short name
-         WRITE(ctrc2l(jn),'("2D DIAGNOSTIC NUMBER ",I2)') jn    ! long name
-         ctrc2u(jn) = ' '                                       ! units
-      END DO
-      !                                 ! 3D output arrays
-      DO jl = 1, jp_lobster_3d
-         jn = jp_lob0_3d + jl - 1
-         WRITE(ctrc3d(jn),'("3D_",I1)') jn                      ! short name
-         WRITE(ctrc3l(jn),'("3D DIAGNOSTIC NUMBER ",I2)') jn    ! long name
-         ctrc3u(jn) = ' '                                       ! units
-      END DO
-
-      REWIND( numnatl )               ! read natrtd
-      READ  ( numnatl, namlobdia )
-
-      DO jl = 1, jp_lobster_2d
-         jn = jp_lob0_2d + jl - 1
-         ctrc2d(jn) = lobdia2d(jl)%snamedia
-         ctrc2l(jn) = lobdia2d(jl)%lnamedia
-         ctrc2u(jn) = lobdia2d(jl)%unitdia
-      END DO
-
-      DO jl = 1, jp_lobster_3d
-         jn = jp_lob0_3d + jl - 1
-         ctrc3d(jn) = lobdia3d(jl)%snamedia
-         ctrc3l(jn) = lobdia3d(jl)%lnamedia
-         ctrc3u(jn) = lobdia3d(jl)%unitdia
-      END DO
-
-      IF(lwp) THEN                   ! control print
-         WRITE(numout,*)
-         WRITE(numout,*) ' Namelist : natadd'
-         WRITE(numout,*) '    frequency of outputs for additional arrays nn_writedia = ', nn_writedia
-         DO jl = 1, jp_lobster_3d
-            jn = jp_lob0_3d + jl - 1
-            WRITE(numout,*) '   3d output field No : ',jn
-            WRITE(numout,*) '   short name         : ', TRIM(ctrc3d(jn))
-            WRITE(numout,*) '   long name          : ', TRIM(ctrc3l(jn))
-            WRITE(numout,*) '   unit               : ', TRIM(ctrc3u(jn))
-            WRITE(numout,*) ' '
+      !
+      IF( .NOT.lk_iomput .AND. ln_diatrc ) THEN
+         !
+         ! Namelist namlobdia
+         ! -------------------
+         DO jl = 1, jp_lobster_2d
+            WRITE(lobdia2d(jl)%sname,'("2D_",I1)') jl                      ! short name
+            WRITE(lobdia2d(jl)%lname,'("2D DIAGNOSTIC NUMBER ",I2)') jl    ! long name
+            lobdia2d(jl)%units = ' '                                        ! units
          END DO
+         !                                 ! 3D output arrays
+         DO jl = 1, jp_lobster_3d
+            WRITE(lobdia3d(jl)%sname,'("3D_",I1)') jl                      ! short name
+            WRITE(lobdia3d(jl)%lname,'("3D DIAGNOSTIC NUMBER ",I2)') jl    ! long name
+            lobdia3d(jl)%units = ' '                                        ! units
+         END DO
+
+         REWIND( numnatl )               ! read natrtd
+         READ  ( numnatl, namlobdia )
 
          DO jl = 1, jp_lobster_2d
             jn = jp_lob0_2d + jl - 1
-            WRITE(numout,*) '   2d output field No : ',jn
-            WRITE(numout,*) '   short name         : ', TRIM(ctrc2d(jn))
-            WRITE(numout,*) '   long name          : ', TRIM(ctrc2l(jn))
-            WRITE(numout,*) '   unit               : ', TRIM(ctrc2u(jn))
-            WRITE(numout,*) ' '
+            ctrc2d(jn) = lobdia2d(jl)%sname
+            ctrc2l(jn) = lobdia2d(jl)%lname
+            ctrc2u(jn) = lobdia2d(jl)%units
          END DO
-      ENDIF
-#endif
 
-#if defined key_diabio || defined key_trdmld_trc
-      ! namlobdbi : bio diagnostics
-      nwritebio = 10                     ! default values
+         DO jl = 1, jp_lobster_3d
+            jn = jp_lob0_3d + jl - 1
+            ctrc3d(jn) = lobdia3d(jl)%sname
+            ctrc3l(jn) = lobdia3d(jl)%lname
+            ctrc3u(jn) = lobdia3d(jl)%units
+         END DO
 
-      DO js = 1, jp_lobster_trd
-         jd = jp_lob0_trd + js - 1
-         IF(     jd <  10 ) THEN   ;   WRITE (ctrbio(jd),'("BIO_",I1)') jd      ! short name
-         ELSEIF (jd < 100 ) THEN   ;   WRITE (ctrbio(jd),'("BIO_",I2)') jd   
-         ELSE                      ;   WRITE (ctrbio(jd),'("BIO_",I3)') jd
+         IF(lwp) THEN                   ! control print
+            WRITE(numout,*)
+            WRITE(numout,*) ' Namelist : natadd'
+            DO jl = 1, jp_lobster_3d
+               jn = jp_lob0_3d + jl - 1
+               WRITE(numout,*) '  3d diag nb : ', jn, '    short name : ', ctrc3d(jn), &
+                 &             '  long name  : ', ctrc3l(jn), '   unit : ', ctrc3u(jn)
+            END DO
+            WRITE(numout,*) ' '
+
+            DO jl = 1, jp_lobster_2d
+               jn = jp_lob0_2d + jl - 1
+               WRITE(numout,*) '  2d diag nb : ', jn, '    short name : ', ctrc2d(jn), &
+                 &             '  long name  : ', ctrc2l(jn), '   unit : ', ctrc2u(jn)
+            END DO
+            WRITE(numout,*) ' '
          ENDIF
-         WRITE(ctrbil(jd),'("BIOLOGICAL TREND NUMBER ",I2)') jd                 ! long name
-         ctrbiu(jd) = 'mmoleN/m3/s '                                            ! units
-      END DO
+         !
+      ENDIF
 
-      REWIND( numnatl )
-      READ  ( numnatl, namlobdbi ) 
- 
-      DO js = 1, jp_lobster_trd
-         jd = jp_lob0_trd + js - 1
-         ctrbio(jd) = lobdiabio(js)%snamebio
-         ctrbil(jd) = lobdiabio(js)%lnamebio
-         ctrbiu(jd) = lobdiabio(js)%unitbio
-      END DO
-
-      IF(lwp) THEN                   ! control print
-         WRITE(numout,*)
-         WRITE(numout,*) ' Namelist : namlobdbi'
-         WRITE(numout,*) '    frequency of outputs for biological trends nwritebio = ', nwritebio
-         DO js = 1, jp_lobster_trd
-            jd = jp_lob0_trd + js - 1
-            WRITE(numout,*) '   biological trend No : ',jd
-            WRITE(numout,*) '   short name         : ', TRIM(ctrbio(jd))
-            WRITE(numout,*) '   long name          : ', TRIM(ctrbil(jd))
-            WRITE(numout,*) '   unit               : ', TRIM(ctrbiu(jd))
-            WRITE(numout,*) ' '
+      IF( ( .NOT.lk_iomput .AND. ln_diabio ) .OR. lk_trdmld_trc ) THEN
+         !
+         ! Namelist namlobdbi
+         ! -------------------
+         DO jl = 1, jp_lobster_trd
+            IF(     jl <  10 ) THEN   ;   WRITE (lobdiabio(jl)%sname,'("BIO_",I1)') jl      ! short name
+            ELSEIF (jl < 100 ) THEN   ;   WRITE (lobdiabio(jl)%sname,'("BIO_",I2)') jl  
+            ELSE                      ;   WRITE (lobdiabio(jl)%sname,'("BIO_",I3)') jl
+            ENDIF
+            WRITE(lobdiabio(jl)%lname,'("BIOLOGICAL TREND NUMBER ",I2)') jl                 ! long name
+            lobdiabio(jl)%units = 'mmoleN/m3/s '                                            ! units
          END DO
+
+         REWIND( numnatl )
+         READ  ( numnatl, namlobdbi ) 
+ 
+         DO jl = 1, jp_lobster_trd
+            jn = jp_lob0_trd + jl - 1
+            ctrbio(jl) = lobdiabio(jl)%sname
+            ctrbil(jl) = lobdiabio(jl)%lname
+            ctrbiu(jl) = lobdiabio(jl)%units
+         END DO
+
+         IF(lwp) THEN                   ! control print
+            WRITE(numout,*)
+            WRITE(numout,*) ' Namelist : namlobdbi'
+            DO jl = 1, jp_lobster_trd
+               jn = jp_lob0_trd + jl - 1
+               WRITE(numout,*) '  biological trend No : ', jn, '    short name : ', ctrbio(jn), &
+                 &             '  long name  : ', ctrbio(jn), '   unit : ', ctrbio(jn)
+            END DO
+            WRITE(numout,*) ' '
+         END IF
+         !
       END IF
-#endif
       !
    END SUBROUTINE trc_nam_lobster
    

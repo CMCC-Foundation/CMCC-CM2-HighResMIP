@@ -33,7 +33,7 @@ MODULE trcexp
 #  include "top_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/TOP 3.3 , NEMO Consortium (2010)
-   !! $Id: trcexp.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 
@@ -52,18 +52,29 @@ CONTAINS
       !!              THE TOTAL PARTICLE AMOUNT PRODUCED, IS DISTRIBUTED IN THE WATER
       !!              COLUMN BELOW THE SURFACE LAYER.
       !!---------------------------------------------------------------------
+      !!
       INTEGER, INTENT( in ) ::   kt      ! ocean time-step index      
       !!
-      INTEGER  ::   ji, jj, jk, jl, ikt
+      INTEGER  ::   ji, jj, jk, jl, ikt, ierr
       REAL(wp) ::   zgeolpoc, zfact, zwork, ze3t, zsedpocd
-      REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::   ztrbio
+      REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  ztrbio
       CHARACTER (len=25) :: charout
       !!---------------------------------------------------------------------
-
-      IF( kt == nit000 ) THEN
+      !
+      IF( nn_timing == 1 )  CALL timing_start('trc_exp')
+      !
+      IF( kt == nittrc000 ) THEN
          IF(lwp) WRITE(numout,*)
          IF(lwp) WRITE(numout,*) ' trc_exp: LOBSTER export'
          IF(lwp) WRITE(numout,*) ' ~~~~~~~'
+      ENDIF
+
+      IF( l_trdtrc )  THEN
+         ALLOCATE( ztrbio(jpi,jpj,jpk) , STAT = ierr )   ! temporary save of trends
+         IF( ierr > 0 ) THEN
+            CALL ctl_stop( 'trc_exp: unable to allocate ztrbio array' )   ;   RETURN
+         ENDIF
+         ztrbio(:,:,:) = tra(:,:,:,jp_lob_no3)
       ENDIF
 
       ! VERTICAL DISTRIBUTION OF NEWLY PRODUCED BIOGENIC
@@ -71,12 +82,6 @@ CONTAINS
       ! (PARTS OF NEWLY FORMED MATTER REMAINING IN THE DIFFERENT
       ! LAYERS IS DETERMINED BY DMIN3 DEFINED IN sms_lobster.F90
       ! ----------------------------------------------------------------------
-
-      IF( l_trdtrc )THEN
-         ALLOCATE( ztrbio(jpi,jpj,jpk) )
-         ztrbio(:,:,:) = tra(:,:,:,jp_lob_no3)
-      ENDIF
-
       DO jk = 1, jpkm1
          DO jj = 2, jpjm1
             DO ji = fs_2, fs_jpim1
@@ -113,18 +118,16 @@ CONTAINS
       CALL lbc_lnk( sedpocn, 'T', 1. )
  
       ! Oa & Ek: diagnostics depending on jpdia2d !          left as example
-#if defined key_diatrc
-# if ! defined key_iomput
-      trc2d(:,:,jp_lob0_2d + 18) = sedpocn(:,:)
-# else
-     CALL iom_put( "SEDPOC" , sedpocn )
-# endif
-#endif
+      IF( ln_diatrc ) THEN
+         IF( lk_iomput ) THEN   ;   CALL iom_put( "SEDPOC" , sedpocn )
+         ELSE                   ;   trc2d(:,:,jp_lob0_2d + 18) = sedpocn(:,:)
+         ENDIF
+      ENDIF
 
       
       ! Time filter and swap of arrays
       ! ------------------------------
-      IF( neuler == 0 .AND. kt == nit000 ) THEN        ! Euler time-stepping at first time-step
+      IF( neuler == 0 .AND. kt == nittrc000 ) THEN        ! Euler time-stepping at first time-step
         !                                             ! (only swap)
         sedpocn(:,:) = sedpoca(:,:)
         !                                              
@@ -145,16 +148,17 @@ CONTAINS
          ztrbio(:,:,:) = tra(:,:,:,jp_lob_no3) - ztrbio(:,:,:)
          jl = jp_lob0_trd + 16
          CALL trd_mod_trc( ztrbio, jl, kt )   ! handle the trend
+         DEALLOCATE( ztrbio ) 
       ENDIF
-
-      IF( l_trdtrc ) DEALLOCATE( ztrbio )
 
       IF(ln_ctl)   THEN  ! print mean trends (used for debugging)
          WRITE(charout, FMT="('exp')")
          CALL prt_ctl_trc_info(charout)
          CALL prt_ctl_trc(tab4d=tra, mask=tmask, clinfo=ctrcnm)
       ENDIF
-
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('trc_exp')
+      !
    END SUBROUTINE trc_exp
 
 #else

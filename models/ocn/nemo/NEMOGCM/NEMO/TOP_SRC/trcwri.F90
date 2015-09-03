@@ -1,21 +1,22 @@
 MODULE trcwri
-   !!===================================================================================
+   !!======================================================================
    !!                       *** MODULE trcwri ***
    !!    TOP :   Output of passive tracers
-   !!====================================================================================
+   !!======================================================================
    !! History :   1.0  !  2009-05 (C. Ethe)  Original code
    !!----------------------------------------------------------------------
-#if defined key_top &&  defined key_iomput
+#if defined key_top && defined key_iomput
    !!----------------------------------------------------------------------
-   !!   'key_top' && 'key_iomput'                              TOP models
+   !!   'key_top'                                           TOP models
    !!----------------------------------------------------------------------
    !! trc_wri_trc   :  outputs of concentration fields
    !!----------------------------------------------------------------------
-   USE dom_oce         ! ocean space and time domain variables
-   USE oce_trc
-   USE trc
-   USE iom
-   USE dianam
+   USE dom_oce     ! ocean space and time domain variables
+   USE oce_trc     ! shared variables between ocean and passive tracers
+   USE trc         ! passive tracers common variables 
+   USE iom         ! I/O manager
+   USE dianam      ! Output file name
+   USE trcwri_pisces
 
    IMPLICIT NONE
    PRIVATE
@@ -35,11 +36,14 @@ CONTAINS
       !!---------------------------------------------------------------------
       INTEGER, INTENT( in ) :: kt
       !!---------------------------------------------------------------------
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('trc_wri')
       !
       CALL iom_setkt  ( kt + nn_dttrc - 1 )       ! set the passive tracer time step
       CALL trc_wri_trc( kt              )       ! outputs for tracer concentration
       CALL iom_setkt  ( kt              )       ! set the model time step
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('trc_wri')
       !
    END SUBROUTINE trc_wri
 
@@ -49,14 +53,14 @@ CONTAINS
       !!
       !! ** Purpose :   output passive tracers fields 
       !!---------------------------------------------------------------------
-      INTEGER, INTENT( in ) :: kt       ! ocean time-step
-      INTEGER               :: jn
-      CHARACTER (len=20)    :: cltra
-      CHARACTER (len=40) :: clhstnam
+      INTEGER, INTENT( in )     :: kt       ! ocean time-step
+      INTEGER                   :: jn
+      CHARACTER (len=20)        :: cltra
+      CHARACTER (len=40)        :: clhstnam
       INTEGER ::   inum = 11            ! temporary logical unit
       !!---------------------------------------------------------------------
  
-      IF( lk_offline .AND. kt == nit000 .AND. lwp ) THEN    ! WRITE root name in date.file for use by postpro
+      IF( lk_offline .AND. kt == nittrc000 .AND. lwp ) THEN    ! WRITE root name in date.file for use by postpro
          CALL dia_nam( clhstnam, nn_writetrc,' ' )
          CALL ctl_opn( inum, 'date.file', 'REPLACE', 'FORMATTED', 'SEQUENTIAL', -1, numout, lwp, narea )
          WRITE(inum,*) clhstnam
@@ -64,10 +68,14 @@ CONTAINS
       ENDIF
       ! write the tracer concentrations in the file
       ! ---------------------------------------
-      DO jn = 1, jptra
-         cltra = TRIM( ADJUSTL(ctrcnm(jn)) )                  ! short title for tracer
-         CALL iom_put( TRIM(cltra), trn(:,:,:,jn) )
-      END DO
+      IF( lk_pisces )  THEN
+         CALL trc_wri_pisces
+      ELSE
+         DO jn = 1, jptra
+            cltra = TRIM( ctrcnm(jn) )                  ! short title for tracer
+            CALL iom_put( cltra, trn(:,:,:,jn) )
+         END DO
+      ENDIF
       !
    END SUBROUTINE trc_wri_trc
 
@@ -84,7 +92,7 @@ CONTAINS
 
    !!----------------------------------------------------------------------
    !! NEMO/TOP 3.3 , NEMO Consortium (2010)
-   !! $Id: trcwri.F90 2567 2011-01-25 09:36:27Z cetlod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence (NEMOGCM/NEMO_CeCILL.txt)
    !!======================================================================
 END MODULE trcwri

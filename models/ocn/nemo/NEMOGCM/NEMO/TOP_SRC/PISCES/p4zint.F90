@@ -12,24 +12,19 @@ MODULE p4zint
    !!----------------------------------------------------------------------
    !!   p4z_int        :  interpolation and computation of various accessory fields
    !!----------------------------------------------------------------------
-   USE oce_trc         !
-   USE trc
-   USE sms_pisces
+   USE oce_trc         !  shared variables between ocean and passive tracers
+   USE trc             !  passive tracers common variables 
+   USE sms_pisces      !  PISCES Source Minus Sink variables
 
    IMPLICIT NONE
    PRIVATE
 
    PUBLIC   p4z_int  
-   PUBLIC   p4z_int_alloc
-
-   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   tgfunc    !: Temp. dependancy of various biological rates
-   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   tgfunc2   !: Temp. dependancy of mesozooplankton rates
-
    REAL(wp) ::   xksilim = 16.5e-6_wp   ! Half-saturation constant for the Si half-saturation constant computation
 
    !!----------------------------------------------------------------------
    !! NEMO/TOP 3.3 , NEMO Consortium (2010)
-   !! $Id: p4zint.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -40,12 +35,13 @@ CONTAINS
       !!
       !! ** Purpose :   interpolation and computation of various accessory fields
       !!
-      !! ** Method  : - ???
       !!---------------------------------------------------------------------
-      INTEGER  ::   ji, jj
-      REAL(wp) ::   zdum
+      INTEGER  ::   ji, jj                 ! dummy loop indices
+      REAL(wp) ::   zvar                   ! local variable
       !!---------------------------------------------------------------------
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('p4z_int')
+      !
       ! Computation of phyto and zoo metabolic rate
       ! -------------------------------------------
       tgfunc (:,:,:) = EXP( 0.063913 * tsn(:,:,:,jp_tem) )
@@ -56,8 +52,8 @@ CONTAINS
       ! ---------------------------------------------------
       DO ji = 1, jpi
          DO jj = 1, jpj
-            zdum = trn(ji,jj,1,jpsil) * trn(ji,jj,1,jpsil)
-            xksimax(ji,jj) = MAX( xksimax(ji,jj), ( 1.+ 7.* zdum / ( xksilim * xksilim + zdum ) ) * 1e-6 )
+            zvar = trn(ji,jj,1,jpsil) * trn(ji,jj,1,jpsil)
+            xksimax(ji,jj) = MAX( xksimax(ji,jj), ( 1.+ 7.* zvar / ( xksilim * xksilim + zvar ) ) * 1e-6 )
          END DO
       END DO
       !
@@ -66,18 +62,9 @@ CONTAINS
          xksimax = 0._wp
       ENDIF
       !
+      IF( nn_timing == 1 )  CALL timing_stop('p4z_int')
+      !
    END SUBROUTINE p4z_int
-
-
-   INTEGER FUNCTION p4z_int_alloc()
-      !!----------------------------------------------------------------------
-      !!                     ***  ROUTINE p4z_int_alloc  ***
-      !!----------------------------------------------------------------------
-      ALLOCATE( tgfunc(jpi,jpj,jpk), tgfunc2(jpi,jpj,jpk), STAT=p4z_int_alloc )
-      !
-      IF( p4z_int_alloc /= 0 )   CALL ctl_warn('p4z_int_alloc : failed to allocate arrays.')
-      !
-   END FUNCTION p4z_int_alloc
 
 #else
    !!======================================================================

@@ -15,22 +15,20 @@ MODULE trcini
    !!   trc_init  :   Initialization for passive tracer
    !!   top_alloc :   allocate the TOP arrays
    !!----------------------------------------------------------------------
-   USE oce_trc
-   USE trc
-   USE trcrst
+   USE oce_trc         ! shared variables between ocean and passive tracers
+   USE trc             ! passive tracers common variables
+   USE trcrst          ! passive tracers restart
    USE trcnam          ! Namelist read
    USE trcini_cfc      ! CFC      initialisation
    USE trcini_lobster  ! LOBSTER  initialisation
    USE trcini_pisces   ! PISCES   initialisation
    USE trcini_c14b     ! C14 bomb initialisation
    USE trcini_my_trc   ! MY_TRC   initialisation
-#if defined key_bfm
-   USE par_bfm
-#endif
-   USE trcdta   
-   USE daymod
+   USE trcdta          ! initialisation form files
+   USE daymod          ! calendar manager
    USE zpshde          ! partial step: hor. derivative   (zps_hde routine)
    USE prtctl_trc      ! Print control passive tracers (prt_ctl_trc_init routine)
+   USE trcsub       ! variables to substep passive tracers
    
    IMPLICIT NONE
    PRIVATE
@@ -41,7 +39,7 @@ MODULE trcini
 #  include "domzgr_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/TOP 4.0 , NEMO Consortium (2011)
-   !! $Id: trcini.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -58,90 +56,86 @@ CONTAINS
       !!              - set initial tracer fields (either read restart 
       !!                or read data or analytical formulation
       !!---------------------------------------------------------------------
-      INTEGER ::   jk, jn    ! dummy loop indices
+      INTEGER ::   jk, jn, jl    ! dummy loop indices
       CHARACTER (len=25) :: charout
+      REAL(wp), POINTER, DIMENSION(:,:,:,:) ::  ztrcdta   ! 4D  workspace
       !!---------------------------------------------------------------------
-
+      !
+      IF( nn_timing == 1 )   CALL timing_start('trc_init')
+      !
       IF(lwp) WRITE(numout,*)
       IF(lwp) WRITE(numout,*) 'trc_init : initial set up of the passive tracers'
       IF(lwp) WRITE(numout,*) '~~~~~~~'
 
       CALL top_alloc()              ! allocate TOP arrays
 
-      !                             ! masked grid volume
-      DO jk = 1, jpk
-         cvol(:,:,jk) = e1t(:,:) * e2t(:,:) * fse3t(:,:,jk) * tmask(:,:,jk) 
-      END DO
-
-      !                             ! total volume of the ocean
-#if ! defined key_degrad
-      areatot = glob_sum( cvol(:,:,:) )
-#else
-      areatot = glob_sum( cvol(:,:,:) * facvol(:,:,:) )  ! degrad option: reduction by facvol
-#endif
-
-      CALL trc_nam                  ! read passive tracers namelists
-
-      !                             ! restart for passive tracer (input)
-      IF( ln_rsttr ) THEN
-         IF(lwp) WRITE(numout,*) '       read a restart file for passive tracer : ', cn_trcrst_in
-         IF(lwp) WRITE(numout,*) ' '
-      ELSE
-         IF( lwp .AND. lk_dtatrc ) THEN
-            DO jn = 1, jptra
-               IF( lutini(jn) )  &                  ! open input FILE only IF lutini(jn) is true
-                  &  WRITE(numout,*) ' read an initial file for passive tracer number :', jn, ' traceur : ', ctrcnm(jn) 
-             END DO
-          ENDIF
-          IF( lwp ) WRITE(numout,*)
-      ENDIF
-
-      IF( ln_dm2dc .AND. ( lk_pisces .OR. lk_lobster .OR. lk_bfm) )    &
-         &       CALL ctl_stop( ' The diurnal cycle is not compatible with PISCES or LOBSTER or BFM ' )
+      IF( ln_dm2dc .AND. ( lk_pisces .OR. lk_lobster ) )    &
+         &  CALL ctl_stop( ' The diurnal cycle is not compatible with PISCES or LOBSTER  ' )
 
       IF( nn_cla == 1 )   &
-         &       CALL ctl_stop( ' Cross Land Advection not yet implemented with passive tracer ; nn_cla must be 0' )
+         &  CALL ctl_stop( ' Cross Land Advection not yet implemented with passive tracer ; nn_cla must be 0' )
 
-      IF( lk_lobster ) THEN   ;   CALL trc_ini_lobster      ! LOBSTER bio-model
-      ELSE                    ;   IF(lwp) WRITE(numout,*) '          LOBSTER not used'
-      ENDIF
-      
-      IF( lk_pisces  ) THEN   ;   CALL trc_ini_pisces       ! PISCES  bio-model
-      ELSE                    ;   IF(lwp) WRITE(numout,*) '          PISCES not used'
-      ENDIF
-      
-      IF( lk_cfc     ) THEN   ;   CALL trc_ini_cfc          ! CFC     tracers
-      ELSE                    ;   IF(lwp) WRITE(numout,*) '          CFC not used'
-      ENDIF
-
-      IF( lk_c14b    ) THEN   ;   CALL trc_ini_c14b         ! C14 bomb  tracer
-      ELSE                    ;   IF(lwp) WRITE(numout,*) '          C14 not used'
-      ENDIF
-      
-      IF( lk_my_trc  ) THEN   ;   CALL trc_ini_my_trc       ! MY_TRC  tracers
-      ELSE                    ;   IF(lwp) WRITE(numout,*) '          MY_TRC not used'
-      ENDIF
-
-      IF( lk_bfm     ) THEN   ;   CALL trc_ini_bfm          ! BFM  tracers
-      ELSE                    ;   IF(lwp) WRITE(numout,*) '          BFM not used'
-      ENDIF
-
+      CALL trc_nam                  ! read passive tracers namelists
+      !
+      IF(lwp) WRITE(numout,*)
       IF( ln_rsttr ) THEN
         !
         IF( lk_offline )  neuler = 1   ! Set time-step indicator at nit000 (leap-frog)
-        CALL trc_rst_read              ! restart from a file
+        CALL trc_rst_cal( nittrc000, 'READ' )   ! calendar
         !
       ELSE
         IF( lk_offline )  THEN
            neuler = 0                  ! Set time-step indicator at nit000 (euler)
            CALL day_init               ! set calendar
         ENDIF
-#if defined key_dtatrc
-        CALL trc_dta( nit000 )      ! Initialization of tracer from a file that may also be used for damping
-        DO jn = 1, jptra
-           IF( lutini(jn) )   trn(:,:,:,jn) = trdta(:,:,:,jn) * tmask(:,:,:)   ! initialisation from file if required
-        END DO
-#endif
+        !
+      ENDIF
+      IF(lwp) WRITE(numout,*)
+                                                              ! masked grid volume
+      !                                                              ! masked grid volume
+      DO jk = 1, jpk
+         cvol(:,:,jk) = e1e2t(:,:) * fse3t(:,:,jk) * tmask(:,:,jk)
+      END DO
+      IF( lk_degrad ) cvol(:,:,:) = cvol(:,:,:) * facvol(:,:,:)      ! degrad option: reduction by facvol
+      !                                                              ! total volume of the ocean 
+      areatot = glob_sum( cvol(:,:,:) )
+
+      IF( lk_lobster )       CALL trc_ini_lobster      ! LOBSTER bio-model
+      IF( lk_pisces  )       CALL trc_ini_pisces       ! PISCES  bio-model
+      IF( lk_cfc     )       CALL trc_ini_cfc          ! CFC     tracers
+      IF( lk_c14b    )       CALL trc_ini_c14b         ! C14 bomb  tracer
+      IF( lk_my_trc  )       CALL trc_ini_my_trc       ! MY_TRC  tracers
+
+      IF( lwp ) THEN
+         !
+         CALL ctl_opn( numstr, 'tracer.stat', 'REPLACE', 'FORMATTED', 'SEQUENTIAL', -1, 6, .FALSE., narea )
+         !
+      ENDIF
+
+      IF( ln_trcdta )      CALL trc_dta_init
+
+
+      IF( ln_rsttr ) THEN
+        !
+        CALL trc_rst_read              ! restart from a file
+        !
+      ELSE
+        !
+        IF( ln_trcdta .AND. nb_trcdta > 0 ) THEN  ! Initialisation of tracer from a file that may also be used for damping
+            !
+            CALL wrk_alloc( jpi, jpj, jpk, nb_trcdta, ztrcdta )    ! Memory allocation
+            !
+            CALL trc_dta( nit000, ztrcdta )   ! read tracer data at nit000
+            !
+            DO jn = 1, jptra
+               IF( ln_trc_ini(jn) ) THEN      ! update passive tracers arrays with input data read from file
+                  jl = n_trc_index(jn) 
+                  trn(:,:,:,jn) = ztrcdta(:,:,:,jl) * tmask(:,:,:)  
+               ENDIF
+            ENDDO
+            CALL wrk_dealloc( jpi, jpj, jpk, nb_trcdta, ztrcdta )
+        ENDIF
+        !
         trb(:,:,:,:) = trn(:,:,:,:)
         ! 
       ENDIF
@@ -151,32 +145,37 @@ CONTAINS
       IF( ln_zps .AND. .NOT. lk_c1d )   &              ! Partial steps: before horizontal gradient of passive
         &    CALL zps_hde( nit000, jptra, trn, gtru, gtrv )       ! tracers at the bottom ocean level
 
+      !
+      IF( nn_dttrc /= 1 )        CALL trc_sub_ini      ! Initialize variables for substepping passive tracers
+      !
 
-      !           
-      trai = 0._wp         ! Computation content of all tracers
+      trai(:) = 0._wp                                                   ! initial content of all tracers
       DO jn = 1, jptra
-#if ! defined key_degrad
-         trai = trai + glob_sum( trn(:,:,:,jn) * cvol(:,:,:) )
-#else
-         trai = trai + glob_sum( trn(:,:,:,jn) * cvol(:,:,:) * facvol(:,:,:) ) ! degrad option: reduction by facvol
-#endif
-      END DO      
+         trai(jn) = trai(jn) + glob_sum( trn(:,:,:,jn) * cvol(:,:,:)   )
+      END DO
 
       IF(lwp) THEN               ! control print
          WRITE(numout,*)
          WRITE(numout,*)
          WRITE(numout,*) '          *** Total number of passive tracer jptra = ', jptra
          WRITE(numout,*) '          *** Total volume of ocean                = ', areatot
-         WRITE(numout,*) '          *** Total inital content of all tracers  = ', trai
+         WRITE(numout,*) '          *** Total inital content of all tracers '
+         WRITE(numout,*)
+         DO jn = 1, jptra
+            WRITE(numout,9000) jn, TRIM( ctrcnm(jn) ), trai(jn)
+         ENDDO
          WRITE(numout,*)
       ENDIF
-
+      IF(lwp) WRITE(numout,*)
       IF(ln_ctl) THEN            ! print mean trends (used for debugging)
          CALL prt_ctl_trc_init
          WRITE(charout, FMT="('ini ')")
          CALL prt_ctl_trc_info( charout )
          CALL prt_ctl_trc( tab4d=trn, mask=tmask, clinfo=ctrcnm )
       ENDIF
+9000  FORMAT(' tracer nb : ',i2,'      name :',a10,'      initial content :',e18.10)
+      !
+      IF( nn_timing == 1 )   CALL timing_stop('trc_init')
       !
    END SUBROUTINE trc_init
 
@@ -189,23 +188,10 @@ CONTAINS
       !!----------------------------------------------------------------------
       USE trcadv        , ONLY:   trc_adv_alloc          ! TOP-related alloc routines...
       USE trc           , ONLY:   trc_alloc
-#ifdef key_bfm
-      USE trcnxtbfm     , ONLY:   trc_nxt_alloc
-#else
       USE trcnxt        , ONLY:   trc_nxt_alloc
-#endif
       USE trczdf        , ONLY:   trc_zdf_alloc
       USE trdmod_trc_oce, ONLY:   trd_mod_trc_oce_alloc
-#if ! defined key_iomput
-      USE trcdia        , ONLY:   trc_dia_alloc
-#endif
-#if defined key_trcdmp 
-      USE trcdmp        , ONLY:   trc_dmp_alloc
-#endif
-#if defined key_dtatrc
-      USE trcdta        , ONLY:   trc_dta_alloc
-#endif
-#if defined key_trdmld_trc   ||   defined key_esopa
+#if defined key_trdmld_trc 
       USE trdmld_trc    , ONLY:   trd_mld_trc_alloc
 #endif
       !
@@ -217,16 +203,7 @@ CONTAINS
       ierr = ierr + trc_nxt_alloc()
       ierr = ierr + trc_zdf_alloc()
       ierr = ierr + trd_mod_trc_oce_alloc()
-#if ! defined key_iomput
-      ierr = ierr + trc_dia_alloc()
-#endif
-#if defined key_trcdmp 
-      ierr = ierr + trc_dmp_alloc()
-#endif
-#if defined key_dtatrc
-      ierr = ierr + trc_dta_alloc()
-#endif
-#if defined key_trdmld_trc   ||   defined key_esopa
+#if defined key_trdmld_trc 
       ierr = ierr + trd_mld_trc_alloc()
 #endif
       !

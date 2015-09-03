@@ -30,7 +30,7 @@ MODULE trcopt
 #  include "top_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/TOP 3.3 , NEMO Consortium (2010)
-   !! $Id: trcopt.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 
@@ -51,11 +51,6 @@ CONTAINS
       !!                neln   ???
       !!                xze    ???
       !!---------------------------------------------------------------------
-      USE wrk_nemo, ONLY: wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY: zpar100 => wrk_2d_1, & ! irradiance at euphotic layer depth
-                          zpar0m  => wrk_2d_2    ! irradiance just below the surface
-      USE wrk_nemo, ONLY: zparr => wrk_3d_2, &   ! red and green compound of par
-                          zparg => wrk_3d_3
       !!
       INTEGER, INTENT( in ) ::   kt   ! index of the time stepping
       !!
@@ -64,14 +59,17 @@ CONTAINS
       REAL(wp) ::   zpig                ! log of the total pigment
       REAL(wp) ::   zkr, zkg            ! total absorption coefficient in red and green
       REAL(wp) ::   zcoef               ! temporary scalar
-
+      REAL(wp), POINTER, DIMENSION(:,:  ) :: zpar100, zpar0m 
+      REAL(wp), POINTER, DIMENSION(:,:,:) :: zparr, zparg
       !!---------------------------------------------------------------------
+      !
+      IF( nn_timing == 1 )  CALL timing_start('trc_opt')
+      !
+      ! Allocate temporary workspace
+      CALL wrk_alloc( jpi, jpj,      zpar100, zpar0m )
+      CALL wrk_alloc( jpi, jpj, jpk, zparr, zparg    )
 
-      IF( ( wrk_in_use(2, 1,2)) .OR. ( wrk_in_use(3, 2,3)) )THEN
-         CALL ctl_stop('trc_opt : requested workspace arrays unavailable')   ;   RETURN
-      END IF
-
-      IF( kt == nit000 ) THEN
+      IF( kt == nittrc000 ) THEN
          IF(lwp) WRITE(numout,*)
          IF(lwp) WRITE(numout,*) ' trc_opt : LOBSTER optic-model'
          IF(lwp) WRITE(numout,*) ' ~~~~~~~ '
@@ -136,8 +134,10 @@ CONTAINS
          CALL prt_ctl_trc( tab4d=trn, mask=tmask, clinfo=ctrcnm )
       ENDIF
       !
-      IF( wrk_not_released(2, 1,2)  .OR.  wrk_not_released(3, 2,3)  )   &
-          CALL ctl_stop('trc_opt : failed to release workspace arrays')
+      CALL wrk_dealloc( jpi, jpj,      zpar100, zpar0m )
+      CALL wrk_dealloc( jpi, jpj, jpk, zparr, zparg    )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('trc_opt')
       !
    END SUBROUTINE trc_opt
 

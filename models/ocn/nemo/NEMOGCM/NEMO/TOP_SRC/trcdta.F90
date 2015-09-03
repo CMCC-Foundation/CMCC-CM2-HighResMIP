@@ -6,221 +6,278 @@ MODULE trcdta
    !! History :   1.0  !  2002-04  (O. Aumont)  original code
    !!              -   !  2004-03  (C. Ethe)  module
    !!              -   !  2005-03  (O. Aumont, A. El Moussaoui) F90
+   !!            3.4   !  2010-11  (C. Ethe, G. Madec)  use of fldread + dynamical allocation 
    !!----------------------------------------------------------------------
-#if  defined key_top  &&  defined key_dtatrc
+#if  defined key_top 
    !!----------------------------------------------------------------------
-   !!   'key_top'  and  'key_dtatrc'        TOP model + passive tracer data
+   !!   'key_top'                                                TOP model 
    !!----------------------------------------------------------------------
-   !!   trc_dta      : read ocean passive tracer data
+   !!   trc_dta    : read and time interpolated passive tracer data
    !!----------------------------------------------------------------------
-   USE oce_trc
-   USE par_trc
-   USE trc
-   USE lib_print
-   USE iom
+   USE par_trc       !  passive tracers parameters
+   USE oce_trc       !  shared variables between ocean and passive tracers
+   USE trc           !  passive tracers common variables
+   USE iom           !  I/O manager
+   USE lib_mpp       !  MPP library
+   USE fldread       !  read input fields
 
    IMPLICIT NONE
    PRIVATE
 
    PUBLIC   trc_dta         ! called in trcini.F90 and trcdmp.F90
-   PUBLIC   trc_dta_alloc   ! called in nemogcm.F90
+   PUBLIC   trc_dta_init    ! called in trcini.F90 
 
-   LOGICAL , PUBLIC, PARAMETER ::   lk_dtatrc = .TRUE.   !: temperature data flag
-   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:,:,:) ::   trdta   !: tracer data at given time-step
-
-   REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:,:,:,:) ::   tracdta       ! tracer data at two consecutive times
-   INTEGER , ALLOCATABLE, SAVE, DIMENSION(:) ::   nlectr      !: switch for reading once
-   INTEGER , ALLOCATABLE, SAVE, DIMENSION(:) ::   ntrc1       !: number of 1st month when reading 12 monthly value
-   INTEGER , ALLOCATABLE, SAVE, DIMENSION(:) ::   ntrc2       !: number of 2nd month when reading 12 monthly value
+   INTEGER  , SAVE, PUBLIC                             :: nb_trcdta   ! number of tracers to be initialised with data
+   INTEGER  , SAVE, PUBLIC, ALLOCATABLE, DIMENSION(:)  :: n_trc_index ! indice of tracer which is initialised with data
+   INTEGER  , SAVE                                     :: ntra        ! MAX( 1, nb_trcdta ) to avoid compilation error with bounds checking
+   REAL(wp) , SAVE,         ALLOCATABLE, DIMENSION(:)  :: rf_trfac    ! multiplicative factor for tracer values
+   TYPE(FLD), SAVE,         ALLOCATABLE, DIMENSION(:)  :: sf_trcdta   ! structure of input SST (file informations, fields read)
 
    !! * Substitutions
-#  include "top_substitute.h90"
+#  include "domzgr_substitute.h90"
    !!----------------------------------------------------------------------
-   !! NEMO/TOP 3.3 , NEMO Consortium (2010)
-   !! $Id: trcdta.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! NEMO/OPA 3.3 , NEMO Consortium (2010)
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
 
-   SUBROUTINE trc_dta( kt )
+   SUBROUTINE trc_dta_init
       !!----------------------------------------------------------------------
-      !!                   ***  ROUTINE trc_dta  ***
-      !!
-      !! ** Purpose :   Reads passive tracer data (Levitus monthly data)
-      !!
-      !! ** Method  :   Read on unit numtr the interpolated tracer concentra-
-      !!      tion onto the global grid. Data begin at january. 
-      !!      The value is centered at the middle of month. 
-      !!      In the opa model, kt=1 agree with january 1. 
-      !!      At each time step, a linear interpolation is applied between 
-      !!      two monthly values.
+      !!                   ***  ROUTINE trc_dta_init  ***
+      !!                    
+      !! ** Purpose :   initialisation of passive tracer input data 
+      !! 
+      !! ** Method  : - Read namtsd namelist
+      !!              - allocates passive tracer data structure 
       !!----------------------------------------------------------------------
-      INTEGER, INTENT(in) ::   kt     ! ocean time-step
+      !
+      INTEGER            :: jl, jn                   ! dummy loop indicies
+      INTEGER            :: ierr0, ierr1, ierr2, ierr3       ! temporary integers
+      CHARACTER(len=100) :: clndta, clntrc
+      REAL(wp)           :: zfact
+      !
+      CHARACTER(len=100) :: cn_dir
+      TYPE(FLD_N), DIMENSION(jptra) :: slf_i     ! array of namelist informations on the fields to read
+      TYPE(FLD_N), DIMENSION(jptra) :: sn_trcdta
+      REAL(wp)   , DIMENSION(jptra) :: rn_trfac    ! multiplicative factor for tracer values
       !!
-      CHARACTER (len=39) ::   clname(jptra)
-      INTEGER, PARAMETER ::   jpmonth = 12    ! number of months
-      INTEGER ::   ji, jj, jn, jl 
-      INTEGER ::   imois, iman, i15, ik  ! temporary integers 
-      REAL(wp) ::   zxy, zl
-!!gm HERE the daymod should be used instead of computation of month and co !!
-!!gm      better in case of real calandar and leap-years !
+      NAMELIST/namtrc_dta/ sn_trcdta, cn_dir, rn_trfac 
       !!----------------------------------------------------------------------
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('trc_dta_init')
+      !
+      !  Initialisation
+      ierr0 = 0  ;  ierr1 = 0  ;  ierr2 = 0  ;  ierr3 = 0  
+      ! Compute the number of tracers to be initialised with data
+      ALLOCATE( n_trc_index(jptra), STAT=ierr0 )
+      IF( ierr0 > 0 ) THEN
+         CALL ctl_stop( 'trc_nam: unable to allocate n_trc_index' )   ;   RETURN
+      ENDIF
+      nb_trcdta      = 0
+      n_trc_index(:) = 0
       DO jn = 1, jptra
-
-         IF( lutini(jn) ) THEN 
-
-            IF ( kt == nit000 ) THEN
-               !! 3D tracer data
-               IF(lwp)WRITE(numout,*)
-               IF(lwp)WRITE(numout,*) ' dta_trc: reading tracer' 
-               IF(lwp)WRITE(numout,*) ' data file ', jn, ctrcnm(jn)
-               IF(lwp)WRITE(numout,*)
-               nlectr(jn) = 0
-            ENDIF
-            ! Initialization
-            iman = jpmonth
-            i15  = nday / 16
-            imois = nmonth + i15 -1
-            IF( imois == 0 ) imois = iman
-
-
-            ! First call kt=nit000
-            ! --------------------
-
-            IF ( kt == nit000 .AND. nlectr(jn) == 0 ) THEN
-               ntrc1(jn) = 0
-               IF(lwp) WRITE(numout,*) ' trc_dta : Levitus tracer data monthly fields'
-               ! open file 
-# if defined key_pisces
-               clname(jn) = 'data_1m_'//TRIM(ctrcnm(jn))//'_nomask'
-# else
-               clname(jn) = TRIM(ctrcnm(jn))
-# endif
-               CALL iom_open ( clname(jn), numtr(jn) )              
-
-            ENDIF
-
-# if defined key_pisces
-            ! Read montly file
-            IF( ( kt == nit000 .AND. nlectr(jn) == 0)  .OR. imois /= ntrc1(jn) ) THEN
-               nlectr(jn) = 1
-
-               ! Calendar computation
-
-               ! ntrc1 number of the first file record used in the simulation
-               ! ntrc2 number of the last  file record
-
-               ntrc1(jn) = imois
-               ntrc2(jn) = ntrc1(jn) + 1
-               ntrc1(jn) = MOD( ntrc1(jn), iman )
-               IF ( ntrc1(jn) == 0 ) ntrc1(jn) = iman
-               ntrc2(jn) = MOD( ntrc2(jn), iman )
-               IF ( ntrc2(jn) == 0 ) ntrc2(jn) = iman
-               IF(lwp) WRITE(numout,*) 'first record file used ntrc1 ', ntrc1(jn) 
-               IF(lwp) WRITE(numout,*) 'last  record file used ntrc2 ', ntrc2(jn)
-
-               ! Read montly passive tracer data Levitus 
-
-               CALL iom_get ( numtr(jn), jpdom_data, ctrcnm(jn), tracdta(:,:,:,jn,1), ntrc1(jn) )
-               CALL iom_get ( numtr(jn), jpdom_data, ctrcnm(jn), tracdta(:,:,:,jn,2), ntrc2(jn) )
-
-               IF(lwp) THEN
-                  WRITE(numout,*)
-                  WRITE(numout,*) ' read tracer data ', ctrcnm(jn),' ok'
-                  WRITE(numout,*)
-               ENDIF
-
-               ! Apply Mask
-               DO jl = 1, 2
-                  tracdta(:,:,:  ,jn,jl) = tracdta(:,:,:,jn,jl) * tmask(:,:,:) 
-                  tracdta(:,:,jpk,jn,jl) = 0.
-                  IF( ln_zps ) THEN                ! z-coord. with partial steps
-                     DO jj = 1, jpj                ! interpolation of temperature at the last level
-                        DO ji = 1, jpi
-                           ik = mbkt(ji,jj)
-                           IF( ik > 2 ) THEN
-                              zl = ( gdept_0(ik) - fsdept_0(ji,jj,ik) ) / ( gdept_0(ik) - gdept_0(ik-1) )
-                              tracdta(ji,jj,ik,jn,jl) = (1.-zl) * tracdta(ji,jj,ik  ,jn,jl)    &
-                                 &                    +     zl  * tracdta(ji,jj,ik-1,jn,jl)
-                           ENDIF
-                        END DO
-                     END DO
-                  ENDIF
-
-               END DO
-
-            ENDIF
-
-            IF(lwp) THEN
-               WRITE(numout,*) ctrcnm(jn), 'Levitus month ', ntrc1(jn), ntrc2(jn)
-               WRITE(numout,*)
-               WRITE(numout,*) ' Levitus month = ', ntrc1(jn), '  level = 1'
-               CALL prihre( tracdta(1,1,1,jn,1), jpi, jpj, 1, jpi, 20, 1   &
-                  &        ,jpj, 20, 1., numout )
-               WRITE(numout,*) ' Levitus month = ', ntrc1(jn), '  level = ',jpk/2
-               CALL prihre( tracdta(1,1,jpk/2,jn,1), jpi, jpj, 1, jpi,    &
-                  &         20, 1, jpj, 20, 1., numout )
-               WRITE(numout,*) ' Levitus month = ',ntrc1(jn),'  level = ',jpkm1
-               CALL prihre( tracdta(1,1,jpkm1,jn,1), jpi, jpj, 1, jpi,     &
-                  &         20, 1, jpj, 20, 1., numout )
-            ENDIF
-
-            ! At every time step compute temperature data
-            zxy = FLOAT( nday + 15 - 30 * i15 ) / 30.
-            trdta(:,:,:,jn) =  ( 1. - zxy ) * tracdta(:,:,:,jn,1)    &
-               &              +       zxy   * tracdta(:,:,:,jn,2) 
-
-            IF( jn == jpno3 )   trdta(:,:,:,jn) = trdta(:,:,:,jn) *   7.6e-6
-            IF( jn == jpdic )   trdta(:,:,:,jn) = trdta(:,:,:,jn) *   1.0e-6
-            IF( jn == jptal )   trdta(:,:,:,jn) = trdta(:,:,:,jn) *   1.0e-6
-            IF( jn == jpoxy )   trdta(:,:,:,jn) = trdta(:,:,:,jn) *  44.6e-6
-            IF( jn == jpsil )   trdta(:,:,:,jn) = trdta(:,:,:,jn) *   1.0e-6
-            IF( jn == jppo4 )   trdta(:,:,:,jn) = trdta(:,:,:,jn) * 122.0e-6
-
-            ! Close the file
-            ! --------------
-            
-            IF( kt == nitend )   CALL iom_close( numtr(jn) )
-
-# else
-            ! Read init file only
-            IF( kt == nit000  ) THEN
-               ntrc1(jn) = 1
-               CALL iom_get ( numtr(jn), jpdom_data, ctrcnm(jn), trdta(:,:,:,jn), ntrc1(jn) )
-               trdta(:,:,:,jn) = trdta(:,:,:,jn) * tmask(:,:,:)
-               CALL iom_close ( numtr(jn) )
-            ENDIF 
-# endif
+         IF( ln_trc_ini(jn) ) THEN
+             nb_trcdta       = nb_trcdta + 1 
+             n_trc_index(jn) = nb_trcdta 
          ENDIF
-
+      ENDDO
+      !
+      ntra = MAX( 1, nb_trcdta )   ! To avoid compilation error with bounds checking
+      IF(lwp) THEN
+         WRITE(numout,*) ' '
+         WRITE(numout,*) ' number of passive tracers to be initialize by data :', ntra
+         WRITE(numout,*) ' '
+      ENDIF
+      !                         ! allocate the arrays (if necessary)
+      !
+      cn_dir  = './'            ! directory in which the model is executed
+      DO jn = 1, jptra
+         WRITE( clndta,'("TR_",I1)' ) jn
+         clndta = TRIM( clndta )
+         !                 !  file      ! frequency ! variable  ! time intep !  clim   ! 'yearly' or ! weights  ! rotation !
+         !                 !  name      !  (hours)  !  name     !   (T/F)    !  (T/F)  !  'monthly'  ! filename ! pairs    !
+         sn_trcdta(jn)  = FLD_N( clndta ,   -1      , clndta    ,  .false.   , .true.  ,  'monthly'  , ''       , ''       )
+         !
+         rn_trfac(jn) = 1._wp
       END DO
       !
-   END SUBROUTINE trc_dta
+      REWIND( numnat )               ! read nattrc
+      READ  ( numnat, namtrc_dta )
 
-
-   INTEGER FUNCTION trc_dta_alloc()
-      !!----------------------------------------------------------------------
-      !!                   ***  ROUTINE trc_dta_alloc  ***
-      !!----------------------------------------------------------------------
-      ALLOCATE( trdta  (jpi,jpj,jpk,jptra  ) ,                    &
-         &      tracdta(jpi,jpj,jpk,jptra,2) ,                    &
-         &      nlectr(jptra) , ntrc1(jptra) , ntrc2(jptra) , STAT=trc_dta_alloc)
-         !
-      IF( trc_dta_alloc /= 0 )   CALL ctl_warn('trc_dta_alloc : failed to allocate arrays')
+      IF( lwp ) THEN
+         DO jn = 1, jptra
+            IF( ln_trc_ini(jn) )  THEN    ! open input file only if ln_trc_ini(jn) is true
+               clndta = TRIM( sn_trcdta(jn)%clvar ) 
+               clntrc = TRIM( ctrcnm   (jn)       ) 
+               zfact  = rn_trfac(jn)
+               IF( clndta /=  clntrc ) THEN 
+                  CALL ctl_warn( 'trc_dta_init: passive tracer data initialisation :  ',   &
+                  &              'the variable name in the data file : '//clndta//   & 
+                  &              '  must be the same than the name of the passive tracer : '//clntrc//' ')
+               ENDIF
+               WRITE(numout,*) ' read an initial file for passive tracer number :', jn, ' name : ', clndta, & 
+               &               ' multiplicative factor : ', zfact
+            ENDIF
+         END DO
+      ENDIF
       !
-   END FUNCTION trc_dta_alloc
+      IF( nb_trcdta > 0 ) THEN       !  allocate only if the number of tracer to initialise is greater than zero
+         ALLOCATE( sf_trcdta(nb_trcdta), rf_trfac(nb_trcdta), STAT=ierr1 )
+         IF( ierr1 > 0 ) THEN
+            CALL ctl_stop( 'trc_dta_ini: unable to allocate  sf_trcdta structure' )   ;   RETURN
+         ENDIF
+         !
+         DO jn = 1, jptra
+            IF( ln_trc_ini(jn) ) THEN      ! update passive tracers arrays with input data read from file
+               jl = n_trc_index(jn)
+               slf_i(jl)    = sn_trcdta(jn)
+               rf_trfac(jl) = rn_trfac(jn)
+                                            ALLOCATE( sf_trcdta(jl)%fnow(jpi,jpj,jpk)   , STAT=ierr2 )
+               IF( sn_trcdta(jn)%ln_tint )  ALLOCATE( sf_trcdta(jl)%fdta(jpi,jpj,jpk,2) , STAT=ierr3 )
+               IF( ierr2 + ierr3 > 0 ) THEN
+                 CALL ctl_stop( 'trc_dta : unable to allocate passive tracer data arrays' )   ;   RETURN
+               ENDIF
+            ENDIF
+            !   
+         ENDDO
+         !                         ! fill sf_trcdta with slf_i and control print
+         CALL fld_fill( sf_trcdta, slf_i, cn_dir, 'trc_dta', 'Passive tracer data', 'namtrc' )
+         !
+      ENDIF
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('trc_dta_init')
+      !
+   END SUBROUTINE trc_dta_init
 
+
+   SUBROUTINE trc_dta( kt, ptrc )
+      !!----------------------------------------------------------------------
+      !!                   ***  ROUTINE trc_dta  ***
+      !!                    
+      !! ** Purpose :   provides passive tracer data at kt
+      !! 
+      !! ** Method  : - call fldread routine
+      !!              - s- or mixed z-s coordinate: vertical interpolation on model mesh
+      !!              - ln_trcdmp=F: deallocates the data structure as they are not used
+      !!
+      !! ** Action  :   ptrc   passive tracer data on medl mesh and interpolated at time-step kt
+      !!----------------------------------------------------------------------
+      INTEGER                     , INTENT(in   ) ::   kt     ! ocean time-step
+      REAL(wp), DIMENSION(:,:,:,:), INTENT(  out) ::   ptrc   ! passive tracer data
+      !
+      INTEGER ::   ji, jj, jk, jl, jn, jkk, ik    ! dummy loop indicies
+      REAL(wp)::   zl, zi
+      REAL(wp), DIMENSION(jpk) ::  ztp                ! 1D workspace
+      CHARACTER(len=100) :: clndta
+      !!----------------------------------------------------------------------
+      !
+      IF( nn_timing == 1 )  CALL timing_start('trc_dta')
+      !
+      IF( nb_trcdta > 0 ) THEN
+         !
+         CALL fld_read( kt, 1, sf_trcdta )      !==   read data at kt time step   ==!
+         !
+         DO jn = 1, ntra
+            ptrc(:,:,:,jn) = sf_trcdta(jn)%fnow(:,:,:)    ! NO mask
+         ENDDO
+         !
+         IF( ln_sco ) THEN                   !==   s- or mixed s-zps-coordinate   ==!
+            !
+            IF( kt == nit000 .AND. lwp )THEN
+               WRITE(numout,*)
+               WRITE(numout,*) 'trc_dta: interpolates passive tracer data onto the s- or mixed s-z-coordinate mesh'
+            ENDIF
+            !
+            DO jn = 1, ntra
+               DO jj = 1, jpj                         ! vertical interpolation of T & S
+                  DO ji = 1, jpi
+                     DO jk = 1, jpk                        ! determines the intepolated T-S profiles at each (i,j) points
+                        zl = fsdept_0(ji,jj,jk)
+                        IF(     zl < gdept_0(1  ) ) THEN          ! above the first level of data
+                           ztp(jk) =  ptrc(ji,jj,1    ,jn)
+                        ELSEIF( zl > gdept_0(jpk) ) THEN          ! below the last level of data
+                           ztp(jk) =  ptrc(ji,jj,jpkm1,jn)
+                        ELSE                                      ! inbetween : vertical interpolation between jkk & jkk+1
+                           DO jkk = 1, jpkm1                                  ! when  gdept(jkk) < zl < gdept(jkk+1)
+                              IF( (zl-gdept_0(jkk)) * (zl-gdept_0(jkk+1)) <= 0._wp ) THEN
+                                 zi = ( zl - gdept_0(jkk) ) / (gdept_0(jkk+1)-gdept_0(jkk))
+                                 ztp(jk) = ptrc(ji,jj,jkk,jn) + ( ptrc(ji,jj,jkk+1,jn) - ptrc(ji,jj,jkk,jn) ) * zi 
+                              ENDIF
+                           END DO
+                        ENDIF
+                     END DO
+                     DO jk = 1, jpkm1
+                        ptrc(ji,jj,jk,jn) = ztp(jk) * tmask(ji,jj,jk)     ! mask required for mixed zps-s-coord
+                     END DO
+                     ptrc(ji,jj,jpk,jn) = 0._wp
+                  END DO
+               END DO
+            ENDDO 
+            ! 
+         ELSE                                !==   z- or zps- coordinate   ==!
+            !                             
+            DO jn = 1, ntra
+               ptrc(:,:,:,jn) = ptrc(:,:,:,jn) * tmask(:,:,:)    ! Mask
+               !
+               IF( ln_zps ) THEN                      ! zps-coordinate (partial steps) interpolation at the last ocean level
+                  DO jj = 1, jpj
+                     DO ji = 1, jpi
+                        ik = mbkt(ji,jj) 
+                        IF( ik > 1 ) THEN
+                           zl = ( gdept_0(ik) - fsdept_0(ji,jj,ik) ) / ( gdept_0(ik) - gdept_0(ik-1) )
+                           ptrc(ji,jj,ik,jn) = (1.-zl) * ptrc(ji,jj,ik,jn) + zl * ptrc(ji,jj,ik-1,jn)
+                        ENDIF
+                     END DO
+                  END DO
+               ENDIF
+            ENDDO 
+            !
+         ENDIF
+         !
+         DO jn = 1, ntra
+            ptrc(:,:,:,jn) = ptrc(:,:,:,jn) * rf_trfac(jn)   !  multiplicative factor
+         ENDDO 
+         !
+         IF( lwp .AND. kt == nit000 ) THEN
+            DO jn = 1, ntra
+               clndta = TRIM( sf_trcdta(jn)%clvar ) 
+               WRITE(numout,*) ''//clndta//' data '
+               WRITE(numout,*)
+               WRITE(numout,*)'  level = 1'
+               CALL prihre( ptrc(:,:,1    ,jn), jpi, jpj, 1, jpi, 20, 1, jpj, 20, 1., numout )
+               WRITE(numout,*)'  level = ', jpk/2
+               CALL prihre( ptrc(:,:,jpk/2,jn), jpi, jpj, 1, jpi, 20, 1, jpj, 20, 1., numout )
+               WRITE(numout,*)'  level = ', jpkm1
+               CALL prihre( ptrc(:,:,jpkm1,jn), jpi, jpj, 1, jpi, 20, 1, jpj, 20, 1., numout )
+               WRITE(numout,*)
+            ENDDO
+         ENDIF
+         !
+         IF( .NOT.ln_trcdmp .AND. .NOT.ln_trcdmp_clo ) THEN  !==   deallocate data structure   ==! 
+            !                                              (data used only for initialisation)
+            IF(lwp) WRITE(numout,*) 'trc_dta: deallocate data arrays as they are only use to initialize the run'
+            DO jn = 1, ntra
+                                             DEALLOCATE( sf_trcdta(jn)%fnow )     !  arrays in the structure
+               IF( sf_trcdta(jn)%ln_tint )   DEALLOCATE( sf_trcdta(jn)%fdta )
+            ENDDO
+                                             DEALLOCATE( sf_trcdta          )     ! the structure itself
+            !
+         ENDIF
+         !
+      ENDIF
+      ! 
+      IF( nn_timing == 1 )  CALL timing_stop('trc_dta')
+      !
+   END SUBROUTINE trc_dta
 #else
    !!----------------------------------------------------------------------
    !!   Dummy module                              NO 3D passive tracer data
    !!----------------------------------------------------------------------
-   LOGICAL , PUBLIC, PARAMETER ::   lk_dtatrc = .FALSE.   !: temperature data flag
 CONTAINS
    SUBROUTINE trc_dta( kt )        ! Empty routine
       WRITE(*,*) 'trc_dta: You should not have seen this print! error?', kt
    END SUBROUTINE trc_dta
 #endif
-
    !!======================================================================
 END MODULE trcdta

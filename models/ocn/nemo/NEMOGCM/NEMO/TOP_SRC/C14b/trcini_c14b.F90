@@ -36,7 +36,7 @@ MODULE trcini_c14b
 
    !!----------------------------------------------------------------------
    !! NEMO/TOP 3.3 , NEMO Consortium (2010)
-   !! $Id: trcini_c14b.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -180,12 +180,12 @@ CONTAINS
       ! ------------------
       IF( ctrcnm(jpc14) /= 'C14B' ) THEN
           ctrcnm(jpc14)  = 'C14B'
-          ctrcnl(jpc14)  = 'Bomb C14 concentration'
+          ctrcln(jpc14)  = 'Bomb C14 concentration'
       ENDIF
 
       IF(lwp) THEN
          CALL ctl_warn( ' we force tracer names' )
-         WRITE(numout,*) ' tracer nb: ',jpc14,' name = ',ctrcnm(jpc14), ctrcnl(jpc14)
+         WRITE(numout,*) ' tracer nb: ',jpc14,' name = ',ctrcnm(jpc14), ctrcln(jpc14)
          WRITE(numout,*) ' '
       ENDIF
 

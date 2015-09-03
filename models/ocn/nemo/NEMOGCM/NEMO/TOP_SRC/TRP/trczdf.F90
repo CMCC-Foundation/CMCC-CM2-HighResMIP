@@ -31,7 +31,7 @@ MODULE trczdf
    INTEGER ::   nzdf = 0               ! type vertical diffusion algorithm used
       !                                ! defined from ln_zdf...  namlist logicals)
    REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:) ::  r2dt   ! vertical profile time-step, = 2 rdttra
-      !                                                 ! except at nit000 (=rdttra) if neuler=0
+      !                                                 ! except at nittrc000 (=rdttra) if neuler=0
 
    !! * Substitutions
 #  include "domzgr_substitute.h90"
@@ -39,7 +39,7 @@ MODULE trczdf
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/TOP 3.3 , NEMO Consortium (2010)
-   !! $Id: trczdf.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -65,54 +65,57 @@ CONTAINS
       !
       INTEGER               ::  jk, jn
       CHARACTER (len=22)    :: charout
-      REAL(wp), DIMENSION(:,:,:,:), ALLOCATABLE ::   ztrtrd   ! 4D workspace
+      REAL(wp), POINTER, DIMENSION(:,:,:,:) ::   ztrtrd   ! 4D workspace
       !!---------------------------------------------------------------------
+      !
+      IF( nn_timing == 1 )  CALL timing_start('trc_zdf')
+      !
+      IF( kt == nittrc000 )   CALL zdf_ctl          ! initialisation & control of options
 
-      IF( kt == nit000 )   CALL zdf_ctl          ! initialisation & control of options
-
-#if ! defined key_pisces && ! defined key_bfm
-      IF( neuler == 0 .AND. kt == nit000 ) THEN     ! at nit000
+#if ! defined key_pisces
+      IF( neuler == 0 .AND. kt == nittrc000 ) THEN     ! at nittrc000
          r2dt(:) =  rdttrc(:)           ! = rdttrc (restarting with Euler time stepping)
-      ELSEIF( kt <= nit000 + nn_dttrc ) THEN          ! at nit000 or nit000+1
+      ELSEIF( kt <= nittrc000 + 1 ) THEN          ! at nittrc000 or nittrc000+1
          r2dt(:) = 2. * rdttrc(:)       ! = 2 rdttrc (leapfrog)
       ENDIF
 #else
-      r2dt(:) =  rdttrc(:)              ! = rdttrc (for PISCES and BFM use Euler time stepping)
+      r2dt(:) =  rdttrc(:)              ! = rdttrc (for PISCES use Euler time stepping)
 #endif
 
       IF( l_trdtrc )  THEN
-         ALLOCATE( ztrtrd(jpi,jpj,jpk,jptra) )   ! temporary save of trends
+         CALL wrk_alloc( jpi, jpj, jpk, jptra, ztrtrd )
          ztrtrd(:,:,:,:)  = tra(:,:,:,:)
       ENDIF
 
       SELECT CASE ( nzdf )                       ! compute lateral mixing trend and add it to the general trend
       CASE ( -1 )                                       ! esopa: test all possibility with control print
-         CALL tra_zdf_exp( kt, 'TRC', r2dt, nn_trczdf_exp, trb, tra, jptra ) 
+         CALL tra_zdf_exp( kt, nittrc000, 'TRC', r2dt, nn_trczdf_exp, trb, tra, jptra ) 
          WRITE(charout, FMT="('zdf1 ')") ;  CALL prt_ctl_trc_info(charout)
                                             CALL prt_ctl_trc( tab4d=tra, mask=tmask, clinfo=ctrcnm, clinfo2='trd' )
-         CALL tra_zdf_imp( kt, 'TRC', r2dt,                trb, tra, jptra ) 
+         CALL tra_zdf_imp( kt, nittrc000, 'TRC', r2dt,                trb, tra, jptra ) 
          WRITE(charout, FMT="('zdf2 ')") ;  CALL prt_ctl_trc_info(charout)
                                             CALL prt_ctl_trc( tab4d=tra, mask=tmask, clinfo=ctrcnm, clinfo2='trd' )
-      CASE ( 0 ) ;  CALL tra_zdf_exp( kt, 'TRC', r2dt, nn_trczdf_exp, trb, tra, jptra )    !   explicit scheme 
-      CASE ( 1 ) ;  CALL tra_zdf_imp( kt, 'TRC', r2dt,                trb, tra, jptra )    !   implicit scheme          
+      CASE ( 0 ) ;  CALL tra_zdf_exp( kt, nittrc000, 'TRC', r2dt, nn_trczdf_exp, trb, tra, jptra )    !   explicit scheme 
+      CASE ( 1 ) ;  CALL tra_zdf_imp( kt, nittrc000, 'TRC', r2dt,                trb, tra, jptra )    !   implicit scheme          
 
       END SELECT
 
-      IF( l_trdtra )   THEN                      ! save the vertical diffusive trends for further diagnostics
+      IF( l_trdtrc )   THEN                      ! save the vertical diffusive trends for further diagnostics
          DO jn = 1, jptra
             DO jk = 1, jpkm1
                ztrtrd(:,:,jk,jn) = ( ( tra(:,:,jk,jn) - trb(:,:,jk,jn) ) / r2dt(jk) ) - ztrtrd(:,:,jk,jn)
             END DO
             CALL trd_tra( kt, 'TRC', jn, jptra_trd_zdf, ztrtrd(:,:,:,jn) )
          END DO
-         DEALLOCATE( ztrtrd )
+         CALL wrk_dealloc( jpi, jpj, jpk, jptra, ztrtrd )
       ENDIF
-
       !                                          ! print mean trends (used for debugging)
       IF( ln_ctl )   THEN
          WRITE(charout, FMT="('zdf ')") ;  CALL prt_ctl_trc_info(charout)
                                            CALL prt_ctl_trc( tab4d=tra, mask=tmask, clinfo=ctrcnm, clinfo2='trd' )
       END IF
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('trc_zdf')
       !
    END SUBROUTINE trc_zdf
 

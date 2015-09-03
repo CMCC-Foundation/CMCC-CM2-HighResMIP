@@ -6,7 +6,7 @@ MODULE par_lobster
    !! History :   2.0  !  2007-12  (C. Ethe, G. Madec)  revised architecture
    !!----------------------------------------------------------------------
    !! NEMO/TOP 3.3 , NEMO Consortium (2010)
-   !! $Id: par_lobster.F90 2528 2010-12-27 17:33:53Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 
@@ -18,8 +18,8 @@ MODULE par_lobster
    !!---------------------------------------------------------------------
    LOGICAL, PUBLIC, PARAMETER ::   lk_lobster     = .TRUE.    !: LOBSTER flag 
    INTEGER, PUBLIC, PARAMETER ::   jp_lobster     =  6        !: number of LOBSTER tracers
-   INTEGER, PUBLIC, PARAMETER ::   jp_lobster_2d  = 19        !: additional 2d output arrays ('key_diatrc')
-   INTEGER, PUBLIC, PARAMETER ::   jp_lobster_3d  =  3        !: additional 3d output arrays ('key_diatrc')
+   INTEGER, PUBLIC, PARAMETER ::   jp_lobster_2d  = 19        !: additional 2d output arrays 
+   INTEGER, PUBLIC, PARAMETER ::   jp_lobster_3d  =  3        !: additional 3d output arrays 
    INTEGER, PUBLIC, PARAMETER ::   jp_lobster_trd = 17       !: number of sms trends for LOBSTER
 
    ! assign an index in trc arrays for each LOBSTER prognostic variables
