@@ -1,6 +1,6 @@
 MODULE fliocom
 !-
-!$Id: fliocom.f90 2512 2010-12-23 15:27:09Z smasson $
+!$Id$
 !-
 ! This software is governed by the CeCILL license
 ! See IOIPSL/IOIPSL_License_CeCILL.txt

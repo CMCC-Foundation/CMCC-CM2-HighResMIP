@@ -1,6 +1,6 @@
 MODULE calendar
 !-
-!$Id: calendar.f90 2459 2010-12-07 11:17:48Z smasson $
+!$Id$
 !-
 ! This software is governed by the CeCILL license
 ! See IOIPSL/IOIPSL_License_CeCILL.txt

@@ -1,6 +1,6 @@
 MODULE histcom
 !-
-!$Id: histcom.f90 2368 2010-11-09 15:38:45Z acc $
+!$Id$
 !-
 ! This software is governed by the CeCILL license
 ! See IOIPSL/IOIPSL_License_CeCILL.txt
