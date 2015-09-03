@@ -37,6 +37,7 @@ CONTAINS
   SUBROUTINE Create_file_definition(nb_server,server_rank)
   USE ioipsl
   USE xmlio
+  USE mod_ioserver_namelist
   IMPLICIT NONE
     INTEGER,INTENT(IN)  :: nb_server
     INTEGER,INTENT(IN)  :: server_rank
@@ -87,14 +88,14 @@ CONTAINS
             CALL histbeg(TRIM(full_name),pt_domain%ni,pt_domain%lon, pt_domain%nj, pt_domain%lat, & 
                        pt_zoom%ibegin_loc, pt_zoom%ni_loc,pt_zoom%jbegin_loc,pt_zoom%nj_loc,         &
                        initial_timestep, initial_date, timestep_value,                               &
-                       ioipsl_hori_id, ioipsl_file_id)
+                       ioipsl_hori_id, ioipsl_file_id, snc4chunks=snc4ioset)
            ELSE                                              
 
             CALL set_ioipsl_domain_id(pt_grid,nb_server,server_rank,ioipsl_domain_id)
             CALL histbeg(TRIM(full_name),pt_domain%ni,pt_domain%lon, pt_domain%nj, pt_domain%lat,  &
                        pt_zoom%ibegin_loc, pt_zoom%ni_loc,pt_zoom%jbegin_loc,pt_zoom%nj_loc,          &
                        initial_timestep, initial_date, timestep_value,                                &
-                       ioipsl_hori_id, ioipsl_file_id,domain_id=ioipsl_domain_id)                                              
+                       ioipsl_hori_id, ioipsl_file_id,domain_id=ioipsl_domain_id, snc4chunks=snc4ioset)                                              
           
            ENDIF
         
@@ -141,7 +142,7 @@ CONTAINS
                          & real(pt_file%output_freq) )
             ENDIF
           ENDDO
-          CALL histend(ioipsl_file_id)
+          CALL histend(ioipsl_file_id, snc4chunks=snc4ioset)
         ENDIF
         CALL sorted_list__delete(axis_id)
       ENDIF

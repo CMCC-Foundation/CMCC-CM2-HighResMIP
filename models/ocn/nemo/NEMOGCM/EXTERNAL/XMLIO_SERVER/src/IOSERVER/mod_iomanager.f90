@@ -312,9 +312,9 @@ CONTAINS
       nj=local_domain%nj
       
       IF (pt_field%axis%name=="none") THEN
-        CALL write_ioipsl_3d(varname,Field_buffer(1:ni,1:nj,1:nk))
-      ELSE 
         CALL write_ioipsl_2d(varname,Field_buffer(1:ni,1:nj,1))
+      ELSE 
+        CALL write_ioipsl_3d(varname,Field_buffer(1:ni,1:nj,1:nk))
       ENDIF
     
     ENDIF

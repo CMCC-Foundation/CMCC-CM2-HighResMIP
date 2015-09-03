@@ -25,9 +25,9 @@ CONTAINS
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: sub_name
     
     IF (PRESENT(sub_name)) THEN
-      PRINT *,"--* WARNING *-- : in subroutine "//sub_name
+      PRINT *,"--* ERROR *-- : in subroutine "//sub_name
     ELSE
-      PRINT *,"--* WARNING *-- "
+      PRINT *,"--* ERROR *-- "
     ENDIF
 
     PRINT *,"----> ",TRIM(message)

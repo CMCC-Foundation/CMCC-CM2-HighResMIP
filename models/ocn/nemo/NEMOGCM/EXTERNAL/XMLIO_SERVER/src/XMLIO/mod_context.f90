@@ -16,6 +16,7 @@ MODULE mod_context
   USE mod_axis_definition
   USE mod_dependency
   USE mod_time_parameters
+  USE error_msg
 
 
   INTERFACE context__swap
@@ -197,7 +198,8 @@ MODULE mod_context
       
       CALL context__get(Id,Pt_context)
       IF (.NOT. ASSOCIATED(Pt_context)) THEN
-!!      error message
+          WRITE (message,*) "Error: Unable to get context for Id '<Id>'"
+          CALL error('context__swap_id')
       ENDIF
       
       CALL context__swap(pt_context)  

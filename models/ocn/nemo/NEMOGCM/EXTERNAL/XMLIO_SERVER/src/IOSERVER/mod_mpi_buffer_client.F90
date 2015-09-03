@@ -1,7 +1,7 @@
 MODULE mod_mpi_buffer_client
   USE mod_mpi_buffer_parameters
 #if defined key_mpp_mpi
-  USE mpi, ONLY : status_size=>MPI_STATUS_SIZE
+  USE mpi_mod, ONLY : status_size=>MPI_STATUS_SIZE
 #else
   INTEGER, PARAMETER :: status_size = 1
 #endif
