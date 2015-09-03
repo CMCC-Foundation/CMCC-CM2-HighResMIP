@@ -531,9 +531,9 @@ logical :: res_match
 ! /pseudo/vps/radfunc [1]
 ! //radfunc/data
 ! //data
-! //*/vps/data
-! //job//data      
-! //*
+! ///vps/data
+! //job//data
+! //
 !
 integer :: len_target, len_path, pos_target, pos_path
 character(len=100) :: anchor_leaf ! *** Hard limit
@@ -561,7 +561,7 @@ else ! We get the extreme elements
       ! Get leaf further up
       search_anchor : do
          pos_target = index(ptarget(1:len_target-1),"/",back=.true.)
-         if (pos_target == 1) then ! Target begins by /.// 
+         if (pos_target == 1) then ! Target begins by /.//
             res_match = .true.
             return
          endif
