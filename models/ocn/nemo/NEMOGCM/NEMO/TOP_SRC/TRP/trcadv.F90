@@ -81,15 +81,15 @@ CONTAINS
 
       IF( kt == nittrc000 )   CALL trc_adv_ctl          ! initialisation & control of options
 
-#if ! defined key_pisces
-      IF( neuler == 0 .AND. kt == nittrc000 ) THEN     ! at nittrc000
-         r2dt(:) =  rdttrc(:)           ! = rdttrc (restarting with Euler time stepping)
-      ELSEIF( kt <= nittrc000 + 1 ) THEN          ! at nittrc000 or nittrc000+1
-         r2dt(:) = 2. * rdttrc(:)       ! = 2 rdttrc (leapfrog)
+      IF( ln_top_euler) THEN
+         r2dt(:) =  rdttrc(:)              ! = rdttrc (use Euler time stepping)
+      ELSE
+         IF( neuler == 0 .AND. kt == nittrc000 ) THEN     ! at nittrc000
+            r2dt(:) =  rdttrc(:)           ! = rdttrc (restarting with Euler time stepping)
+         ELSEIF( kt <= nittrc000 + 1 ) THEN          ! at nittrc000 or nittrc000+1
+            r2dt(:) = 2. * rdttrc(:)       ! = 2 rdttrc (leapfrog)
+         ENDIF
       ENDIF
-#else
-      r2dt(:) =  rdttrc(:)              ! = rdttrc (for PISCES use Euler time stepping)
-#endif
 
       !                                                   ! effective transport
       DO jk = 1, jpkm1

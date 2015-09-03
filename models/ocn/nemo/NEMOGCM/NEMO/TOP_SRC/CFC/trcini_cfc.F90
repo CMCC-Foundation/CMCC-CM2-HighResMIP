@@ -109,18 +109,18 @@ CONTAINS
         jn = jn + 1
       END DO
 
-      p_cfc(32,1:2,1) = 5.e-4      ! modify the values of the first years
-      p_cfc(33,1:2,1) = 8.e-4
-      p_cfc(34,1:2,1) = 1.e-6
-      p_cfc(35,1:2,1) = 2.e-3
-      p_cfc(36,1:2,1) = 4.e-3
-      p_cfc(37,1:2,1) = 6.e-3
-      p_cfc(38,1:2,1) = 8.e-3
-      p_cfc(39,1:2,1) = 1.e-2
+!      p_cfc(32,1:2,1) = 5.e-4      ! modify the values of the first years
+!      p_cfc(33,1:2,1) = 8.e-4
+!      p_cfc(34,1:2,1) = 1.e-6
+!      p_cfc(35,1:2,1) = 2.e-3
+!      p_cfc(36,1:2,1) = 4.e-3
+!      p_cfc(37,1:2,1) = 6.e-3
+!      p_cfc(38,1:2,1) = 8.e-3
+!      p_cfc(39,1:2,1) = 1.e-2
       
       IF(lwp) THEN        ! Control print
          WRITE(numout,*)
-         WRITE(numout,*) ' Year   p11HN    p11HS    p12HN    p12HS '
+         WRITE(numout,*) ' Year   p11HN    p11SH    p12HN    p12SH '
          DO jn = 30, jpyear
             WRITE(numout, '( 1I4, 4F9.2)') jn, p_cfc(jn,1,1), p_cfc(jn,2,1), p_cfc(jn,1,2), p_cfc(jn,2,2)
          END DO
