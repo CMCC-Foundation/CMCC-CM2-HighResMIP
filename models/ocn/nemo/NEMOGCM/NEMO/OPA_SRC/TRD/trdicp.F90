@@ -25,6 +25,8 @@ MODULE trdicp
    USE lib_mpp         ! distibuted memory computing library
    USE eosbn2          ! equation of state
    USE phycst          ! physical constants
+   USE wrk_nemo        ! Memory allocation
+
 
    IMPLICIT NONE
    PRIVATE
@@ -43,7 +45,7 @@ MODULE trdicp
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: trdicp.F90 2781 2011-06-09 10:08:50Z cetlod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -105,8 +107,8 @@ CONTAINS
             &             + vn(:,:,1) * ptrd2dy(:,:) * e1v(:,:) * e2v(:,:) * fse3v(:,:,1)   )
          !
       CASE( 'TRA' )              ! Tracers
-         t2(ktrd) = SUM( ptrd2dx(:,:) * e1e2t(:,:) * fse3t(:,:,1) * tn(:,:,1) )
-         s2(ktrd) = SUM( ptrd2dy(:,:) * e1e2t(:,:) * fse3t(:,:,1) * sn(:,:,1) )
+         t2(ktrd) = SUM( ptrd2dx(:,:) * e1e2t(:,:) * fse3t(:,:,1) * tsn(:,:,1,jp_tem) )
+         s2(ktrd) = SUM( ptrd2dy(:,:) * e1e2t(:,:) * fse3t(:,:,1) * tsn(:,:,1,jp_sal) )
          !      
       END SELECT
       !
@@ -183,8 +185,8 @@ CONTAINS
          t2(ktrd) = 0._wp
          s2(ktrd) = 0._wp
          DO jk = 1, jpkm1
-            t2(ktrd) = t2(ktrd) + SUM( ptrd3dx(:,:,jk) * tn(:,:,jk) * e1e2t(:,:) * fse3t(:,:,jk) )
-            s2(ktrd) = s2(ktrd) + SUM( ptrd3dy(:,:,jk) * sn(:,:,jk) * e1e2t(:,:) * fse3t(:,:,jk) )
+            t2(ktrd) = t2(ktrd) + SUM( ptrd3dx(:,:,jk) * tsn(:,:,jk,jp_tem) * e1e2t(:,:) * fse3t(:,:,jk) )
+            s2(ktrd) = s2(ktrd) + SUM( ptrd3dy(:,:,jk) * tsn(:,:,jk,jp_sal) * e1e2t(:,:) * fse3t(:,:,jk) )
          END DO
          !
       END SELECT
@@ -210,7 +212,7 @@ CONTAINS
       ! Total volume at t-points:
       tvolt = 0._wp
       DO jk = 1, jpkm1
-         tvolt = SUM( e1e2t(:,:) * fse3t(:,:,jk) * tmask(:,:,jk) * tmask_i(:,:) )
+         tvolt = tvolt + SUM( e1e2t(:,:) * fse3t(:,:,jk) * tmask(:,:,jk) * tmask_i(:,:) )
       END DO
       IF( lk_mpp )   CALL mpp_sum( tvolt )   ! sum over the global domain
 
@@ -223,7 +225,6 @@ CONTAINS
       ! Total volume at u-, v- points:
       tvolu = 0._wp
       tvolv = 0._wp
-
       DO jk = 1, jpk
          DO jj = 2, jpjm1
             DO ji = fs_2, fs_jpim1   ! vector opt.
@@ -250,19 +251,15 @@ CONTAINS
       !! 
       !! ** Purpose :  write dynamic trends in ocean.output 
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zkepe => wrk_3d_1 , zkx => wrk_3d_2   ! 3D workspace
-      USE wrk_nemo, ONLY:   zky   => wrk_3d_3 , zkz => wrk_3d_4   !  -      -
       !
       INTEGER, INTENT(in) ::   kt   ! ocean time-step index
       !
       INTEGER  ::   ji, jj, jk   ! dummy loop indices
       REAL(wp) ::   zcof         ! local scalar
+      REAL(wp), POINTER, DIMENSION(:,:,:)  ::  zkx, zky, zkz, zkepe  
       !!----------------------------------------------------------------------
 
-      IF( wrk_in_use(3, 1,2,3,4) ) THEN
-         CALL ctl_stop('trd_dwr: requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
+      CALL wrk_alloc( jpi, jpj, jpk, zkx, zky, zkz, zkepe )
 
       ! I. Momentum trends
       ! -------------------
@@ -438,7 +435,7 @@ CONTAINS
          !
       ENDIF
       !
-      IF( wrk_not_released(3, 1,2,3,4) )   CALL ctl_stop('trd_dwr: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi, jpj, jpk, zkx, zky, zkz, zkepe )
       !
    END SUBROUTINE trd_dwr
 

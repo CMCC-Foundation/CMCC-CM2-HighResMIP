@@ -100,12 +100,16 @@ MODULE obc_par
    !!----------------------------------------------------------------------
    !!   Default option :                         NO open boundary condition
    !!----------------------------------------------------------------------
-   LOGICAL, PUBLIC, PARAMETER ::   lk_obc = .FALSE.  !: Ocean Boundary Condition flag
+#if ! defined key_agrif
+   LOGICAL, PUBLIC, PARAMETER ::   lk_obc = .FALSE.     !: Ocean Boundary Condition flag
+#else
+   LOGICAL, PUBLIC            ::   lk_obc = .FALSE.     !: Ocean Boundary Condition flag
+#endif
 #endif
 
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: obc_par.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!======================================================================
 END MODULE obc_par

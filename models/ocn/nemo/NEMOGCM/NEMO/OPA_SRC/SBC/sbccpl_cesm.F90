@@ -25,6 +25,7 @@ MODULE sbccpl_cesm
    USE geo2ocean       ! 
    USE in_out_manager
    USE lib_fortran
+   USE wrk_nemo        ! work arrays
    !!
    IMPLICIT NONE
    PRIVATE
@@ -132,8 +133,6 @@ CONTAINS
 
    SUBROUTINE sbc_cpl_cesm_rcv( kt, k_fsbc, k_ice )     
    
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   ztx => wrk_2d_1 , zty => wrk_2d_2
       !!
 
       INTEGER, INTENT(in) ::   kt       ! ocean model time step index
@@ -143,15 +142,14 @@ CONTAINS
       ! local data
       REAL(wp) :: zrnfex   ! excess runoff to be redistributed over E-P
       INTEGER  :: i, j     ! dummy loop index
+      REAL(wp), POINTER, DIMENSION(:,:) ::   ztx, zty
 
 !      IF (lwp) WRITE(numout,*) 'sbc_cpl_rcv: called ', kt, lrecv
 
       ! Return if this isn't a coupling time step
       IF (.NOT. lrecv) RETURN
 
-      IF( wrk_in_use(2, 1,2) ) THEN
-         CALL ctl_stop('sbc_cpl_cesm_rcv: requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
+      CALL wrk_alloc( jpi,jpj, ztx, zty )
 
       !  1. distribute wind stress
       !     rotate components to local coordinates
@@ -279,7 +277,7 @@ CONTAINS
       call lbc_lnk(atm_co2(:,:), 'T', 1._wp)
 #endif
 
-      IF( wrk_not_released(2, 1,2) )   CALL ctl_stop('sbc_cpl_cesm_rcv: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi,jpj, ztx, zty )
 
       ! Reset coupling time step flag
       lrecv = .FALSE.

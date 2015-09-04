@@ -20,7 +20,9 @@ MODULE zdfddm
    USE in_out_manager  ! I/O manager
    USE lbclnk          ! ocean lateral boundary conditions (or mpp link)
    USE prtctl          ! Print control
-   USE lib_mpp            ! MPP library
+   USE lib_mpp         ! MPP library
+   USE wrk_nemo        ! work arrays
+   USE timing          ! Timing
 
    IMPLICIT NONE
    PRIVATE
@@ -42,7 +44,7 @@ MODULE zdfddm
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 4.0 , NEMO Consortium (2011)
-   !! $Id: zdfddm.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -90,21 +92,18 @@ CONTAINS
       !!
       !! References :   Merryfield et al., JPO, 29, 1124-1142, 1999.
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zmsks  => wrk_2d_1 , zmskf  => wrk_2d_2 , zmskd1 => wrk_2d_3   ! 2D workspace
-      USE wrk_nemo, ONLY:   zmskd2 => wrk_2d_4 , zmskd3 => wrk_2d_5                        !  -      -
-      !
       INTEGER, INTENT(in) ::   kt   ! ocean time-step indexocean time step
       !
       INTEGER  ::   ji, jj , jk     ! dummy loop indices
       REAL(wp) ::   zinr, zrr       ! temporary scalars
       REAL(wp) ::   zavft, zavfs    !    -         -
       REAL(wp) ::   zavdt, zavds    !    -         -
+      REAL(wp), POINTER, DIMENSION(:,:) ::   zmsks, zmskf, zmskd1, zmskd2, zmskd3
       !!----------------------------------------------------------------------
-
-      IF( wrk_in_use(2, 1,2,3,4,5) ) THEN
-         CALL ctl_stop('zdf_ddm: Requested workspace arrays already in use')   ;   RETURN
-      ENDIF
+      !
+      IF( nn_timing == 1 )  CALL timing_start('zdf_ddm')
+      !
+      CALL wrk_alloc( jpi,jpj, zmsks, zmskf, zmskd1, zmskd2, zmskd3 )
 
       !                                                ! ===============
       DO jk = 2, jpkm1                                 ! Horizontal slab
@@ -196,7 +195,9 @@ CONTAINS
             &         tab3d_2=avmv, clinfo2=       ' v: ', mask2=vmask, ovlap=1, kdim=jpk)
       ENDIF
       !
-      IF( wrk_not_released(2, 1,2,3,4,5) )   CALL ctl_stop('zdf_ddm: Release of workspace arrays failed')
+      CALL wrk_dealloc( jpi,jpj, zmsks, zmskf, zmskd1, zmskd2, zmskd3 )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('zdf_ddm')
       !
    END SUBROUTINE zdf_ddm
    
@@ -225,11 +226,10 @@ CONTAINS
          WRITE(numout,*) '      heat/salt buoyancy flux ratio  rn_hsbfr  = ', rn_hsbfr
       ENDIF
       !
-      !                              ! allocate zdfddm arrays
+      !                               ! allocate zdfddm arrays
       IF( zdf_ddm_alloc() /= 0 )   CALL ctl_stop( 'STOP', 'zdf_ddm_init : unable to allocate arrays' )
-      !
-      !                              ! initialization to masked Kz
-      avs(:,:,:) = rn_avt0 * tmask(:,:,:)
+      !                               ! initialization to masked Kz
+      avs(:,:,:) = rn_avt0 * tmask(:,:,:) 
       !
    END SUBROUTINE zdf_ddm_init
 

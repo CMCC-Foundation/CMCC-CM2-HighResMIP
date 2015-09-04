@@ -17,6 +17,7 @@ MODULE sbcdcy
    USE sbc_oce          ! Surface boundary condition: ocean fields
    USE in_out_manager   ! I/O manager
    USE lib_mpp          ! MPP library
+   USE timing           ! Timing
 
    IMPLICIT NONE
    PRIVATE
@@ -30,7 +31,7 @@ MODULE sbcdcy
 
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO-consortium (2010) 
-   !! $Id: sbcdcy.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -75,7 +76,9 @@ CONTAINS
          &   paaa * pt2 + zinvtwopi * pbbb * SIN(pccc + ztwopi * pt2)   &
          & - paaa * pt1 - zinvtwopi * pbbb * SIN(pccc + ztwopi * pt1)
       !!---------------------------------------------------------------------
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('sbc_dcy')
+      !
       ! Initialization
       ! --------------
       ztwopi    = 2._wp * rpi
@@ -98,8 +101,8 @@ CONTAINS
          ! Compute rcc needed to compute the time integral of the diurnal cycle
          rcc(:,:) = zconvrad * glamt(:,:) - rpi
          ! time of midday
-         rtmd(:,:) = 0.5 - glamt(:,:) / 360.
-         rtmd(:,:) = MOD( (rtmd(:,:) + 1.), 1. )
+         rtmd(:,:) = 0.5_wp - glamt(:,:) / 360._wp
+         rtmd(:,:) = MOD( (rtmd(:,:) + 1._wp) , 1._wp)
       ENDIF
 
       ! If this is a new day, we have to update the dawn, dusk and scaling function  
@@ -114,7 +117,7 @@ CONTAINS
          ! number of days since the previous winter solstice (supposed to be always 21 December)         
          zdsws = REAL(11 + nday_year, wp)
          ! declination of the earths orbit
-         zdecrad = (-23.5 * zconvrad) * COS( zdsws * ztwopi / REAL(nyear_len(1),wp) )
+         zdecrad = (-23.5_wp * zconvrad) * COS( zdsws * ztwopi / REAL(nyear_len(1),wp) )
          ! Compute A and B needed to compute the time integral of the diurnal cycle
         
          zsin = SIN( zdecrad )   ;   zcos = COS( zdecrad )
@@ -132,12 +135,12 @@ CONTAINS
          rab(:,:) = -raa(:,:) / rbb(:,:)
          DO jj = 1, jpj
             DO ji = 1, jpi
-               IF ( ABS(rab(ji,jj)) < 1 ) THEN         ! day duration is less than 24h
+               IF ( ABS(rab(ji,jj)) < 1._wp ) THEN         ! day duration is less than 24h
          ! When is it night?
                   ztx = zinvtwopi * (ACOS(rab(ji,jj)) - rcc(ji,jj))
                   ztest = -rbb(ji,jj) * SIN( rcc(ji,jj) + ztwopi * ztx )
          ! is it dawn or dusk?
-                  IF ( ztest > 0 ) THEN
+                  IF ( ztest > 0._wp ) THEN
                      rdawn(ji,jj) = ztx
                      rdusk(ji,jj) = rtmd(ji,jj) + ( rtmd(ji,jj) - rdawn(ji,jj) )
                   ELSE
@@ -145,7 +148,7 @@ CONTAINS
                      rdawn(ji,jj) = rtmd(ji,jj) - ( rdusk(ji,jj) - rtmd(ji,jj) )
                   ENDIF
                ELSE
-                  rdawn(ji,jj) = rtmd(ji,jj) + 0.5
+                  rdawn(ji,jj) = rtmd(ji,jj) + 0.5_wp
                   rdusk(ji,jj) = rdawn(ji,jj)
                ENDIF
              END DO  
@@ -153,25 +156,32 @@ CONTAINS
          rdawn(:,:) = MOD( (rdawn(:,:) + 1._wp), 1._wp )
          rdusk(:,:) = MOD( (rdusk(:,:) + 1._wp), 1._wp )
 
-         !     2.2 Compute the scalling function:
-         !         S* = the inverse of the time integral of the diurnal cycle from dawm to dusk
+         !     2.2 Compute the scaling function:
+         !         S* = the inverse of the time integral of the diurnal cycle from dawn to dusk
+         !         Avoid possible infinite scaling factor, associated with very short daylight
+         !         periods, by ignoring periods less than 1/1000th of a day (ticket #1040)
          DO jj = 1, jpj
             DO ji = 1, jpi
-               IF ( ABS(rab(ji,jj)) < 1 ) THEN         ! day duration is less than 24h
+               IF ( ABS(rab(ji,jj)) < 1._wp ) THEN         ! day duration is less than 24h
+                  rscal(ji,jj) = 0.0_wp
                   IF ( rdawn(ji,jj) < rdusk(ji,jj) ) THEN      ! day time in one part
-                     rscal(ji,jj) = fintegral(rdawn(ji,jj), rdusk(ji,jj), raa(ji,jj), rbb(ji,jj), rcc(ji,jj)) 
-                     rscal(ji,jj) = 1. / rscal(ji,jj)
+                     IF( (rdusk(ji,jj) - rdawn(ji,jj) ) .ge. 0.001_wp ) THEN
+                       rscal(ji,jj) = fintegral(rdawn(ji,jj), rdusk(ji,jj), raa(ji,jj), rbb(ji,jj), rcc(ji,jj)) 
+                       rscal(ji,jj) = 1._wp / rscal(ji,jj)
+                     ENDIF
                   ELSE                                         ! day time in two parts
-                     rscal(ji,jj) = fintegral(0., rdusk(ji,jj), raa(ji,jj), rbb(ji,jj), rcc(ji,jj))   &
-                        &         + fintegral(rdawn(ji,jj), 1., raa(ji,jj), rbb(ji,jj), rcc(ji,jj)) 
-                     rscal(ji,jj) = 1. / rscal(ji,jj)
+                     IF( (rdusk(ji,jj) + (1._wp - rdawn(ji,jj)) ) .ge. 0.001_wp ) THEN
+                       rscal(ji,jj) = fintegral(0._wp, rdusk(ji,jj), raa(ji,jj), rbb(ji,jj), rcc(ji,jj))   &
+                          &         + fintegral(rdawn(ji,jj), 1._wp, raa(ji,jj), rbb(ji,jj), rcc(ji,jj)) 
+                       rscal(ji,jj) = 1. / rscal(ji,jj)
+                     ENDIF
                   ENDIF
                ELSE
                   IF ( raa(ji,jj) > rbb(ji,jj) ) THEN         ! 24h day
-                     rscal(ji,jj) = fintegral(0., 1., raa(ji,jj), rbb(ji,jj), rcc(ji,jj)) 
-                     rscal(ji,jj) = 1. / rscal(ji,jj)
+                     rscal(ji,jj) = fintegral(0._wp, 1._wp, raa(ji,jj), rbb(ji,jj), rcc(ji,jj)) 
+                     rscal(ji,jj) = 1._wp / rscal(ji,jj)
                   ELSE                                          ! No day
-                     rscal(ji,jj) = 0.e0
+                     rscal(ji,jj) = 0.0_wp
                   ENDIF
                ENDIF
             END DO  
@@ -187,7 +197,7 @@ CONTAINS
 
       DO jj = 1, jpj
          DO ji = 1, jpi
-            IF( ABS(rab(ji,jj)) < 1 ) THEN         ! day duration is less than 24h
+            IF( ABS(rab(ji,jj)) < 1._wp ) THEN         ! day duration is less than 24h
                !
                IF( rdawn(ji,jj) < rdusk(ji,jj) ) THEN       ! day time in one part
                   zlousd = MAX(zlo, rdawn(ji,jj))
@@ -214,11 +224,13 @@ CONTAINS
                   zqsrout(ji,jj) = pqsrin(ji,jj) * ztmp * rscal(ji,jj)
                   !
                ELSE                                         ! No day
-                  zqsrout(ji,jj) = 0.e0
+                  zqsrout(ji,jj) = 0.0_wp
                ENDIF
             ENDIF
          END DO  
       END DO  
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('sbc_dcy')
       !
    END FUNCTION sbc_dcy
 

@@ -25,6 +25,9 @@ MODULE traadv_qck
    USE in_out_manager  ! I/O manager
    USE diaptr          ! poleward transport diagnostics
    USE trc_oce         ! share passive tracers/Ocean variables
+   USE wrk_nemo        ! Memory Allocation
+   USE timing          ! Timing
+   USE lib_fortran     ! Fortran utilities (allows no signed zero when 'key_nosignedzero' defined)
 
    IMPLICIT NONE
    PRIVATE
@@ -39,12 +42,12 @@ MODULE traadv_qck
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: traadv_qck.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
 
-   SUBROUTINE tra_adv_qck ( kt, cdtype, p2dt, pun, pvn, pwn,      &
+   SUBROUTINE tra_adv_qck ( kt, kit000, cdtype, p2dt, pun, pvn, pwn,      &
       &                                       ptb, ptn, pta, kjpt )
       !!----------------------------------------------------------------------
       !!                  ***  ROUTINE tra_adv_qck  ***
@@ -81,6 +84,7 @@ CONTAINS
       !! ** Reference : Leonard (1979, 1991)
       !!----------------------------------------------------------------------
       INTEGER                              , INTENT(in   ) ::   kt              ! ocean time-step index
+      INTEGER                              , INTENT(in   ) ::   kit000          ! first time step index
       CHARACTER(len=3)                     , INTENT(in   ) ::   cdtype          ! =TRA or TRC (tracer indicator)
       INTEGER                              , INTENT(in   ) ::   kjpt            ! number of tracers
       REAL(wp), DIMENSION(        jpk     ), INTENT(in   ) ::   p2dt            ! vertical profile of tracer time-step
@@ -89,22 +93,27 @@ CONTAINS
       REAL(wp), DIMENSION(jpi,jpj,jpk,kjpt), INTENT(inout) ::   pta             ! tracer trend 
       !!----------------------------------------------------------------------
 
-      IF( kt == nit000 )  THEN
+      !
+      IF( nn_timing == 1 )  CALL timing_start('tra_adv_qck')
+      !
+      IF( kt == kit000 )  THEN
          IF(lwp) WRITE(numout,*)
          IF(lwp) WRITE(numout,*) 'tra_adv_qck : 3rd order quickest advection scheme on ', cdtype
          IF(lwp) WRITE(numout,*) '~~~~~~~~~~~~'
          IF(lwp) WRITE(numout,*)
-         !
-         l_trd = .FALSE.
-         IF( ( cdtype == 'TRA' .AND. l_trdtra ) .OR. ( cdtype == 'TRC' .AND. l_trdtrc ) ) l_trd = .TRUE.
       ENDIF
-
+      !
+      l_trd = .FALSE.
+      IF( ( cdtype == 'TRA' .AND. l_trdtra ) .OR. ( cdtype == 'TRC' .AND. l_trdtrc ) ) l_trd = .TRUE.
+      
       ! I. The horizontal fluxes are computed with the QUICKEST + ULTIMATE scheme
       CALL tra_adv_qck_i( kt, cdtype, p2dt, pun, ptb, ptn, pta, kjpt ) 
       CALL tra_adv_qck_j( kt, cdtype, p2dt, pvn, ptb, ptn, pta, kjpt ) 
 
       ! II. The vertical fluxes are computed with the 2nd order centered scheme
       CALL tra_adv_cen2_k( kt, cdtype, pwn,         ptn, pta, kjpt )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('tra_adv_qck')
       !
    END SUBROUTINE tra_adv_qck
 
@@ -114,9 +123,7 @@ CONTAINS
       !!----------------------------------------------------------------------
       !!
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
       USE oce     , ONLY:   zwx => ua       ! ua used as workspace
-      USE wrk_nemo, ONLY:   zfu => wrk_3d_1 , zfc => wrk_3d_2, zfd => wrk_3d_3   ! 3D workspace
       !
       INTEGER                              , INTENT(in   ) ::   kt         ! ocean time-step index
       CHARACTER(len=3)                     , INTENT(in   ) ::   cdtype     ! =TRA or TRC (tracer indicator)
@@ -128,11 +135,10 @@ CONTAINS
       !!
       INTEGER  :: ji, jj, jk, jn   ! dummy loop indices
       REAL(wp) :: ztra, zbtr, zdir, zdx, zdt, zmsk   ! local scalars
+      REAL(wp), POINTER, DIMENSION(:,:,:) :: zfu, zfc, zfd
       !----------------------------------------------------------------------
       !
-      IF( wrk_in_use(3, 1,2,3) ) THEN
-         CALL ctl_stop('tra_adv_qck_i: requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
+      CALL wrk_alloc( jpi, jpj, jpk, zfu, zfc, zfd )
       !                                                          ! ===========
       DO jn = 1, kjpt                                            ! tracer loop
          !                                                       ! ===========
@@ -171,7 +177,7 @@ CONTAINS
             DO jj = 2, jpjm1
                DO ji = fs_2, fs_jpim1   ! vector opt.   
                   zdir = 0.5 + SIGN( 0.5, pun(ji,jj,jk) )   ! if pun > 0 : zdir = 1 otherwise zdir = 0 
-                  zdx  = ( zdir * e1t(ji,jj) + ( 1. - zdir ) * e1t(ji+1,jj) ) * e2u(ji,jj) * fse3u(ji,jj,jk)
+                  zdx = ( zdir * e1t(ji,jj) + ( 1. - zdir ) * e1t(ji+1,jj) ) * e2u(ji,jj) * fse3u(ji,jj,jk)
                   zwx(ji,jj,jk)  = ABS( pun(ji,jj,jk) ) * zdt / zdx    ! (0<zc_cfl<1 : Courant number on x-direction)
                   zfc(ji,jj,jk)  = zdir * ptb(ji  ,jj,jk,jn) + ( 1. - zdir ) * ptb(ji+1,jj,jk,jn)  ! FC in the x-direction for T
                   zfd(ji,jj,jk)  = zdir * ptb(ji+1,jj,jk,jn) + ( 1. - zdir ) * ptb(ji  ,jj,jk,jn)  ! FD in the x-direction for T
@@ -209,8 +215,12 @@ CONTAINS
                   zwx(ji,jj,jk) = zwx(ji,jj,jk) * pun(ji,jj,jk)
                END DO
             END DO
-            !
-            ! Computation of the trend
+         END DO
+         !
+         CALL lbc_lnk( zwx(:,:,:), 'T', 1. ) ! Lateral boundary conditions
+         !
+         ! Computation of the trend
+         DO jk = 1, jpkm1  
             DO jj = 2, jpjm1
                DO ji = fs_2, fs_jpim1   ! vector opt.  
                   zbtr = 1. / ( e1t(ji,jj) * e2t(ji,jj) * fse3t(ji,jj,jk) )
@@ -220,14 +230,13 @@ CONTAINS
                   pta(ji,jj,jk,jn) = pta(ji,jj,jk,jn) + ztra
                END DO
             END DO
-            !
          END DO
          !                                 ! trend diagnostics (contribution of upstream fluxes)
          IF( l_trd )  CALL trd_tra( kt, cdtype, jn, jptra_trd_xad, zwx, pun, ptn(:,:,:,jn) )
          !
       END DO
       !
-      IF( wrk_not_released(3, 1,2,3) )   CALL ctl_stop('tra_adv_qck_i: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi, jpj, jpk, zfu, zfc, zfd )
       !
    END SUBROUTINE tra_adv_qck_i
 
@@ -237,9 +246,7 @@ CONTAINS
       !!----------------------------------------------------------------------
       !!
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
       USE oce     , ONLY:   zwy => ua       ! ua used as workspace
-      USE wrk_nemo, ONLY:   zfu => wrk_3d_1 , zfc => wrk_3d_2, zfd => wrk_3d_3   ! 3D workspace
       !
       INTEGER                              , INTENT(in   ) ::   kt         ! ocean time-step index
       CHARACTER(len=3)                     , INTENT(in   ) ::   cdtype     ! =TRA or TRC (tracer indicator)
@@ -251,12 +258,11 @@ CONTAINS
       !!
       INTEGER  :: ji, jj, jk, jn   ! dummy loop indices
       REAL(wp) :: ztra, zbtr, zdir, zdx, zdt, zmsk   ! local scalars
+      REAL(wp), POINTER, DIMENSION(:,:,:) :: zfu, zfc, zfd
       !----------------------------------------------------------------------
       !
-      IF(wrk_in_use(3, 1,2,3))THEN
-         CALL ctl_stop('tra_adv_qck_j: ERROR: requested workspace arrays unavailable')
-         RETURN
-      END IF
+      CALL wrk_alloc( jpi, jpj, jpk, zfu, zfc, zfd )
+      !
       !                                                          ! ===========
       DO jn = 1, kjpt                                            ! tracer loop
          !                                                       ! ===========
@@ -296,7 +302,7 @@ CONTAINS
             DO jj = 2, jpjm1
                DO ji = fs_2, fs_jpim1   ! vector opt.   
                   zdir = 0.5 + SIGN( 0.5, pvn(ji,jj,jk) )   ! if pun > 0 : zdir = 1 otherwise zdir = 0 
-                  zdx  = ( zdir * e2t(ji,jj) + ( 1. - zdir ) * e2t(ji,jj+1) ) * e1v(ji,jj) * fse3v(ji,jj,jk)
+                  zdx = ( zdir * e2t(ji,jj) + ( 1. - zdir ) * e2t(ji,jj+1) ) * e1v(ji,jj) * fse3v(ji,jj,jk)
                   zwy(ji,jj,jk)  = ABS( pvn(ji,jj,jk) ) * zdt / zdx    ! (0<zc_cfl<1 : Courant number on x-direction)
                   zfc(ji,jj,jk)  = zdir * ptb(ji,jj  ,jk,jn) + ( 1. - zdir ) * ptb(ji,jj+1,jk,jn)  ! FC in the x-direction for T
                   zfd(ji,jj,jk)  = zdir * ptb(ji,jj+1,jk,jn) + ( 1. - zdir ) * ptb(ji,jj  ,jk,jn)  ! FD in the x-direction for T
@@ -335,8 +341,12 @@ CONTAINS
                   zwy(ji,jj,jk) = zwy(ji,jj,jk) * pvn(ji,jj,jk)
                END DO
             END DO
-            !
-            ! Computation of the trend
+         END DO
+         !
+         CALL lbc_lnk( zwy(:,:,:), 'T', 1. ) ! Lateral boundary conditions
+         !
+         ! Computation of the trend
+         DO jk = 1, jpkm1  
             DO jj = 2, jpjm1
                DO ji = fs_2, fs_jpim1   ! vector opt.  
                   zbtr = 1. / ( e1t(ji,jj) * e2t(ji,jj) * fse3t(ji,jj,jk) )
@@ -346,7 +356,6 @@ CONTAINS
                   pta(ji,jj,jk,jn) = pta(ji,jj,jk,jn) + ztra
                END DO
             END DO
-            !
          END DO
          !                                 ! trend diagnostics (contribution of upstream fluxes)
          IF( l_trd )  CALL trd_tra( kt, cdtype, jn, jptra_trd_yad, zwy, pvn, ptn(:,:,:,jn) )
@@ -358,7 +367,7 @@ CONTAINS
          !
       END DO
       !
-      IF( wrk_not_released(3, 1,2,3) )   CALL ctl_stop('tra_adv_qck_j: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi, jpj, jpk, zfu, zfc, zfd )
       !
    END SUBROUTINE tra_adv_qck_j
 
@@ -435,7 +444,9 @@ CONTAINS
       REAL(wp) ::  zcoef1, zcoef2, zcoef3   ! local scalars          
       REAL(wp) ::  zc, zcurv, zfho          !   -      -
       !----------------------------------------------------------------------
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('quickest')
+      !
       DO jk = 1, jpkm1
          DO jj = 1, jpj
             DO ji = 1, jpi
@@ -465,6 +476,8 @@ CONTAINS
             END DO
          END DO
       END DO
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('quickest')
       !
    END SUBROUTINE quickest
 

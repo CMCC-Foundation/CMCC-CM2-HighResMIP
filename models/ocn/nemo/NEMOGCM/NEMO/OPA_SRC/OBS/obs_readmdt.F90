@@ -11,6 +11,7 @@ MODULE obs_readmdt
    !!   obs_rea_mdt    : Driver for reading MDT
    !!   obs_offset_mdt : Remove the offset between the model MDT and the used one
    !!----------------------------------------------------------------------
+   USE wrk_nemo         ! Memory Allocation
    USE par_kind         ! Precision variables
    USE par_oce          ! Domain parameters
    USE in_out_manager   ! I/O manager
@@ -38,7 +39,7 @@ MODULE obs_readmdt
 
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: obs_readmdt.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -55,9 +56,6 @@ CONTAINS
       !! ** Action  : 
       !!----------------------------------------------------------------------
       USE iom
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   z_mdt   => wrk_2d_1   ! Array to store the MDT values
-      USE wrk_nemo, ONLY:   mdtmask => wrk_2d_2   ! Array to store the mask for the MDT
       !
       INTEGER                          , INTENT(IN)    ::   kslano    ! Number of SLA Products
       TYPE(obs_surf), DIMENSION(kslano), INTENT(inout) ::   sladata   ! SLA data
@@ -78,13 +76,13 @@ CONTAINS
       !
       REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::   zmask, zmdtl, zglam, zgphi
       INTEGER , DIMENSION(:,:,:), ALLOCATABLE ::   igrdi, igrdj
+      !
+      REAL(wp), POINTER, DIMENSION(:,:) ::  z_mdt, mdtmask
          
       REAL(wp) :: zlam, zphi, zfill, zinfill    ! local scalar
       !!----------------------------------------------------------------------
 
-      IF( wrk_in_use(2, 1,2) ) THEN
-         CALL ctl_stop('obs_rea_mdt : requested workspace array unavailable')   ;   RETURN
-      ENDIF
+      CALL wrk_alloc(jpi,jpj,z_mdt,mdtmask) 
 
       IF(lwp)WRITE(numout,*) 
       IF(lwp)WRITE(numout,*) ' obs_rea_mdt : Read MDT for referencing altimeter anomalies'
@@ -171,7 +169,7 @@ CONTAINS
 
       END DO
 
-      IF( wrk_not_released(2, 1,2) )   CALL ctl_stop('obs_rea_mdt: failed to release workspace arrays')
+      CALL wrk_dealloc(jpi,jpj,z_mdt,mdtmask) 
       !
    END SUBROUTINE obs_rea_mdt
 
@@ -189,20 +187,16 @@ CONTAINS
       !!
       !! ** Action  : 
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zpromsk => wrk_2d_3
-      !
       REAL(wp), DIMENSION(jpi,jpj), INTENT(inout) ::   mdt     ! MDT used on the model grid
       REAL(wp)                    , INTENT(in   ) ::   zfill 
       ! 
       INTEGER  :: ji, jj
       REAL(wp) :: zdxdy, zarea, zeta1, zeta2, zcorr_mdt, zcorr_bcketa, zcorr     ! local scalar
+      REAL(wp), POINTER, DIMENSION(:,:) :: zpromsk
       CHARACTER(LEN=14), PARAMETER ::   cpname = 'obs_offset_mdt'
       !!----------------------------------------------------------------------
 
-      IF( wrk_in_use(2, 3) ) THEN
-         CALL ctl_stop('obs_offset_mdt: requested workspace array unavailable')   ;   RETURN
-      ENDIF
+      CALL wrk_alloc( jpi,jpj, zpromsk )
 
       !  Initialize the local mask, for domain projection 
       !  Also exclude mdt points which are set to missing data
@@ -264,7 +258,7 @@ CONTAINS
       IF ( nmsshc == 1 ) WRITE(numout,*) '           MSSH correction is applied'
       IF ( nmsshc == 2 ) WRITE(numout,*) '           User defined MSSH correction' 
 
-      IF( wrk_not_released(2, 3) )   CALL ctl_stop('obs_offset_mdt: failed to release workspace array')
+      CALL wrk_dealloc( jpi,jpj, zpromsk )
       !
    END SUBROUTINE obs_offset_mdt
  

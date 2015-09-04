@@ -24,6 +24,8 @@ MODULE traldf_bilapg
    USE diaptr          ! poleward transport diagnostics 
    USE trc_oce         ! share passive tracers/Ocean variables
    USE lib_mpp         ! MPP library
+   USE wrk_nemo        ! Memory Allocation
+   USE timing          ! Timing
 
    IMPLICIT NONE
    PRIVATE
@@ -36,12 +38,12 @@ MODULE traldf_bilapg
 #  include "ldfeiv_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: traldf_bilapg.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
 
-   SUBROUTINE tra_ldf_bilapg( kt, cdtype, ptb, pta, kjpt )
+   SUBROUTINE tra_ldf_bilapg( kt, kit000, cdtype, ptb, pta, kjpt )
       !!----------------------------------------------------------------------
       !!                 ***  ROUTINE tra_ldf_bilapg  ***
       !!                    
@@ -65,23 +67,23 @@ CONTAINS
       !! ** Action : - Update pta arrays with the before geopotential 
       !!               biharmonic mixing trend.
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   wk1 => wrk_4d_1 , wk2 => wrk_4d_2     ! 4D workspace
       !
       INTEGER         , INTENT(in   )                      ::   kt       ! ocean time-step index
+      INTEGER         , INTENT(in   )                      ::   kit000   ! first time step index
       CHARACTER(len=3), INTENT(in   )                      ::   cdtype   ! =TRA or TRC (tracer indicator)
       INTEGER         , INTENT(in   )                      ::   kjpt     ! number of tracers
       REAL(wp), DIMENSION(jpi,jpj,jpk,kjpt), INTENT(in   ) ::   ptb      ! before and now tracer fields
       REAL(wp), DIMENSION(jpi,jpj,jpk,kjpt), INTENT(inout) ::   pta      ! tracer trend 
       !
       INTEGER ::   ji, jj, jk, jn   ! dummy loop indices
+      REAL(wp), POINTER, DIMENSION(:,:,:,:) :: zwk1, zwk2 
       !!----------------------------------------------------------------------
-
-      IF( wrk_in_use(4, 1,2) ) THEN
-         CALL ctl_stop('tra_ldf_bilapg: requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
-
-      IF( kt == nit000 )  THEN
+      !
+      IF( nn_timing == 1 )  CALL timing_start('tra_ldf_bilapg')
+      !
+      CALL wrk_alloc( jpi, jpj, jpk, kjpt, zwk1, zwk2 ) 
+      !
+      IF( kt == kit000 )  THEN
          IF(lwp) WRITE(numout,*)
          IF(lwp) WRITE(numout,*) 'tra_ldf_bilapg : horizontal biharmonic operator in s-coordinate on ', cdtype
          IF(lwp) WRITE(numout,*) '~~~~~~~~~~~~~~'
@@ -89,16 +91,16 @@ CONTAINS
 
       ! 1. Laplacian of ptb * aht
       ! ----------------------------- 
-      CALL ldfght( kt, cdtype, ptb, wk1, kjpt, 1 )      ! rotated harmonic operator applied to ptb and multiply by aht 
+      CALL ldfght( kt, cdtype, ptb, zwk1, kjpt, 1 )      ! rotated harmonic operator applied to ptb and multiply by aht 
       !                                                 ! output in wk1 
       !
       DO jn = 1, kjpt
-         CALL lbc_lnk( wk1(:,:,:,jn) , 'T', 1. )        ! Lateral boundary conditions on wk1   (unchanged sign)
+         CALL lbc_lnk( zwk1(:,:,:,jn) , 'T', 1. )        ! Lateral boundary conditions on wk1   (unchanged sign)
       END DO
 
       ! 2. Bilaplacian of ptb
       ! -------------------------
-      CALL ldfght( kt, cdtype, wk1, wk2, kjpt, 2 )      ! rotated harmonic operator applied to wk1 ; output in wk2
+      CALL ldfght( kt, cdtype, zwk1, zwk2, kjpt, 2 )      ! rotated harmonic operator applied to wk1 ; output in wk2
 
 
       ! 3. Update the tracer trends                    (j-slab :   2, jpj-1)
@@ -108,13 +110,15 @@ CONTAINS
             DO jk = 1, jpkm1
                DO ji = 2, jpim1
                   ! add it to the general tracer trends
-                  pta(ji,jj,jk,jn) = pta(ji,jj,jk,jn) + wk2(ji,jj,jk,jn)
+                  pta(ji,jj,jk,jn) = pta(ji,jj,jk,jn) + zwk2(ji,jj,jk,jn)
                END DO
             END DO
          END DO
       END DO
       !
-      IF( wrk_not_released(4, 1,2) )   CALL ctl_stop('tra_ldf_bilapg : failed to release workspace arrays.')
+      CALL wrk_dealloc( jpi, jpj, jpk, kjpt, zwk1, zwk2 ) 
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('tra_ldf_bilapg')
       !
    END SUBROUTINE tra_ldf_bilapg
 
@@ -157,11 +161,7 @@ CONTAINS
       !!         plt  =  1  / (e1t*e2t*e3t) { plt + dk[ zftw ] }
       !!
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released, wrk_in_use_xz, wrk_not_released_xz
       USE oce     , ONLY:   zftv => ua       ! ua used as workspace
-      USE wrk_nemo, ONLY:   zftu => wrk_2d_1 , zdkt  => wrk_2d_2 , zdk1t => wrk_2d_3
-      USE wrk_nemo, ONLY:   zftw => wrk_xz_1 , zdit  => wrk_xz_2 
-      USE wrk_nemo, ONLY:   zdjt => wrk_xz_3 , zdj1t => wrk_xz_4
       !
       INTEGER         , INTENT(in )                              ::  kt      ! ocean time-step index
       CHARACTER(len=3), INTENT(in )                              ::  cdtype  ! =TRA or TRC (tracer indicator) 
@@ -178,11 +178,14 @@ CONTAINS
       REAL(wp) ::  zabe1, zabe2, zmku, zmkv 
       REAL(wp) ::  zbtr, ztah, ztav
       REAL(wp) ::  zcof0, zcof1, zcof2, zcof3, zcof4
+      REAL(wp), POINTER, DIMENSION(:,:) ::  zftu, zdkt, zdk1t
+      REAL(wp), POINTER, DIMENSION(:,:) ::  zftw, zdit, zdjt, zdj1t
       !!----------------------------------------------------------------------
-
-      IF( wrk_in_use(2, 1,2,3) .OR. wrk_in_use_xz(1,2,3,4) )THEN
-         CALL ctl_stop('ldfght : requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
+      !
+      IF( nn_timing == 1 )  CALL timing_start('ldfght')
+      !
+      CALL wrk_alloc( jpi, jpj, zftu, zdkt, zdk1t ) 
+      CALL wrk_alloc( jpi, jpk, zftw, zdit, zdjt, zdj1t ) 
       !
       DO jn = 1, kjpt
          !                               ! ********** !   ! ===============
@@ -244,8 +247,9 @@ CONTAINS
          !                                                ! ===============
          ! "Poleward" diffusive heat or salt transport
          IF( cdtype == 'TRA' .AND. ln_diaptr .AND. ( kaht == 2 ) .AND. ( MOD( kt, nn_fptr ) == 0 ) ) THEN
-            IF( jn == jp_tem)   htr_ldf(:) = ptr_vj( zftv(:,:,:) )
-            IF( jn == jp_sal)   str_ldf(:) = ptr_vj( zftv(:,:,:) )
+            ! note sign is reversed to give down-gradient diffusive transports (#1043)
+            IF( jn == jp_tem)   htr_ldf(:) = ptr_vj( -zftv(:,:,:) )
+            IF( jn == jp_sal)   str_ldf(:) = ptr_vj( -zftv(:,:,:) )
          ENDIF
 
          !                             ! ************ !   ! ===============
@@ -334,8 +338,10 @@ CONTAINS
          !                                                ! ===============
       END DO
       !
-      IF( wrk_not_released(2, 1,2,3)   .OR.   &
-          wrk_not_released_xz(1,2,3,4) )   CALL ctl_stop('ldfght : failed to release workspace arrays.')
+      CALL wrk_dealloc( jpi, jpj, zftu, zdkt, zdk1t ) 
+      CALL wrk_dealloc( jpi, jpk, zftw, zdit, zdjt, zdj1t ) 
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('ldfght')
       !
    END SUBROUTINE ldfght
 
@@ -344,10 +350,12 @@ CONTAINS
    !!   Dummy module :             NO rotation of the lateral mixing tensor
    !!----------------------------------------------------------------------
 CONTAINS
-   SUBROUTINE tra_ldf_bilapg( kt, cdtype, ptb, pta, kjpt )      ! Empty routine
+   SUBROUTINE tra_ldf_bilapg( kt, kit000, cdtype, ptb, pta, kjpt )      ! Empty routine
+      INTEGER :: kt, kit000
       CHARACTER(len=3) ::   cdtype
       REAL, DIMENSION(:,:,:,:) ::   ptb, pta
-      WRITE(*,*) 'tra_ldf_iso: You should not have seen this print! error?', kt, cdtype, ptb(1,1,1,1), pta(1,1,1,1), kjpt
+      WRITE(*,*) 'tra_ldf_iso: You should not have seen this print! error?', &
+        &         kt, kit000, cdtype, ptb(1,1,1,1), pta(1,1,1,1), kjpt
    END SUBROUTINE tra_ldf_bilapg
 #endif
 

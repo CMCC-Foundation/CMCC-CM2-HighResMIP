@@ -18,6 +18,8 @@ MODULE dynkeg
    USE in_out_manager  ! I/O manager
    USE lib_mpp         ! MPP library
    USE prtctl          ! Print control
+   USE wrk_nemo        ! Memory Allocation
+   USE timing          ! Timing
 
    IMPLICIT NONE
    PRIVATE
@@ -28,7 +30,7 @@ MODULE dynkeg
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: dynkeg.F90 2777 2011-06-07 09:55:02Z smasson $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -51,20 +53,18 @@ CONTAINS
       !! ** Action : - Update the (ua, va) with the hor. ke gradient trend
       !!             - save this trends (l_trddyn=T) for post-processing
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE oce     , ONLY:   ztrdu => ta       , ztrdv => sa   ! (ta,sa) used as 3D workspace   
-      USE wrk_nemo, ONLY:   zhke  => wrk_3d_1                 ! 3D workspace
-      !!
       INTEGER, INTENT( in ) ::   kt   ! ocean time-step index
       !!
       INTEGER  ::   ji, jj, jk   ! dummy loop indices
       REAL(wp) ::   zu, zv       ! temporary scalars
+      REAL(wp), POINTER, DIMENSION(:,:,:) :: zhke
+      REAL(wp), POINTER, DIMENSION(:,:,:) :: ztrdu, ztrdv 
       !!----------------------------------------------------------------------
-
-      IF( wrk_in_use(3,1) ) THEN
-         CALL ctl_stop('dyn_keg: requested workspace array is unavailable')   ;   RETURN
-      ENDIF
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('dyn_keg')
+      !
+      CALL wrk_alloc( jpi, jpj, jpk, zhke )
+      !
       IF( kt == nit000 ) THEN
          IF(lwp) WRITE(numout,*)
          IF(lwp) WRITE(numout,*) 'dyn_keg : kinetic energy gradient trend'
@@ -72,6 +72,7 @@ CONTAINS
       ENDIF
 
       IF( l_trddyn ) THEN           ! Save ua and va trends
+         CALL wrk_alloc( jpi,jpj,jpk, ztrdu, ztrdv )
          ztrdu(:,:,:) = ua(:,:,:) 
          ztrdv(:,:,:) = va(:,:,:) 
       ENDIF
@@ -130,12 +131,15 @@ CONTAINS
          ztrdu(:,:,:) = ua(:,:,:) - ztrdu(:,:,:)
          ztrdv(:,:,:) = va(:,:,:) - ztrdv(:,:,:)
          CALL trd_mod( ztrdu, ztrdv, jpdyn_trd_keg, 'DYN', kt )
+         CALL wrk_dealloc( jpi,jpj,jpk, ztrdu, ztrdv )
       ENDIF
       !
       IF(ln_ctl)   CALL prt_ctl( tab3d_1=ua, clinfo1=' keg  - Ua: ', mask1=umask,   &
          &                       tab3d_2=va, clinfo2=       ' Va: ', mask2=vmask, clinfo3='dyn' )
       !
-      IF( wrk_not_released(3, 1) )   CALL ctl_stop('dyn_keg: failed to release workspace array')
+      CALL wrk_dealloc( jpi, jpj, jpk, zhke )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('dyn_keg')
       !
    END SUBROUTINE dyn_keg
 

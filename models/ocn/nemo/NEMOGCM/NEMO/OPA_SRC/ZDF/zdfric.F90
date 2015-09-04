@@ -6,10 +6,11 @@ MODULE zdfric
    !!======================================================================
    !! History :  OPA  ! 1987-09  (P. Andrich)  Original code
    !!            4.0  ! 1991-11  (G. Madec)
-   !!            7.0  ! 1996-01  (G. Madec)  complet rewriting of multitasking suppression of common work arrays
-   !!            8.0  ! 1997-06 (G. Madec)  complete rewriting of zdfmix
+   !!            7.0  ! 1996-01  (G. Madec)  complete rewriting of multitasking suppression of common work arrays
+   !!            8.0  ! 1997-06  (G. Madec)  complete rewriting of zdfmix
    !!   NEMO     1.0  ! 2002-06  (G. Madec)  F90: Free form and module
    !!            3.3  ! 2010-10  (C. Ethe, G. Madec) reorganisation of initialisation phase
+   !!            3.3.1! 2011-09  (P. Oddo) Mixed layer depth parameterization
    !!----------------------------------------------------------------------
 #if defined key_zdfric   ||   defined key_esopa
    !!----------------------------------------------------------------------
@@ -19,12 +20,17 @@ MODULE zdfric
    !!                  number computation
    !!   zdf_ric_init : initialization, namelist read, & parameters control
    !!----------------------------------------------------------------------
-   USE oce             ! ocean dynamics and tracers variables
-   USE dom_oce         ! ocean space and time domain variables
-   USE zdf_oce         ! ocean vertical physics
-   USE in_out_manager  ! I/O manager
-   USE lbclnk          ! ocean lateral boundary condition (or mpp link)
-   USE lib_mpp         ! MPP library
+   USE oce                   ! ocean dynamics and tracers variables
+   USE dom_oce               ! ocean space and time domain variables
+   USE zdf_oce               ! ocean vertical physics
+   USE in_out_manager        ! I/O manager
+   USE lbclnk                ! ocean lateral boundary condition (or mpp link)
+   USE lib_mpp               ! MPP library
+   USE wrk_nemo              ! work arrays
+   USE timing                ! Timing
+   USE lib_fortran           ! Fortran utilities (allows no signed zero when 'key_nosignedzero' defined)
+
+   USE eosbn2, ONLY : nn_eos
 
    IMPLICIT NONE
    PRIVATE
@@ -38,6 +44,12 @@ MODULE zdfric
    INTEGER  ::   nn_ric   = 2            ! coefficient of the parameterization
    REAL(wp) ::   rn_avmri = 100.e-4_wp   ! maximum value of the vertical eddy viscosity
    REAL(wp) ::   rn_alp   =   5._wp      ! coefficient of the parameterization
+   REAL(wp) ::   rn_ekmfc =   0.7_wp     ! Ekman Factor Coeff
+   REAL(wp) ::   rn_mldmin=   1.0_wp     ! minimum mixed layer (ML) depth    
+   REAL(wp) ::   rn_mldmax=1000.0_wp     ! maximum mixed layer depth
+   REAL(wp) ::   rn_wtmix =  10.0_wp     ! Vertical eddy Diff. in the ML
+   REAL(wp) ::   rn_wvmix =  10.0_wp     ! Vertical eddy Visc. in the ML
+   LOGICAL  ::   ln_mldw  = .TRUE.       ! Use or not the MLD parameters
 
    REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   tmric   !: coef. for the horizontal mean at t-point
 
@@ -45,7 +57,7 @@ MODULE zdfric
 #  include "domzgr_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 4.0 , NEMO Consortium (2011)
-   !! $Id: zdfric.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -66,16 +78,16 @@ CONTAINS
       !!                 ***  ROUTINE zdfric  ***
       !!                    
       !! ** Purpose :   Compute the before eddy viscosity and diffusivity as
-      !!              a function of the local richardson number.
+      !!                a function of the local richardson number.
       !!
       !! ** Method  :   Local richardson number dependent formulation of the 
-      !!              vertical eddy viscosity and diffusivity coefficients. 
+      !!                vertical eddy viscosity and diffusivity coefficients. 
       !!                The eddy coefficients are given by:
       !!                    avm = avm0 + avmb
       !!                    avt = avm0 / (1 + rn_alp*ri)
-      !!              with ri  = N^2 / dz(u)**2
-      !!                       = e3w**2 * rn2/[ mi( dk(ub) )+mj( dk(vb) ) ]
-      !!                   avm0= rn_avmri / (1 + rn_alp*ri)**nn_ric
+      !!                with ri  = N^2 / dz(u)**2
+      !!                         = e3w**2 * rn2/[ mi( dk(ub) )+mj( dk(vb) ) ]
+      !!                    avm0= rn_avmri / (1 + rn_alp*ri)**nn_ric
       !!      Where ri is the before local Richardson number,
       !!            rn_avmri is the maximum value reaches by avm and avt 
       !!            avmb and avtb are the background (or minimum) values
@@ -83,23 +95,37 @@ CONTAINS
       !!      Typical values used are : avm0=1.e-2 m2/s, avmb=1.e-6 m2/s
       !!      avtb=1.e-7 m2/s, rn_alp=5. and nn_ric=2.
       !!      a numerical threshold is impose on the vertical shear (1.e-20)
+      !!      As second step compute Ekman depth from wind stress forcing
+      !!      and apply namelist provided vertical coeff within this depth.
+      !!      The Ekman depth is:
+      !!              Ustar = SQRT(Taum/rho0)
+      !!              ekd= rn_ekmfc * Ustar / f0
+      !!      Large et al. (1994, eq.29) suggest rn_ekmfc=0.7; however, the derivation
+      !!      of the above equation indicates the value is somewhat arbitrary; therefore
+      !!      we allow the freedom to increase or decrease this value, if the
+      !!      Ekman depth estimate appears too shallow or too deep, respectively.
+      !!      Ekd is then limited by rn_mldmin and rn_mldmax provided in the
+      !!      namelist
       !!        N.B. the mask are required for implicit scheme, and surface
       !!      and bottom value already set in zdfini.F90
       !!
       !! References : Pacanowski & Philander 1981, JPO, 1441-1451.
+      !!              PFJ Lermusiaux 2001.
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zwx => wrk_2d_1     ! 2D workspace
+      USE phycst,   ONLY:   rsmall,rau0
+      USE sbc_oce,  ONLY:   taum
       !!
-      INTEGER, INTENT( in ) ::   kt         ! ocean time-step indexocean time step
+      INTEGER, INTENT( in ) ::   kt                           ! ocean time-step
       !!
-      INTEGER  ::   ji, jj, jk               ! dummy loop indices
-      REAL(wp) ::   zcoef, zdku, zdkv, zri, z05alp     ! temporary scalars
+      INTEGER  ::   ji, jj, jk                                ! dummy loop indices
+      REAL(wp) ::   zcoef, zdku, zdkv, zri, z05alp, zflageos  ! temporary scalars
+      REAL(wp) ::   zrhos, zustar
+      REAL(wp), POINTER, DIMENSION(:,:) ::   zwx, ekm_dep  
       !!----------------------------------------------------------------------
-
-      IF( wrk_in_use(2, 1) ) THEN
-         CALL ctl_stop('zdf_ric : requested workspace array unavailable')   ;   RETURN
-      ENDIF
+      !
+      IF( nn_timing == 1 )  CALL timing_start('zdf_ric')
+      !
+      CALL wrk_alloc( jpi,jpj, zwx, ekm_dep )
       !                                                ! ===============
       DO jk = 2, jpkm1                                 ! Horizontal slab
          !                                             ! ===============
@@ -144,10 +170,64 @@ CONTAINS
       END DO                                           !   End of slab
       !                                                ! ===============
       !
+      IF( ln_mldw ) THEN
+
+      !  Compute Ekman depth from wind stress forcing.
+      ! -------------------------------------------------------
+      zflageos = ( 0.5 + SIGN( 0.5, nn_eos - 1. ) ) * rau0
+      DO jj = 1, jpj
+         DO ji = 1, jpi
+            zrhos          = rhop(ji,jj,1) + zflageos * ( 1. - tmask(ji,jj,1) )
+            zustar         = SQRT( taum(ji,jj) / ( zrhos +  rsmall ) )
+            ekm_dep(ji,jj) = rn_ekmfc * zustar / ( ABS( ff(ji,jj) ) + rsmall )
+            ekm_dep(ji,jj) = MAX(ekm_dep(ji,jj),rn_mldmin) ! Minimun allowed
+            ekm_dep(ji,jj) = MIN(ekm_dep(ji,jj),rn_mldmax) ! Maximum allowed
+         END DO
+      END DO
+
+      ! In the first model level vertical diff/visc coeff.s 
+      ! are always equal to the namelist values rn_wtmix/rn_wvmix
+      ! -------------------------------------------------------
+      DO jj = 1, jpj
+         DO ji = 1, jpi
+            avmv(ji,jj,1) = MAX( avmv(ji,jj,1), rn_wvmix )
+            avmu(ji,jj,1) = MAX( avmu(ji,jj,1), rn_wvmix )
+            avt( ji,jj,1) = MAX(  avt(ji,jj,1), rn_wtmix )
+         END DO
+      END DO
+
+      !  Force the vertical mixing coef within the Ekman depth
+      ! -------------------------------------------------------
+      DO jk = 2, jpkm1
+         DO jj = 1, jpj
+            DO ji = 1, jpi
+               IF( fsdept(ji,jj,jk) < ekm_dep(ji,jj) ) THEN
+                  avmv(ji,jj,jk) = MAX( avmv(ji,jj,jk), rn_wvmix )
+                  avmu(ji,jj,jk) = MAX( avmu(ji,jj,jk), rn_wvmix )
+                  avt( ji,jj,jk) = MAX(  avt(ji,jj,jk), rn_wtmix )
+               ENDIF
+            END DO
+         END DO
+      END DO
+
+      DO jk = 1, jpkm1                
+         DO jj = 1, jpj
+            DO ji = 1, jpi
+               avmv(ji,jj,jk) = avmv(ji,jj,jk) * vmask(ji,jj,jk)
+               avmu(ji,jj,jk) = avmu(ji,jj,jk) * umask(ji,jj,jk)
+               avt( ji,jj,jk) = avt( ji,jj,jk) * tmask(ji,jj,jk)
+            END DO
+         END DO
+      END DO
+
+     ENDIF
+
       CALL lbc_lnk( avt , 'W', 1. )                         ! Boundary conditions   (unchanged sign)
       CALL lbc_lnk( avmu, 'U', 1. )   ;   CALL lbc_lnk( avmv, 'V', 1. )
       !
-      IF( wrk_not_released(2, 1) )   CALL ctl_stop('zdf_ric: failed to release workspace array')
+      CALL wrk_dealloc( jpi,jpj, zwx, ekm_dep )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('zdf_ric')
       !
    END SUBROUTINE zdf_ric
 
@@ -167,7 +247,8 @@ CONTAINS
       !!----------------------------------------------------------------------
       INTEGER :: ji, jj, jk   ! dummy loop indices
       !!
-      NAMELIST/namzdf_ric/ rn_avmri, rn_alp, nn_ric
+      NAMELIST/namzdf_ric/ rn_avmri, rn_alp   , nn_ric  , rn_ekmfc,  &
+         &                rn_mldmin, rn_mldmax, rn_wtmix, rn_wvmix, ln_mldw
       !!----------------------------------------------------------------------
       !
       REWIND( numnam )               ! Read Namelist namzdf_ric : richardson number dependent Kz
@@ -178,9 +259,15 @@ CONTAINS
          WRITE(numout,*) 'zdf_ric : Ri depend vertical mixing scheme'
          WRITE(numout,*) '~~~~~~~'
          WRITE(numout,*) '   Namelist namzdf_ric : set Kz(Ri) parameters'
-         WRITE(numout,*) '      maximum vertical viscosity     rn_avmri = ', rn_avmri
-         WRITE(numout,*) '      coefficient                    rn_alp   = ', rn_alp
-         WRITE(numout,*) '      coefficient                    nn_ric   = ', nn_ric
+         WRITE(numout,*) '      maximum vertical viscosity     rn_avmri  = ', rn_avmri
+         WRITE(numout,*) '      coefficient                    rn_alp    = ', rn_alp
+         WRITE(numout,*) '      coefficient                    nn_ric    = ', nn_ric
+         WRITE(numout,*) '      Ekman Factor Coeff             rn_ekmfc  = ', rn_ekmfc
+         WRITE(numout,*) '      minimum mixed layer depth      rn_mldmin = ', rn_mldmin
+         WRITE(numout,*) '      maximum mixed layer depth      rn_mldmax = ', rn_mldmax
+         WRITE(numout,*) '      Vertical eddy Diff. in the ML  rn_wtmix  = ', rn_wtmix
+         WRITE(numout,*) '      Vertical eddy Visc. in the ML  rn_wvmix  = ', rn_wvmix
+         WRITE(numout,*) '      Use the MLD parameterization   ln_mldw   = ', ln_mldw
       ENDIF
       !
       !                              ! allocate zdfric arrays

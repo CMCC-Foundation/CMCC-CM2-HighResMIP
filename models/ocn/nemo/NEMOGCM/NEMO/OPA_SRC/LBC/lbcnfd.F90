@@ -25,7 +25,7 @@ MODULE lbcnfd
 
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: lbcnfd.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -235,6 +235,22 @@ CONTAINS
                   pt2d(ji,ijpj+jl) = psgn * pt2d(iju,ijpj-1-jl)
                END DO
             END DO
+         CASE ( 'J' )                                     ! first ice U-V point
+            DO jl =0, ipr2dj
+               pt2d(2,ijpj+jl) = psgn * pt2d(3,ijpj-1+jl)
+               DO ji = 3, jpiglo
+                  iju = jpiglo - ji + 3
+                  pt2d(ji,ijpj+jl) = psgn * pt2d(iju,ijpj-1-jl)
+               END DO
+            END DO
+         CASE ( 'K' )                                     ! second ice U-V point
+            DO jl =0, ipr2dj
+               pt2d(2,ijpj+jl) = psgn * pt2d(3,ijpj-1+jl)
+               DO ji = 3, jpiglo
+                  iju = jpiglo - ji + 3
+                  pt2d(ji,ijpj+jl) = psgn * pt2d(iju,ijpj-1-jl)
+               END DO
+            END DO
          END SELECT
          !
       CASE ( 5, 6 )                        ! *  North fold  F-point pivot
@@ -284,6 +300,22 @@ CONTAINS
                   pt2d(ji,ijpj+jl)= 0.5 * ( pt2d(ji,ijpj-1-jl) + psgn * pt2d(ijt,ijpj-1-jl) )
                END DO
             END DO
+         CASE ( 'J' )                                  ! first ice U-V point
+            pt2d( 2 ,ijpj:ijpj+ipr2dj) = 0.e0
+            DO jl = 0, ipr2dj
+               DO ji = 2 , jpiglo-1
+                  ijt = jpiglo - ji + 2
+                  pt2d(ji,ijpj+jl)= pt2d(ji,ijpj-1-jl)
+               END DO
+            END DO
+         CASE ( 'K' )                                  ! second ice U-V point
+            pt2d( 2 ,ijpj:ijpj+ipr2dj) = 0.e0
+            DO jl = 0, ipr2dj
+               DO ji = 2 , jpiglo-1
+                  ijt = jpiglo - ji + 2
+                  pt2d(ji,ijpj+jl)= pt2d(ijt,ijpj-1-jl)
+               END DO
+            END DO
          END SELECT
          !
       CASE DEFAULT                           ! *  closed : the code probably never go through
@@ -295,6 +327,12 @@ CONTAINS
          CASE ( 'F' )                                   ! F-point
             pt2d(:,ijpj:ijpj+ipr2dj) = 0.e0
          CASE ( 'I' )                                   ! ice U-V point
+            pt2d(:, 1:1-ipr2dj     ) = 0.e0
+            pt2d(:,ijpj:ijpj+ipr2dj) = 0.e0
+         CASE ( 'J' )                                   ! first ice U-V point
+            pt2d(:, 1:1-ipr2dj     ) = 0.e0
+            pt2d(:,ijpj:ijpj+ipr2dj) = 0.e0
+         CASE ( 'K' )                                   ! second ice U-V point
             pt2d(:, 1:1-ipr2dj     ) = 0.e0
             pt2d(:,ijpj:ijpj+ipr2dj) = 0.e0
          END SELECT

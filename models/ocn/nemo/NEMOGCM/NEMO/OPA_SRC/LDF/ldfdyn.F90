@@ -22,6 +22,7 @@ MODULE ldfdyn
    USE in_out_manager  ! I/O manager
    USE lib_mpp         ! distribued memory computing library
    USE lbclnk          ! ocean lateral boundary conditions (or mpp link)
+   USE wrk_nemo        ! Memory Allocation
 
    IMPLICIT NONE
    PRIVATE
@@ -36,7 +37,7 @@ MODULE ldfdyn
 #  include "domzgr_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: ldfdyn.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS

@@ -26,13 +26,17 @@ MODULE dynvor
    !!----------------------------------------------------------------------
    USE oce            ! ocean dynamics and tracers
    USE dom_oce        ! ocean space and time domain
+   USE dommsk         ! ocean mask
    USE dynadv         ! momentum advection (use ln_dynadv_vec value)
    USE trdmod         ! ocean dynamics trends 
    USE trdmod_oce     ! ocean variables trends
    USE lbclnk         ! ocean lateral boundary conditions (or mpp link)
    USE prtctl         ! Print control
    USE in_out_manager ! I/O manager
-   USE lib_mpp
+   USE lib_mpp        ! MPP library
+   USE wrk_nemo       ! Memory Allocation
+   USE timing         ! Timing
+
 
    IMPLICIT NONE
    PRIVATE
@@ -56,7 +60,7 @@ MODULE dynvor
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: dynvor.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -70,10 +74,14 @@ CONTAINS
       !!             - save the trends in (ztrdu,ztrdv) in 2 parts (relative
       !!               and planetary vorticity trends) ('key_trddyn')
       !!----------------------------------------------------------------------
-      USE oce, ONLY:   ztrdu => ta , ztrdv => sa   ! (ta,sa) used as 3D workspace
-      !
       INTEGER, INTENT( in ) ::   kt   ! ocean time-step index
+      !
+      REAL(wp), POINTER, DIMENSION(:,:,:) ::  ztrdu, ztrdv
       !!----------------------------------------------------------------------
+      !
+      IF( nn_timing == 1 )  CALL timing_start('dyn_vor')
+      !
+      IF( l_trddyn )   CALL wrk_alloc( jpi,jpj,jpk, ztrdu, ztrdv )
       !
       !                                          ! vorticity term 
       SELECT CASE ( nvor )                       ! compute the vorticity trend and add it to the general trend
@@ -174,6 +182,10 @@ CONTAINS
       IF(ln_ctl) CALL prt_ctl( tab3d_1=ua, clinfo1=' vor  - Ua: ', mask1=umask,               &
          &                     tab3d_2=va, clinfo2=       ' Va: ', mask2=vmask, clinfo3='dyn' )
       !
+      IF( l_trddyn )   CALL wrk_dealloc( jpi,jpj,jpk, ztrdu, ztrdv )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('dyn_vor')
+      !
    END SUBROUTINE dyn_vor
 
 
@@ -203,8 +215,6 @@ CONTAINS
       !!
       !! References : Sadourny, r., 1975, j. atmos. sciences, 32, 680-689.
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zwx => wrk_2d_1 , zwy => wrk_2d_2 , zwz => wrk_2d_3     ! 2D workspace
       !
       INTEGER , INTENT(in   )                         ::   kt     ! ocean time-step index
       INTEGER , INTENT(in   )                         ::   kvor   ! =ncor (planetary) ; =ntot (total) ;
@@ -214,12 +224,13 @@ CONTAINS
       !
       INTEGER  ::   ji, jj, jk   ! dummy loop indices
       REAL(wp) ::   zx1, zy1, zfact2, zx2, zy2   ! local scalars
+      REAL(wp), POINTER, DIMENSION(:,:) :: zwx, zwy, zwz
       !!----------------------------------------------------------------------
-
-      IF( wrk_in_use(2, 1,2,3) ) THEN
-         CALL ctl_stop('dyn:vor_ene: requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('vor_ene')
+      !
+      CALL wrk_alloc( jpi, jpj, zwx, zwy, zwz ) 
+      !
       IF( kt == nit000 ) THEN
          IF(lwp) WRITE(numout,*)
          IF(lwp) WRITE(numout,*) 'dyn:vor_ene : vorticity term: energy conserving scheme'
@@ -283,7 +294,9 @@ CONTAINS
          !                                             ! ===============
       END DO                                           !   End of slab
       !                                                ! ===============
-      IF( wrk_not_released(2, 1,2,3) )   CALL ctl_stop('dyn:vor_ene: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi, jpj, zwx, zwy, zwz ) 
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('vor_ene')
       !
    END SUBROUTINE vor_ene
 
@@ -319,20 +332,19 @@ CONTAINS
       !!
       !! References : Sadourny, r., 1975, j. atmos. sciences, 32, 680-689.
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zwx => wrk_2d_4 , zwy => wrk_2d_5 , zwz => wrk_2d_6 , zww => wrk_2d_7   ! 2D workspace
       !
       INTEGER, INTENT(in) ::   kt   ! ocean timestep index
       !
       INTEGER  ::   ji, jj, jk   ! dummy loop indices
       REAL(wp) ::   zfact1, zua, zcua, zx1, zy1   ! local scalars
       REAL(wp) ::   zfact2, zva, zcva, zx2, zy2   !   -      -
+      REAL(wp), POINTER, DIMENSION(:,:) :: zwx, zwy, zwz, zww
       !!----------------------------------------------------------------------
-
-      IF( wrk_in_use(2, 4,5,6,7) ) THEN
-         CALL ctl_stop('dyn:vor_mix: requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('vor_mix')
+      !
+      CALL wrk_alloc( jpi, jpj, zwx, zwy, zwz, zww ) 
+      !
       IF( kt == nit000 ) THEN
          IF(lwp) WRITE(numout,*)
          IF(lwp) WRITE(numout,*) 'dyn:vor_mix : vorticity term: mixed energy/enstrophy conserving scheme'
@@ -403,7 +415,9 @@ CONTAINS
          !                                             ! ===============
       END DO                                           !   End of slab
       !                                                ! ===============
-      IF( wrk_not_released(2, 4,5,6,7) )   CALL ctl_stop('dyn:vor_mix: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi, jpj, zwx, zwy, zwz, zww ) 
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('vor_mix')
       !
    END SUBROUTINE vor_mix
 
@@ -434,8 +448,6 @@ CONTAINS
       !!
       !! References : Sadourny, r., 1975, j. atmos. sciences, 32, 680-689.
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zwx => wrk_2d_4, zwy => wrk_2d_5, zwz => wrk_2d_6    ! 2D workspace
       !
       INTEGER , INTENT(in   )                         ::   kt     ! ocean time-step index
       INTEGER , INTENT(in   )                         ::   kvor   ! =ncor (planetary) ; =ntot (total) ;
@@ -445,12 +457,13 @@ CONTAINS
       !
       INTEGER  ::   ji, jj, jk           ! dummy loop indices
       REAL(wp) ::   zfact1, zuav, zvau   ! temporary scalars
+      REAL(wp), POINTER, DIMENSION(:,:) :: zwx, zwy, zwz, zww
       !!----------------------------------------------------------------------
-      
-      IF( wrk_in_use(2, 4,5,6) ) THEN
-         CALL ctl_stop('dyn:vor_ens: requested workspace arrays unavailable')   ;   RETURN
-      END IF
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('vor_ens')
+      !
+      CALL wrk_alloc( jpi, jpj, zwx, zwy, zwz ) 
+      !
       IF( kt == nit000 ) THEN
          IF(lwp) WRITE(numout,*)
          IF(lwp) WRITE(numout,*) 'dyn:vor_ens : vorticity term: enstrophy conserving scheme'
@@ -522,7 +535,9 @@ CONTAINS
          !                                             ! ===============
       END DO                                           !   End of slab
       !                                                ! ===============
-      IF( wrk_not_released(2, 4,5,6) )   CALL ctl_stop('dyn:vor_ens: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi, jpj, zwx, zwy, zwz ) 
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('vor_ens')
       !
    END SUBROUTINE vor_ens
 
@@ -546,13 +561,6 @@ CONTAINS
       !!
       !! References : Arakawa and Lamb 1980, Mon. Wea. Rev., 109, 18-36
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zwx  => wrk_2d_1 , zwy  => wrk_2d_2 ,  zwz => wrk_2d_3     ! 2D workspace
-      USE wrk_nemo, ONLY:   ztnw => wrk_2d_4 , ztne => wrk_2d_5 
-      USE wrk_nemo, ONLY:   ztsw => wrk_2d_6 , ztse => wrk_2d_7
-#if defined key_vvl
-      USE wrk_nemo, ONLY:   ze3f => wrk_3d_1                                           ! 3D workspace (lk_vvl=T)
-#endif
       !
       INTEGER , INTENT(in   )                         ::   kt     ! ocean time-step index
       INTEGER , INTENT(in   )                         ::   kvor   ! =ncor (planetary) ; =ntot (total) ;
@@ -560,27 +568,39 @@ CONTAINS
       REAL(wp), INTENT(inout), DIMENSION(jpi,jpj,jpk) ::   pua    ! total u-trend
       REAL(wp), INTENT(inout), DIMENSION(jpi,jpj,jpk) ::   pva    ! total v-trend
       !!
-      INTEGER  ::   ji, jj, jk         ! dummy loop indices
-      INTEGER  ::   ierr               ! local integer
-      REAL(wp) ::   zfac12, zua, zva   ! local scalars
+      INTEGER  ::   ji, jj, jk                                    ! dummy loop indices
+      INTEGER  ::   ierr                                          ! local integer
+      REAL(wp) ::   zfac12, zua, zva                              ! local scalars
+      !                                                           !  3D workspace 
+      REAL(wp), POINTER    , DIMENSION(:,:  )         :: zwx, zwy, zwz
+      REAL(wp), POINTER    , DIMENSION(:,:  )         :: ztnw, ztne, ztsw, ztse
+#if defined key_vvl
+      REAL(wp), POINTER    , DIMENSION(:,:,:)         :: ze3f     !  3D workspace (lk_vvl=T)
+#endif
 #if ! defined key_vvl
-      REAL(wp), ALLOCATABLE, DIMENSION(:,:,:), SAVE ::   ze3f     ! lk_vvl=F, ze3f=1/e3f saved one for all
+      REAL(wp), ALLOCATABLE, DIMENSION(:,:,:), SAVE   :: ze3f     ! lk_vvl=F, ze3f=1/e3f saved one for all
 #endif
       !!----------------------------------------------------------------------
-
-      IF( wrk_in_use(2, 1,2,3,4,5,6,7) .OR. wrk_in_use(3, 1) ) THEN
-         CALL ctl_stop('dyn:vor_een: requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('vor_een')
+      !
+      CALL wrk_alloc( jpi, jpj,      zwx , zwy , zwz        ) 
+      CALL wrk_alloc( jpi, jpj,      ztnw, ztne, ztsw, ztse ) 
+#if defined key_vvl
+      CALL wrk_alloc( jpi, jpj, jpk, ze3f                   )
+#endif
+      !
       IF( kt == nit000 ) THEN
          IF(lwp) WRITE(numout,*)
          IF(lwp) WRITE(numout,*) 'dyn:vor_een : vorticity term: energy and enstrophy conserving scheme'
          IF(lwp) WRITE(numout,*) '~~~~~~~~~~~'
-         IF( .NOT.lk_vvl ) THEN
+#if ! defined key_vvl
+         IF( .NOT.ALLOCATED(ze3f) ) THEN
             ALLOCATE( ze3f(jpi,jpj,jpk) , STAT=ierr )
             IF( lk_mpp    )   CALL mpp_sum ( ierr )
             IF( ierr /= 0 )   CALL ctl_stop( 'STOP', 'dyn:vor_een : unable to allocate arrays' )
          ENDIF
+#endif
       ENDIF
 
       IF( kt == nit000 .OR. lk_vvl ) THEN      ! reciprocal of e3 at F-point (masked averaging of e3t)
@@ -669,8 +689,13 @@ CONTAINS
          !                                             ! ===============
       END DO                                           !   End of slab
       !                                                ! ===============
-      IF( wrk_not_released(2, 1,2,3,4,5,6,7) .OR.   &
-          wrk_not_released(3, 1)             )   CALL ctl_stop('dyn:vor_een: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi, jpj,      zwx , zwy , zwz        ) 
+      CALL wrk_dealloc( jpi, jpj,      ztnw, ztne, ztsw, ztse ) 
+#if defined key_vvl
+      CALL wrk_dealloc( jpi, jpj, jpk, ze3f                   )
+#endif
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('vor_een')
       !
    END SUBROUTINE vor_een
 
@@ -683,6 +708,7 @@ CONTAINS
       !!              tracer advection schemes
       !!----------------------------------------------------------------------
       INTEGER ::   ioptio          ! local integer
+      INTEGER ::   ji, jj, jk      ! dummy loop indices
       !!
       NAMELIST/namdyn_vor/ ln_dynvor_ens, ln_dynvor_ene, ln_dynvor_mix, ln_dynvor_een
       !!----------------------------------------------------------------------
@@ -699,6 +725,22 @@ CONTAINS
          WRITE(numout,*) '           enstrophy conserving scheme                ln_dynvor_ens = ', ln_dynvor_ens
          WRITE(numout,*) '           mixed enstrophy/energy conserving scheme   ln_dynvor_mix = ', ln_dynvor_mix
          WRITE(numout,*) '           enstrophy and energy conserving scheme     ln_dynvor_een = ', ln_dynvor_een
+      ENDIF
+
+      ! If energy, enstrophy or mixed advection of momentum in vector form change the value for masks
+      ! at angles with three ocean points and one land point
+      IF( ln_vorlat .AND. ( ln_dynvor_ene .OR. ln_dynvor_ens .OR. ln_dynvor_mix ) ) THEN
+         DO jk = 1, jpk
+            DO jj = 2, jpjm1
+               DO ji = 2, jpim1
+                  IF( tmask(ji,jj,jk)+tmask(ji+1,jj,jk)+tmask(ji,jj+1,jk)+tmask(ji+1,jj+1,jk) == 3._wp ) &
+                      fmask(ji,jj,jk) = 1._wp
+               END DO
+            END DO
+         END DO
+          !
+          CALL lbc_lnk( fmask, 'F', 1._wp )      ! Lateral boundary conditions on fmask
+          !
       ENDIF
 
       ioptio = 0                     ! Control of vorticity scheme options

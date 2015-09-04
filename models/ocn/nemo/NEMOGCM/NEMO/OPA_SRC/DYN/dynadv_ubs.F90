@@ -21,12 +21,14 @@ MODULE dynadv_ubs
    USE prtctl         ! Print control
    USE lbclnk         ! ocean lateral boundary conditions (or mpp link)
    USE lib_mpp        ! MPP library
+   USE wrk_nemo        ! Memory Allocation
+   USE timing          ! Timing
 
    IMPLICIT NONE
    PRIVATE
 
-   REAL(wp), PARAMETER :: gamma1 = 1._wp/4._wp  ! =1/4 quick      ; =1/3  3rd order UBS
-   REAL(wp), PARAMETER :: gamma2 = 1._wp/8._wp  ! =0   2nd order  ; =1/8  4th order centred
+   REAL(wp), PARAMETER :: gamma1 = 1._wp/3._wp   ! =1/4 quick      ; =1/3  3rd order UBS
+   REAL(wp), PARAMETER :: gamma2 = 1._wp/32._wp  ! =0   2nd order  ; =1/32 4th order centred
 
    PUBLIC   dyn_adv_ubs   ! routine called by step.F90
 
@@ -35,7 +37,7 @@ MODULE dynadv_ubs
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 4.0 , NEMO Consortium (2011)
-   !! $Id: dynadv_ubs.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -54,45 +56,40 @@ CONTAINS
       !!                       = 1/4  Quick scheme
       !!                       = 1/3  3rd order Upstream biased scheme
       !!                gamma2 = 0    2nd order finite differencing 
-      !!                       = 1/8  4th order finite differencing
+      !!                       = 1/32 4th order finite differencing
       !!      For stability reasons, the first term of the fluxes which cor-
       !!      responds to a second order centered scheme is evaluated using  
       !!      the now velocity (centered in time) while the second term which  
       !!      is the diffusive part of the scheme, is evaluated using the 
       !!      before velocity (forward in time). 
       !!      Default value (hard coded in the begining of the module) are 
-      !!      gamma1=1/4 and gamma2=1/8.
+      !!      gamma1=1/3 and gamma2=1/32.
       !!
       !! ** Action : - (ua,va) updated with the 3D advective momentum trends
       !!
       !! Reference : Shchepetkin & McWilliams, 2005, Ocean Modelling. 
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE oce     , ONLY:   zfu    => ta       , zfv    => sa      ! (ta,sa) used as 3D workspace
-      USE wrk_nemo, ONLY:   zfu_t  => wrk_3d_1 , zfv_t  =>wrk_3d_4 , zfu_uw =>wrk_3d_6   ! 3D workspace
-      USE wrk_nemo, ONLY:   zfu_f  => wrk_3d_2 , zfv_f  =>wrk_3d_5 , zfv_vw =>wrk_3d_7
-      USE wrk_nemo, ONLY:   zfw    => wrk_3d_3
-      USE wrk_nemo, ONLY:   zlu_uu => wrk_4d_1 , zlv_vv=>wrk_4d_3   ! 4D workspace
-      USE wrk_nemo, ONLY:   zlu_uv => wrk_4d_2 , zlv_vu=>wrk_4d_4
-      !
       INTEGER, INTENT(in) ::   kt     ! ocean time-step index
       !
       INTEGER  ::   ji, jj, jk            ! dummy loop indices
       REAL(wp) ::   zbu, zbv    ! temporary scalars
       REAL(wp) ::   zui, zvj, zfuj, zfvi, zl_u, zl_v   ! temporary scalars
+      REAL(wp), POINTER, DIMENSION(:,:,:  ) ::  zfu, zfv
+      REAL(wp), POINTER, DIMENSION(:,:,:  ) ::  zfu_t, zfv_t, zfu_f, zfv_f, zfu_uw, zfv_vw, zfw
+      REAL(wp), POINTER, DIMENSION(:,:,:,:) ::  zlu_uu, zlv_vv, zlu_uv, zlv_vu
       !!----------------------------------------------------------------------
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('dyn_adv_ubs')
+      !
+      CALL wrk_alloc( jpi, jpj, jpk,       zfu_t , zfv_t , zfu_f , zfv_f, zfu_uw, zfv_vw, zfu, zfv, zfw )
+      CALL wrk_alloc( jpi, jpj, jpk, jpts, zlu_uu, zlv_vv, zlu_uv, zlv_vu                               )
+      !
       IF( kt == nit000 ) THEN
          IF(lwp) WRITE(numout,*)
          IF(lwp) WRITE(numout,*) 'dyn_adv_ubs : UBS flux form momentum advection'
          IF(lwp) WRITE(numout,*) '~~~~~~~~~~~'
       ENDIF
-
-      ! Check that required workspace arrays are not already in use
-      IF( wrk_in_use(3, 1,2,3,4,5,6,7) .OR. wrk_in_use(4, 1,2,3,4) ) THEN
-         CALL ctl_stop('dyn_adv_ubs: requested workspace array unavailable')   ;   RETURN
-      ENDIF
-
+      !
       zfu_t(:,:,:) = 0._wp
       zfv_t(:,:,:) = 0._wp
       zfu_f(:,:,:) = 0._wp
@@ -253,8 +250,10 @@ CONTAINS
       IF(ln_ctl)   CALL prt_ctl( tab3d_1=ua, clinfo1=' ubs2 adv - Ua: ', mask1=umask,   &
          &                       tab3d_2=va, clinfo2=           ' Va: ', mask2=vmask, clinfo3='dyn' )
       !
-      IF( wrk_not_released(3, 1,2,3,4,5,6,7) .OR.   &
-          wrk_not_released(4, 1,2,3,4)       )   CALL ctl_stop('dyn_adv_ubs: failed to release workspace array')
+      CALL wrk_dealloc( jpi, jpj, jpk,       zfu_t , zfv_t , zfu_f , zfv_f, zfu_uw, zfv_vw, zfu, zfv, zfw )
+      CALL wrk_dealloc( jpi, jpj, jpk, jpts, zlu_uu, zlv_vv, zlu_uv, zlv_vu                               )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('dyn_adv_ubs')
       !
    END SUBROUTINE dyn_adv_ubs
 

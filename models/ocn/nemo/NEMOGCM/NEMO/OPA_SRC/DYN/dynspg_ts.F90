@@ -24,23 +24,27 @@ MODULE dynspg_ts
    USE phycst          ! physical constants
    USE domvvl          ! variable volume
    USE zdfbfr          ! bottom friction
-   USE obcdta          ! open boundary condition data     
-   USE obcfla          ! Flather open boundary condition  
    USE dynvor          ! vorticity term
    USE obc_oce         ! Lateral open boundary condition
    USE obc_par         ! open boundary condition parameters
-   USE bdy_oce         ! unstructured open boundaries
-   USE bdy_par         ! unstructured open boundaries
-   USE bdydta          ! unstructured open boundaries
-   USE bdydyn          ! unstructured open boundaries
-   USE bdytides        ! tidal forcing at unstructured open boundaries.
+   USE obcdta          ! open boundary condition data     
+   USE obcfla          ! Flather open boundary condition  
+   USE bdy_par         ! for lk_bdy
+   USE bdy_oce         ! Lateral open boundary condition
+   USE bdydta          ! open boundary condition data     
+   USE bdydyn2d        ! open boundary conditions on barotropic variables
+   USE sbctide
+   USE updtide
    USE lib_mpp         ! distributed memory computing library
    USE lbclnk          ! ocean lateral boundary conditions (or mpp link)
    USE prtctl          ! Print control
    USE in_out_manager  ! I/O manager
    USE iom             ! IOM library
    USE restart         ! only for lrst_oce
-   USE zdf_oce
+   USE zdf_oce         ! Vertical diffusion
+   USE wrk_nemo        ! Memory Allocation
+   USE timing          ! Timing
+
 
    IMPLICIT NONE
    PRIVATE
@@ -61,7 +65,7 @@ MODULE dynspg_ts
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 4.0 , NEMO Consortium (2011)
-   !! $Id: dynspg_ts.F90 2724 2011-04-06 11:56:53Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -106,30 +110,30 @@ CONTAINS
       !!
       !! References : Griffies et al., (2003): A technical guide to MOM4. NOAA/GFDL
       !!---------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zsshun_e => wrk_2d_1 , zsshb_e  => wrk_2d_2  , zhdiv => wrk_2d_3
-      USE wrk_nemo, ONLY:   zsshvn_e => wrk_2d_4 , zssh_sum => wrk_2d_5
-      USE wrk_nemo, ONLY:   zcu => wrk_2d_6  , zwx   => wrk_2d_7  , zua   => wrk_2d_8  , zbfru  => wrk_2d_9
-      USE wrk_nemo, ONLY:   zcv => wrk_2d_10 , zwy   => wrk_2d_11 , zva   => wrk_2d_12 , zbfrv  => wrk_2d_13
-      USE wrk_nemo, ONLY:   zun => wrk_2d_14 , zun_e => wrk_2d_15 , zub_e => wrk_2d_16 , zu_sum => wrk_2d_17
-      USE wrk_nemo, ONLY:   zvn => wrk_2d_18 , zvn_e => wrk_2d_19 , zvb_e => wrk_2d_20 , zv_sum => wrk_2d_21
       !
       INTEGER, INTENT(in)  ::   kt   ! ocean time-step index
       !
       INTEGER  ::   ji, jj, jk, jn   ! dummy loop indices
       INTEGER  ::   icycle           ! local scalar
-      REAL(wp) ::   zraur, zcoef, z2dt_e, z2dt_b     ! local scalars
-      REAL(wp) ::   z1_8, zx1, zy1                   !   -      -
-      REAL(wp) ::   z1_4, zx2, zy2                   !   -      -
-      REAL(wp) ::   zu_spg, zu_cor, zu_sld, zu_asp   !   -      -
-      REAL(wp) ::   zv_spg, zv_cor, zv_sld, zv_asp   !   -      -
+      INTEGER  ::   ikbu, ikbv       ! local scalar
+      REAL(wp) ::   zraur, zcoef, z2dt_e, z1_2dt_b, z2dt_bf   ! local scalars
+      REAL(wp) ::   z1_8, zx1, zy1                            !   -      -
+      REAL(wp) ::   z1_4, zx2, zy2                            !   -      -
+      REAL(wp) ::   zu_spg, zu_cor, zu_sld, zu_asp            !   -      -
+      REAL(wp) ::   zv_spg, zv_cor, zv_sld, zv_asp            !   -      -
+      REAL(wp) ::   ua_btm, va_btm                            !   -      -
+      !
+      REAL(wp), POINTER, DIMENSION(:,:) :: zsshun_e, zsshvn_e, zsshb_e, zssh_sum, zhdiv 
+      REAL(wp), POINTER, DIMENSION(:,:) :: zua, zva, zun, zvn, zun_e, zvn_e, zub_e, zvb_e 
+      REAL(wp), POINTER, DIMENSION(:,:) :: zcu, zcv, zwx, zwy, zbfru, zbfrv, zu_sum, zv_sum
       !!----------------------------------------------------------------------
-
-      IF( wrk_in_use(2,  1, 2, 3, 4, 5, 6, 7, 8, 9,10,     &
-         &              11,12,13,14,15,16,17,18,19,20,21 ) ) THEN
-         CALL ctl_stop( 'dyn_spg_ts: requested workspace arrays unavailable' )   ;   RETURN
-      ENDIF
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('dyn_spg_ts')
+      !
+      CALL wrk_alloc( jpi, jpj, zsshun_e, zsshvn_e, zsshb_e, zssh_sum, zhdiv     )
+      CALL wrk_alloc( jpi, jpj, zua, zva, zun, zvn, zun_e, zvn_e, zub_e, zvb_e   )
+      CALL wrk_alloc( jpi, jpj, zcu, zcv, zwx, zwy, zbfru, zbfrv, zu_sum, zv_sum )
+      !
       IF( kt == nit000 ) THEN             !* initialisation
          !
          IF(lwp) WRITE(numout,*)
@@ -146,28 +150,36 @@ CONTAINS
          hur_e (:,:) = hur  (:,:)
          hvr_e (:,:) = hvr  (:,:)
          IF( ln_dynvor_een ) THEN
-            ftne(1,:) = 0.e0   ;   ftnw(1,:) = 0.e0   ;   ftse(1,:) = 0.e0   ;   ftsw(1,:) = 0.e0
+            ftne(1,:) = 0._wp   ;   ftnw(1,:) = 0._wp   ;   ftse(1,:) = 0._wp   ;   ftsw(1,:) = 0._wp
             DO jj = 2, jpj
                DO ji = fs_2, jpi   ! vector opt.
-                  ftne(ji,jj) = ( ff(ji-1,jj  ) + ff(ji  ,jj  ) + ff(ji  ,jj-1) ) / 3.
-                  ftnw(ji,jj) = ( ff(ji-1,jj-1) + ff(ji-1,jj  ) + ff(ji  ,jj  ) ) / 3.
-                  ftse(ji,jj) = ( ff(ji  ,jj  ) + ff(ji  ,jj-1) + ff(ji-1,jj-1) ) / 3.
-                  ftsw(ji,jj) = ( ff(ji  ,jj-1) + ff(ji-1,jj-1) + ff(ji-1,jj  ) ) / 3.
+                  ftne(ji,jj) = ( ff(ji-1,jj  ) + ff(ji  ,jj  ) + ff(ji  ,jj-1) ) / 3._wp
+                  ftnw(ji,jj) = ( ff(ji-1,jj-1) + ff(ji-1,jj  ) + ff(ji  ,jj  ) ) / 3._wp
+                  ftse(ji,jj) = ( ff(ji  ,jj  ) + ff(ji  ,jj-1) + ff(ji-1,jj-1) ) / 3._wp
+                  ftsw(ji,jj) = ( ff(ji  ,jj-1) + ff(ji-1,jj-1) + ff(ji-1,jj  ) ) / 3._wp
                END DO
             END DO
          ENDIF
          !
       ENDIF
 
-      !                                   !* Local constant initialization
-      z2dt_b = 2.0 * rdt                                    ! baroclinic time step
-      z1_8 = 0.5 * 0.25                                     ! coefficient for vorticity estimates
-      z1_4 = 0.5 * 0.5
-      zraur  = 1. / rau0                                    ! 1 / volumic mass
+      !                                                     !* Local constant initialization
+      z1_2dt_b = 1._wp / ( 2.0_wp * rdt )                   ! reciprocal of baroclinic time step
+      IF( neuler == 0 .AND. kt == nit000 )   z1_2dt_b = 1.0_wp / rdt    ! reciprocal of baroclinic 
+                                                                        ! time step (euler timestep)
+      z1_8     = 0.125_wp                                   ! coefficient for vorticity estimates
+      z1_4     = 0.25_wp        
+      zraur    = 1._wp / rau0                               ! 1 / volumic mass
       !
-      zhdiv(:,:) = 0.e0                                     ! barotropic divergence
-      zu_sld = 0.e0   ;   zu_asp = 0.e0                     ! tides trends (lk_tide=F)
-      zv_sld = 0.e0   ;   zv_asp = 0.e0
+      zhdiv(:,:) = 0._wp                                    ! barotropic divergence
+      zu_sld = 0._wp   ;   zu_asp = 0._wp                   ! tides trends (lk_tide=F)
+      zv_sld = 0._wp   ;   zv_asp = 0._wp
+
+      IF( kt == nit000 .AND. neuler == 0) THEN              ! for implicit bottom friction
+        z2dt_bf = rdt
+      ELSE
+        z2dt_bf = 2.0_wp * rdt
+      ENDIF
 
       ! -----------------------------------------------------------------------------
       !  Phase 1 : Coupling between general trend and barotropic estimates (1st step)
@@ -175,8 +187,8 @@ CONTAINS
       !      
       !                                   !* e3*d/dt(Ua), e3*Ub, e3*Vn (Vertically integrated)
       !                                   ! --------------------------
-      zua(:,:) = 0.e0   ;   zun(:,:) = 0.e0   ;   ub_b(:,:) = 0.e0
-      zva(:,:) = 0.e0   ;   zvn(:,:) = 0.e0   ;   vb_b(:,:) = 0.e0
+      zua(:,:) = 0._wp   ;   zun(:,:) = 0._wp   ;   ub_b(:,:) = 0._wp
+      zva(:,:) = 0._wp   ;   zvn(:,:) = 0._wp   ;   vb_b(:,:) = 0._wp
       !
       DO jk = 1, jpkm1
 #if defined key_vectopt_loop
@@ -194,8 +206,8 @@ CONTAINS
                zvn(ji,jj) = zvn(ji,jj) + fse3v  (ji,jj,jk) * vn(ji,jj,jk)               
                !
 #if defined key_vvl
-               ub_b(ji,jj) = ub_b(ji,jj) + (fse3u_0(ji,jj,jk)*(1.+sshu_b(ji,jj)*muu(ji,jj,jk)))* ub(ji,jj,jk) 
-               vb_b(ji,jj) = vb_b(ji,jj) + (fse3v_0(ji,jj,jk)*(1.+sshv_b(ji,jj)*muv(ji,jj,jk)))* vb(ji,jj,jk)   
+               ub_b(ji,jj) = ub_b(ji,jj) + fse3u_b(ji,jj,jk)* ub(ji,jj,jk)   *umask(ji,jj,jk) 
+               vb_b(ji,jj) = vb_b(ji,jj) + fse3v_b(ji,jj,jk)* vb(ji,jj,jk)   *vmask(ji,jj,jk)
 #else
                ub_b(ji,jj) = ub_b(ji,jj) + fse3u_0(ji,jj,jk) * ub(ji,jj,jk)  * umask(ji,jj,jk)
                vb_b(ji,jj) = vb_b(ji,jj) + fse3v_0(ji,jj,jk) * vb(ji,jj,jk)  * vmask(ji,jj,jk)
@@ -269,56 +281,76 @@ CONTAINS
 
       DO jj = 2, jpjm1                             ! Remove coriolis term (and possibly spg) from barotropic trend
          DO ji = fs_2, fs_jpim1
-            zua(ji,jj) = zua(ji,jj) - zcu(ji,jj)
-            zva(ji,jj) = zva(ji,jj) - zcv(ji,jj)
-         END DO
+             zua(ji,jj) = zua(ji,jj) - zcu(ji,jj)
+             zva(ji,jj) = zva(ji,jj) - zcv(ji,jj)
+          END DO
       END DO
 
                     
       !                                             ! Remove barotropic contribution of bottom friction 
       !                                             ! from the barotropic transport trend
-      zcoef = -1. / z2dt_b
+      zcoef = -1._wp * z1_2dt_b
+
+      IF(ln_bfrimp) THEN
+      !                                   ! Remove the bottom stress trend from 3-D sea surface level gradient
+      !                                   ! and Coriolis forcing in case of 3D semi-implicit bottom friction 
+        DO jj = 2, jpjm1         
+           DO ji = fs_2, fs_jpim1
+              ikbu = mbku(ji,jj)
+              ikbv = mbkv(ji,jj)
+              ua_btm = zcu(ji,jj) * z2dt_bf * hur(ji,jj) * umask (ji,jj,ikbu)
+              va_btm = zcv(ji,jj) * z2dt_bf * hvr(ji,jj) * vmask (ji,jj,ikbv)
+
+              zua(ji,jj) = zua(ji,jj) - bfrua(ji,jj) * ua_btm
+              zva(ji,jj) = zva(ji,jj) - bfrva(ji,jj) * va_btm
+           END DO
+        END DO
+
+      ELSE
+
 # if defined key_vectopt_loop
-      DO jj = 1, 1
-         DO ji = 1, jpij-jpi   ! vector opt. (forced unrolling)
+        DO jj = 1, 1
+           DO ji = 1, jpij-jpi   ! vector opt. (forced unrolling)
 # else
-      DO jj = 2, jpjm1
-         DO ji = 2, jpim1
+        DO jj = 2, jpjm1
+           DO ji = 2, jpim1
 # endif
             ! Apply stability criteria for bottom friction
             !RBbug for vvl and external mode we may need to use varying fse3
             !!gm  Rq: the bottom e3 present the smallest variation, the use of e3u_0 is not a big approx.
-            zbfru(ji,jj) = MAX(  bfrua(ji,jj) , fse3u(ji,jj,mbku(ji,jj)) * zcoef  )
-            zbfrv(ji,jj) = MAX(  bfrva(ji,jj) , fse3v(ji,jj,mbkv(ji,jj)) * zcoef  )
-         END DO
-      END DO
+              zbfru(ji,jj) = MAX(  bfrua(ji,jj) , fse3u(ji,jj,mbku(ji,jj)) * zcoef  )
+              zbfrv(ji,jj) = MAX(  bfrva(ji,jj) , fse3v(ji,jj,mbkv(ji,jj)) * zcoef  )
+           END DO
+        END DO
 
-      IF( lk_vvl ) THEN
-         DO jj = 2, jpjm1
-            DO ji = fs_2, fs_jpim1   ! vector opt.
-               zua(ji,jj) = zua(ji,jj) - zbfru(ji,jj) * ub_b(ji,jj)   &
-                  &       / ( hu_0(ji,jj) + sshu_b(ji,jj) + 1.e0 - umask(ji,jj,1) )
-               zva(ji,jj) = zva(ji,jj) - zbfrv(ji,jj) * vb_b(ji,jj)   &
-                  &       / ( hv_0(ji,jj) + sshv_b(ji,jj) + 1.e0 - vmask(ji,jj,1) )
-            END DO
-         END DO
-      ELSE
-         DO jj = 2, jpjm1
-            DO ji = fs_2, fs_jpim1   ! vector opt.
-               zua(ji,jj) = zua(ji,jj) - zbfru(ji,jj) * ub_b(ji,jj) * hur(ji,jj)
-               zva(ji,jj) = zva(ji,jj) - zbfrv(ji,jj) * vb_b(ji,jj) * hvr(ji,jj)
-            END DO
-         END DO
-      ENDIF
+        IF( lk_vvl ) THEN
+           DO jj = 2, jpjm1
+              DO ji = fs_2, fs_jpim1   ! vector opt.
+                 zua(ji,jj) = zua(ji,jj) - zbfru(ji,jj) * ub_b(ji,jj)   &
+                    &       / ( hu_0(ji,jj) + sshu_b(ji,jj) + 1._wp - umask(ji,jj,1) )
+                 zva(ji,jj) = zva(ji,jj) - zbfrv(ji,jj) * vb_b(ji,jj)   &
+                    &       / ( hv_0(ji,jj) + sshv_b(ji,jj) + 1._wp - vmask(ji,jj,1) )
+              END DO
+           END DO
+        ELSE
+           DO jj = 2, jpjm1
+              DO ji = fs_2, fs_jpim1   ! vector opt.
+                 zua(ji,jj) = zua(ji,jj) - zbfru(ji,jj) * ub_b(ji,jj) * hur(ji,jj)
+                 zva(ji,jj) = zva(ji,jj) - zbfrv(ji,jj) * vb_b(ji,jj) * hvr(ji,jj)
+              END DO
+           END DO
+        ENDIF
+      END IF    ! end (ln_bfrimp)
 
+                    
       !                                   !* d/dt(Ua), Ub, Vn (Vertical mean velocity)
       !                                   ! -------------------------- 
       zua(:,:) = zua(:,:) * hur(:,:)
       zva(:,:) = zva(:,:) * hvr(:,:)
       !
       IF( lk_vvl ) THEN
-         ub_b(:,:) = ub_b(:,:) * umask(:,:,1) / ( hu_0(:,:) + sshu_b(:,:) + 1.e0 - umask(:,:,1) )
-         vb_b(:,:) = vb_b(:,:) * vmask(:,:,1) / ( hv_0(:,:) + sshv_b(:,:) + 1.e0 - vmask(:,:,1) )
+         ub_b(:,:) = ub_b(:,:) * umask(:,:,1) / ( hu_0(:,:) + sshu_b(:,:) + 1._wp - umask(:,:,1) )
+         vb_b(:,:) = vb_b(:,:) * vmask(:,:,1) / ( hv_0(:,:) + sshv_b(:,:) + 1._wp - vmask(:,:,1) )
       ELSE
          ub_b(:,:) = ub_b(:,:) * hur(:,:)
          vb_b(:,:) = vb_b(:,:) * hvr(:,:)
@@ -354,10 +386,10 @@ CONTAINS
 #if defined key_obc
       ! set ssh corrections to 0
       ! ssh corrections are applied to normal velocities (Flather's algorithm) and averaged over the barotropic loop
-      IF( lp_obc_east  )   sshfoe_b(:,:) = 0.e0
-      IF( lp_obc_west  )   sshfow_b(:,:) = 0.e0
-      IF( lp_obc_south )   sshfos_b(:,:) = 0.e0
-      IF( lp_obc_north )   sshfon_b(:,:) = 0.e0
+      IF( lp_obc_east  )   sshfoe_b(:,:) = 0._wp
+      IF( lp_obc_west  )   sshfow_b(:,:) = 0._wp
+      IF( lp_obc_south )   sshfos_b(:,:) = 0._wp
+      IF( lp_obc_north )   sshfon_b(:,:) = 0._wp
 #endif
 
       !                                             ! ==================== !
@@ -366,14 +398,15 @@ CONTAINS
          z2dt_e = 2. * ( rdt / nn_baro )
          IF( jn == 1 )   z2dt_e = rdt / nn_baro
 
-         !                                                !* Update the forcing (OBC, BDY and tides)
+         !                                                !* Update the forcing (BDY and tides)
          !                                                !  ------------------
          IF( lk_obc )   CALL obc_dta_bt ( kt, jn   )
-         IF( lk_bdy )   CALL bdy_dta_fla( kt, jn+1, icycle )
+         IF( lk_bdy )   CALL bdy_dta ( kt, jit=jn, time_offset=+1 )
+         IF ( ln_tide_pot ) CALL upd_tide( kt, jn )
 
          !                                                !* after ssh_e
          !                                                !  -----------
-         DO jj = 2, jpjm1                                      ! Horizontal divergence of barotropic transports
+         DO jj = 2, jpjm1                                 ! Horizontal divergence of barotropic transports
             DO ji = fs_2, fs_jpim1   ! vector opt.
                zhdiv(ji,jj) = (   e2u(ji  ,jj) * zun_e(ji  ,jj) * hu_e(ji  ,jj)     &
                   &             - e2u(ji-1,jj) * zun_e(ji-1,jj) * hu_e(ji-1,jj)     &
@@ -385,10 +418,10 @@ CONTAINS
 #if defined key_obc
          !                                                     ! OBC : zhdiv must be zero behind the open boundary
 !!  mpp remark: The zeroing of hdiv can probably be extended to 1->jpi/jpj for the correct row/column
-         IF( lp_obc_east  )   zhdiv(nie0p1:nie1p1,nje0  :nje1  ) = 0.e0      ! east
-         IF( lp_obc_west  )   zhdiv(niw0  :niw1  ,njw0  :njw1  ) = 0.e0      ! west
-         IF( lp_obc_north )   zhdiv(nin0  :nin1  ,njn0p1:njn1p1) = 0.e0      ! north
-         IF( lp_obc_south )   zhdiv(nis0  :nis1  ,njs0  :njs1  ) = 0.e0      ! south
+         IF( lp_obc_east  )   zhdiv(nie0p1:nie1p1,nje0  :nje1  ) = 0._wp      ! east
+         IF( lp_obc_west  )   zhdiv(niw0  :niw1  ,njw0  :njw1  ) = 0._wp      ! west
+         IF( lp_obc_north )   zhdiv(nin0  :nin1  ,njn0p1:njn1p1) = 0._wp      ! north
+         IF( lp_obc_south )   zhdiv(nis0  :nis1  ,njs0  :njs1  ) = 0._wp      ! south
 #endif
 #if defined key_bdy
          zhdiv(:,:) = zhdiv(:,:) * bdytmask(:,:)               ! BDY mask
@@ -402,7 +435,7 @@ CONTAINS
 
          !                                                !* after barotropic velocities (vorticity scheme dependent)
          !                                                !  ---------------------------  
-         zwx(:,:) = e2u(:,:) * zun_e(:,:) * hu_e(:,:)           ! now_e transport
+         zwx(:,:) = e2u(:,:) * zun_e(:,:) * hu_e(:,:)     ! now_e transport
          zwy(:,:) = e1v(:,:) * zvn_e(:,:) * hv_e(:,:)
          !
          IF( ln_dynvor_ene .OR. ln_dynvor_mix ) THEN      !==  energy conserving or mixed scheme  ==!
@@ -418,6 +451,11 @@ CONTAINS
                      zu_spg = -grav * ( sshn_e(ji+1,jj) - sshn_e(ji,jj) ) / e1u(ji,jj)
                      zv_spg = -grav * ( sshn_e(ji,jj+1) - sshn_e(ji,jj) ) / e2v(ji,jj)
                   ENDIF
+                  ! add tidal astronomical forcing
+                  IF ( ln_tide_pot ) THEN 
+                  zu_spg = zu_spg + grav * ( pot_astro(ji+1,jj) - pot_astro(ji,jj) ) / e1u(ji,jj)
+                  zv_spg = zv_spg + grav * ( pot_astro(ji,jj+1) - pot_astro(ji,jj) ) / e2v(ji,jj)
+                  ENDIF
                   ! energy conserving formulation for planetary vorticity term
                   zy1 = ( zwy(ji  ,jj-1) + zwy(ji+1,jj-1) ) / e1u(ji,jj)
                   zy2 = ( zwy(ji  ,jj  ) + zwy(ji+1,jj  ) ) / e1u(ji,jj)
@@ -426,10 +464,27 @@ CONTAINS
                   zu_cor = z1_4 * ( ff(ji  ,jj-1) * zy1 + ff(ji,jj) * zy2 ) * hur_e(ji,jj)
                   zv_cor =-z1_4 * ( ff(ji-1,jj  ) * zx1 + ff(ji,jj) * zx2 ) * hvr_e(ji,jj)
                   ! after velocities with implicit bottom friction
-                  ua_e(ji,jj) = ( zub_e(ji,jj) + z2dt_e * ( zu_cor + zu_spg + zu_sld + zu_asp + zua(ji,jj) ) ) * umask(ji,jj,1)   &
-                     &         / ( 1.e0         - z2dt_e * bfrua(ji,jj) * hur_e(ji,jj) )
-                  va_e(ji,jj) = ( zvb_e(ji,jj) + z2dt_e * ( zv_cor + zv_spg + zv_sld + zv_asp + zva(ji,jj) ) ) * vmask(ji,jj,1)   &
-                     &         / ( 1.e0         - z2dt_e * bfrva(ji,jj) * hvr_e(ji,jj) )
+
+                  IF( ln_bfrimp ) THEN      ! implicit bottom friction
+                     !   A new method to implement the implicit bottom friction. 
+                     !   H. Liu
+                     !   Sept 2011
+                     ua_e(ji,jj) = umask(ji,jj,1) * ( zub_e(ji,jj) +                                            &
+                      &                               z2dt_e * ( zu_cor + zu_spg + zu_sld + zu_asp )            &
+                      &                               / ( 1._wp      - z2dt_e * bfrua(ji,jj) * hur_e(ji,jj) ) )
+                     ua_e(ji,jj) = ( ua_e(ji,jj) + z2dt_e *   zua(ji,jj)  ) * umask(ji,jj,1)   
+                     !
+                     va_e(ji,jj) = vmask(ji,jj,1) * ( zvb_e(ji,jj) +                                            &
+                      &                               z2dt_e * ( zv_cor + zv_spg + zv_sld + zv_asp )            &
+                      &                               / ( 1._wp      - z2dt_e * bfrva(ji,jj) * hvr_e(ji,jj) ) )
+                     va_e(ji,jj) = ( va_e(ji,jj) + z2dt_e *   zva(ji,jj)  ) * vmask(ji,jj,1)   
+                     !
+                  ELSE
+                     ua_e(ji,jj) = ( zub_e(ji,jj) + z2dt_e * ( zu_cor + zu_spg + zu_sld + zu_asp + zua(ji,jj))) * umask(ji,jj,1)   &
+                      &           / ( 1._wp         - z2dt_e * bfrua(ji,jj) * hur_e(ji,jj) )
+                     va_e(ji,jj) = ( zvb_e(ji,jj) + z2dt_e * ( zv_cor + zv_spg + zv_sld + zv_asp + zva(ji,jj))) * vmask(ji,jj,1)   &
+                      &           / ( 1._wp         - z2dt_e * bfrva(ji,jj) * hvr_e(ji,jj) )
+                  ENDIF
                END DO
             END DO
             !
@@ -446,16 +501,37 @@ CONTAINS
                      zu_spg = -grav * ( sshn_e(ji+1,jj) - sshn_e(ji,jj) ) / e1u(ji,jj)
                      zv_spg = -grav * ( sshn_e(ji,jj+1) - sshn_e(ji,jj) ) / e2v(ji,jj)
                   ENDIF
+                  ! add tidal astronomical forcing
+                  IF ( ln_tide_pot ) THEN
+                  zu_spg = zu_spg + grav * ( pot_astro(ji+1,jj) - pot_astro(ji,jj) ) / e1u(ji,jj)
+                  zv_spg = zv_spg + grav * ( pot_astro(ji,jj+1) - pot_astro(ji,jj) ) / e2v(ji,jj)
+                  ENDIF
                   ! enstrophy conserving formulation for planetary vorticity term
                   zy1 =   z1_8 * ( zwy(ji  ,jj-1) + zwy(ji+1,jj-1) + zwy(ji,jj) + zwy(ji+1,jj  ) ) / e1u(ji,jj)
                   zx1 = - z1_8 * ( zwx(ji-1,jj  ) + zwx(ji-1,jj+1) + zwx(ji,jj) + zwx(ji  ,jj+1) ) / e2v(ji,jj)
                   zu_cor  = zy1 * ( ff(ji  ,jj-1) + ff(ji,jj) ) * hur_e(ji,jj)
                   zv_cor  = zx1 * ( ff(ji-1,jj  ) + ff(ji,jj) ) * hvr_e(ji,jj)
                   ! after velocities with implicit bottom friction
-                  ua_e(ji,jj) = ( zub_e(ji,jj) + z2dt_e * ( zu_cor + zu_spg + zu_sld + zu_asp + zua(ji,jj) ) ) * umask(ji,jj,1)   &
-                     &         / ( 1.e0         - z2dt_e * bfrua(ji,jj) * hur_e(ji,jj) )
-                  va_e(ji,jj) = ( zvb_e(ji,jj) + z2dt_e * ( zv_cor + zv_spg + zv_sld + zv_asp + zva(ji,jj) ) ) * vmask(ji,jj,1)   &
-                     &         / ( 1.e0         - z2dt_e * bfrva(ji,jj) * hvr_e(ji,jj) )
+                  IF( ln_bfrimp ) THEN
+                     !   A new method to implement the implicit bottom friction. 
+                     !   H. Liu
+                     !   Sept 2011
+                     ua_e(ji,jj) = umask(ji,jj,1) * ( zub_e(ji,jj) +                                            &
+                      &                               z2dt_e * ( zu_cor + zu_spg + zu_sld + zu_asp )            &
+                      &                               / ( 1._wp      - z2dt_e * bfrua(ji,jj) * hur_e(ji,jj) ) )
+                     ua_e(ji,jj) = ( ua_e(ji,jj) + z2dt_e *   zua(ji,jj)  ) * umask(ji,jj,1)   
+                     !
+                     va_e(ji,jj) = vmask(ji,jj,1) * ( zvb_e(ji,jj) +                                            &
+                      &                               z2dt_e * ( zv_cor + zv_spg + zv_sld + zv_asp )            &
+                      &                               / ( 1._wp      - z2dt_e * bfrva(ji,jj) * hvr_e(ji,jj) ) )
+                     va_e(ji,jj) = ( va_e(ji,jj) + z2dt_e *   zva(ji,jj)  ) * vmask(ji,jj,1)   
+                     !
+                  ELSE
+                     ua_e(ji,jj) = ( zub_e(ji,jj) + z2dt_e * ( zu_cor + zu_spg + zu_sld + zu_asp + zua(ji,jj))) * umask(ji,jj,1)   &
+                     &            / ( 1._wp        - z2dt_e * bfrua(ji,jj) * hur_e(ji,jj) )
+                     va_e(ji,jj) = ( zvb_e(ji,jj) + z2dt_e * ( zv_cor + zv_spg + zv_sld + zv_asp + zva(ji,jj))) * vmask(ji,jj,1)   &
+                     &            / ( 1._wp        - z2dt_e * bfrva(ji,jj) * hvr_e(ji,jj) )
+                  ENDIF
                END DO
             END DO
             !
@@ -472,28 +548,58 @@ CONTAINS
                      zu_spg = -grav * ( sshn_e(ji+1,jj) - sshn_e(ji,jj) ) / e1u(ji,jj)
                      zv_spg = -grav * ( sshn_e(ji,jj+1) - sshn_e(ji,jj) ) / e2v(ji,jj)
                   ENDIF
+                  ! add tidal astronomical forcing
+                  IF ( ln_tide_pot ) THEN
+                  zu_spg = zu_spg + grav * ( pot_astro(ji+1,jj) - pot_astro(ji,jj) ) / e1u(ji,jj)
+                  zv_spg = zv_spg + grav * ( pot_astro(ji,jj+1) - pot_astro(ji,jj) ) / e2v(ji,jj)
+                  ENDIF
                   ! energy/enstrophy conserving formulation for planetary vorticity term
                   zu_cor = + z1_4 / e1u(ji,jj) * (  ftne(ji,jj  ) * zwy(ji  ,jj  ) + ftnw(ji+1,jj) * zwy(ji+1,jj  )   &
                      &                           + ftse(ji,jj  ) * zwy(ji  ,jj-1) + ftsw(ji+1,jj) * zwy(ji+1,jj-1) ) * hur_e(ji,jj)
                   zv_cor = - z1_4 / e2v(ji,jj) * (  ftsw(ji,jj+1) * zwx(ji-1,jj+1) + ftse(ji,jj+1) * zwx(ji  ,jj+1)   &
                      &                           + ftnw(ji,jj  ) * zwx(ji-1,jj  ) + ftne(ji,jj  ) * zwx(ji  ,jj  ) ) * hvr_e(ji,jj)
                   ! after velocities with implicit bottom friction
-                  ua_e(ji,jj) = ( zub_e(ji,jj) + z2dt_e * ( zu_cor + zu_spg + zu_sld + zu_asp + zua(ji,jj) ) ) * umask(ji,jj,1)   &
-                     &         / ( 1.e0         - z2dt_e * bfrua(ji,jj) * hur_e(ji,jj) )
-                  va_e(ji,jj) = ( zvb_e(ji,jj) + z2dt_e * ( zv_cor + zv_spg + zv_sld + zv_asp + zva(ji,jj) ) ) * vmask(ji,jj,1)   &
-                     &         / ( 1.e0         - z2dt_e * bfrva(ji,jj) * hvr_e(ji,jj) )
+                  IF( ln_bfrimp ) THEN
+                     !   A new method to implement the implicit bottom friction. 
+                     !   H. Liu
+                     !   Sept 2011
+                     ua_e(ji,jj) = umask(ji,jj,1) * ( zub_e(ji,jj) +                                            &
+                      &                               z2dt_e * ( zu_cor + zu_spg + zu_sld + zu_asp )            &
+                      &                               / ( 1._wp      - z2dt_e * bfrua(ji,jj) * hur_e(ji,jj) ) )
+                     ua_e(ji,jj) = ( ua_e(ji,jj) + z2dt_e *   zua(ji,jj)  ) * umask(ji,jj,1)   
+                     !
+                     va_e(ji,jj) = vmask(ji,jj,1) * ( zvb_e(ji,jj) +                                            &
+                      &                               z2dt_e * ( zv_cor + zv_spg + zv_sld + zv_asp )            &
+                      &                               / ( 1._wp      - z2dt_e * bfrva(ji,jj) * hvr_e(ji,jj) ) )
+                     va_e(ji,jj) = ( va_e(ji,jj) + z2dt_e *   zva(ji,jj)  ) * vmask(ji,jj,1)   
+                     !
+                  ELSE
+                     ua_e(ji,jj) = ( zub_e(ji,jj) + z2dt_e * ( zu_cor + zu_spg + zu_sld + zu_asp + zua(ji,jj))) * umask(ji,jj,1)   &
+                     &            / ( 1._wp        - z2dt_e * bfrua(ji,jj) * hur_e(ji,jj) )
+                     va_e(ji,jj) = ( zvb_e(ji,jj) + z2dt_e * ( zv_cor + zv_spg + zv_sld + zv_asp + zva(ji,jj))) * vmask(ji,jj,1)   &
+                     &            / ( 1._wp        - z2dt_e * bfrva(ji,jj) * hvr_e(ji,jj) )
+                  ENDIF
                END DO
             END DO
             ! 
          ENDIF
-         !                                                !* domain lateral boundary
-         !                                                !  -----------------------
-         !                                                      ! Flather's boundary condition for the barotropic loop :
-         !                                                      !         - Update sea surface height on each open boundary
-         !                                                      !         - Correct the velocity
+         !                                                     !* domain lateral boundary
+         !                                                     !  -----------------------
 
+                                                               ! OBC open boundaries
          IF( lk_obc               )   CALL obc_fla_ts ( ua_e, va_e, sshn_e, ssha_e )
-         IF( lk_bdy .OR. ln_tides )   CALL bdy_dyn_fla( sshn_e ) 
+
+                                                               ! BDY open boundaries
+#if defined key_bdy
+         pssh => sshn_e
+         phur => hur_e
+         phvr => hvr_e
+         pu2d => ua_e
+         pv2d => va_e
+
+         IF( lk_bdy )   CALL bdy_dyn2d( kt ) 
+#endif
+
          !
          CALL lbc_lnk( ua_e  , 'U', -1. )                      ! local domain boundaries 
          CALL lbc_lnk( va_e  , 'V', -1. )
@@ -525,12 +631,12 @@ CONTAINS
             !                                             !  ------------------
             DO jj = 1, jpjm1                                    ! Sea Surface Height at u- & v-points
                DO ji = 1, fs_jpim1   ! Vector opt.
-                  zsshun_e(ji,jj) = 0.5 * umask(ji,jj,1) / ( e1u(ji,jj) * e2u(ji,jj) )       &
-                     &                  * ( e1t(ji  ,jj) * e2t(ji  ,jj) * sshn_e(ji  ,jj)    &
-                     &                    + e1t(ji+1,jj) * e2t(ji+1,jj) * sshn_e(ji+1,jj) )
-                  zsshvn_e(ji,jj) = 0.5 * vmask(ji,jj,1) / ( e1v(ji,jj) * e2v(ji,jj) )       &
-                     &                  * ( e1t(ji,jj  ) * e2t(ji,jj  ) * sshn_e(ji,jj  )    &
-                     &                    + e1t(ji,jj+1) * e2t(ji,jj+1) * sshn_e(ji,jj+1) )
+                  zsshun_e(ji,jj) = 0.5_wp * umask(ji,jj,1) / ( e1u(ji,jj) * e2u(ji,jj) )       &
+                     &                     * ( e1t(ji  ,jj) * e2t(ji  ,jj) * sshn_e(ji  ,jj)    &
+                     &                     +   e1t(ji+1,jj) * e2t(ji+1,jj) * sshn_e(ji+1,jj) )
+                  zsshvn_e(ji,jj) = 0.5_wp * vmask(ji,jj,1) / ( e1v(ji,jj) * e2v(ji,jj) )       &
+                     &                     * ( e1t(ji,jj  ) * e2t(ji,jj  ) * sshn_e(ji,jj  )    &
+                     &                     +   e1t(ji,jj+1) * e2t(ji,jj+1) * sshn_e(ji,jj+1) )
                END DO
             END DO
             CALL lbc_lnk( zsshun_e, 'U', 1. )                   ! lateral boundaries conditions
@@ -538,8 +644,8 @@ CONTAINS
             !
             hu_e (:,:) = hu_0(:,:) + zsshun_e(:,:)              ! Ocean depth at U- and V-points
             hv_e (:,:) = hv_0(:,:) + zsshvn_e(:,:)
-            hur_e(:,:) = umask(:,:,1) / ( hu_e(:,:) + 1.e0 - umask(:,:,1) )
-            hvr_e(:,:) = vmask(:,:,1) / ( hv_e(:,:) + 1.e0 - vmask(:,:,1) )
+            hur_e(:,:) = umask(:,:,1) / ( hu_e(:,:) + 1._wp - umask(:,:,1) )
+            hvr_e(:,:) = vmask(:,:,1) / ( hv_e(:,:) + 1._wp - vmask(:,:,1) )
             !
          ENDIF
          !                                                 ! ==================== !
@@ -558,14 +664,14 @@ CONTAINS
       ! -----------------------------------------------------------------------------
       !
       !                                   !* Time average ==> after barotropic u, v, ssh
-      zcoef =  1.e0 / ( 2 * nn_baro  + 1 ) 
+      zcoef =  1._wp / ( 2 * nn_baro  + 1 ) 
       zu_sum(:,:) = zcoef * zu_sum  (:,:) 
       zv_sum(:,:) = zcoef * zv_sum  (:,:) 
       ! 
       !                                   !* update the general momentum trend
       DO jk=1,jpkm1
-         ua(:,:,jk) = ua(:,:,jk) + ( zu_sum(:,:) - ub_b(:,:) ) / z2dt_b
-         va(:,:,jk) = va(:,:,jk) + ( zv_sum(:,:) - vb_b(:,:) ) / z2dt_b
+         ua(:,:,jk) = ua(:,:,jk) + ( zu_sum(:,:) - ub_b(:,:) ) * z1_2dt_b
+         va(:,:,jk) = va(:,:,jk) + ( zv_sum(:,:) - vb_b(:,:) ) * z1_2dt_b
       END DO
       un_b  (:,:) =  zu_sum(:,:) 
       vn_b  (:,:) =  zv_sum(:,:) 
@@ -574,10 +680,11 @@ CONTAINS
       !                                   !* write time-spliting arrays in the restart
       IF( lrst_oce )   CALL ts_rst( kt, 'WRITE' )
       !
+      CALL wrk_dealloc( jpi, jpj, zsshun_e, zsshvn_e, zsshb_e, zssh_sum, zhdiv     )
+      CALL wrk_dealloc( jpi, jpj, zua, zva, zun, zvn, zun_e, zvn_e, zub_e, zvb_e   )
+      CALL wrk_dealloc( jpi, jpj, zcu, zcv, zwx, zwy, zbfru, zbfrv, zu_sum, zv_sum )
       !
-      IF( wrk_not_released(2,  1, 2, 3, 4, 5, 6, 7, 8, 9,10,         &
-         &                    11,12,13,14,15,16,17,18,19,20,21) )    &
-         CALL ctl_stop('dyn_spg_ts: failed to release workspace arrays')
+      IF( nn_timing == 1 )  CALL timing_stop('dyn_spg_ts')
       !
    END SUBROUTINE dyn_spg_ts
 
@@ -599,8 +706,8 @@ CONTAINS
             CALL iom_get( numror, jpdom_autoglo, 'un_b'  , un_b  (:,:) )   ! external velocity issued
             CALL iom_get( numror, jpdom_autoglo, 'vn_b'  , vn_b  (:,:) )   ! from barotropic loop
          ELSE
-            un_b (:,:) = 0.e0
-            vn_b (:,:) = 0.e0
+            un_b (:,:) = 0._wp
+            vn_b (:,:) = 0._wp
             ! vertical sum
             IF( lk_vopt_loop ) THEN          ! vector opt., forced unroll
                DO jk = 1, jpkm1
@@ -621,8 +728,8 @@ CONTAINS
 
          ! Vertically integrated velocity (before)
          IF (neuler/=0) THEN
-            ub_b (:,:) = 0.e0
-            vb_b (:,:) = 0.e0
+            ub_b (:,:) = 0._wp
+            vb_b (:,:) = 0._wp
 
             ! vertical sum
             IF( lk_vopt_loop ) THEN          ! vector opt., forced unroll
@@ -640,8 +747,8 @@ CONTAINS
             ENDIF
 
             IF( lk_vvl ) THEN
-               ub_b (:,:) = ub_b(:,:) * umask(:,:,1) / ( hu_0(:,:) + sshu_b(:,:) + 1.e0 - umask(:,:,1) )
-               vb_b (:,:) = vb_b(:,:) * vmask(:,:,1) / ( hv_0(:,:) + sshv_b(:,:) + 1.e0 - vmask(:,:,1) )
+               ub_b (:,:) = ub_b(:,:) * umask(:,:,1) / ( hu_0(:,:) + sshu_b(:,:) + 1._wp - umask(:,:,1) )
+               vb_b (:,:) = vb_b(:,:) * vmask(:,:,1) / ( hv_0(:,:) + sshv_b(:,:) + 1._wp - vmask(:,:,1) )
             ELSE
                ub_b(:,:) = ub_b(:,:) * hur(:,:)
                vb_b(:,:) = vb_b(:,:) * hvr(:,:)

@@ -14,6 +14,7 @@ MODULE domcfg
    USE phycst          ! physical constants
    USE in_out_manager  ! I/O manager
    USE lib_mpp         ! distributed memory computing library
+   USE timing          ! Timing
 
    IMPLICIT NONE
    PRIVATE
@@ -22,7 +23,7 @@ MODULE domcfg
 
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.2 , LODYC-IPSL  (2009)
-   !! $Id: domcfg.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -34,7 +35,9 @@ CONTAINS
       !! ** Purpose :   set the domain configuration
       !!
       !!----------------------------------------------------------------------
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('dom_cfg')
+      !
       IF(lwp) THEN                   ! Control print
          WRITE(numout,*)
          WRITE(numout,*) 'dom_cfg : set the ocean configuration'
@@ -55,6 +58,8 @@ CONTAINS
       IF( jperio <  0 .OR. jperio > 6 )   CALL ctl_stop( 'jperio is out of range' )
       !
       CALL dom_glo                   ! global domain versus zoom and/or local domain
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('dom_cfg')
       !
    END SUBROUTINE dom_cfg
 

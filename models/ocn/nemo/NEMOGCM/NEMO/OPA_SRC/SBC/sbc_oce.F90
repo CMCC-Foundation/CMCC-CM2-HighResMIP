@@ -32,6 +32,7 @@ MODULE sbc_oce
    LOGICAL , PUBLIC ::   ln_flx      = .FALSE.   !: flux      formulation
    LOGICAL , PUBLIC ::   ln_blk_clio = .FALSE.   !: CLIO bulk formulation
    LOGICAL , PUBLIC ::   ln_blk_core = .FALSE.   !: CORE bulk formulation
+   LOGICAL , PUBLIC ::   ln_blk_mfs  = .FALSE.   !: MFS  bulk formulation
    LOGICAL , PUBLIC ::   ln_cpl      = .FALSE.   !: coupled   formulation (overwritten by key_sbc_coupled )
 !#if defined CCSMCOUPLED
 !   LOGICAL , PUBLIC ::   ln_cesm     = .FALSE.   !: NCAR CESM coupled formulation
@@ -48,6 +49,7 @@ MODULE sbc_oce
    !                                             !:  = 0 unchecked 
    !                                             !:  = 1 global mean of e-p-r set to zero at each nn_fsbc time step
    !                                             !:  = 2 annual global mean of e-p-r set to zero
+   LOGICAL , PUBLIC ::   ln_cdgw     = .FALSE.   !: true if neutral drag coefficient read from wave model
 
    !!----------------------------------------------------------------------
    !!              Ocean Surface Boundary Condition fields
@@ -92,7 +94,7 @@ MODULE sbc_oce
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 4.0 , NEMO Consortium (2011)
-   !! $Id: sbc_oce.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS

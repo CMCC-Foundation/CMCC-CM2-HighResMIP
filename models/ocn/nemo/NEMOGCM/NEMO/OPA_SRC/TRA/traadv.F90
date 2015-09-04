@@ -26,6 +26,9 @@ MODULE traadv
    USE iom             ! I/O module
    USE prtctl          ! Print control
    USE lib_mpp         ! MPP library
+   USE wrk_nemo        ! Memory Allocation
+   USE timing          ! Timing
+
 
    IMPLICIT NONE
    PRIVATE
@@ -48,7 +51,7 @@ MODULE traadv
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: traadv.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -61,17 +64,16 @@ CONTAINS
       !!
       !! ** Method  : - Update (ua,va) with the advection term following nadv
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zun => wrk_3d_1 , zvn => wrk_3d_2 , zwn => wrk_3d_3   ! 3D workspace
       !
       INTEGER, INTENT( in ) ::   kt   ! ocean time-step index
       !
       INTEGER ::   jk   ! dummy loop index
+      REAL(wp), POINTER, DIMENSION(:,:,:) :: zun, zvn, zwn
       !!----------------------------------------------------------------------
       !
-      IF( wrk_in_use(3, 1,2,3) ) THEN
-         CALL ctl_stop('tra_adv: requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
+      IF( nn_timing == 1 )  CALL timing_start('tra_adv')
+      !
+      CALL wrk_alloc( jpi, jpj, jpk, zun, zvn, zwn )
       !                                          ! set time step
       IF( neuler == 0 .AND. kt == nit000 ) THEN     ! at nit000
          r2dtra(:) =  rdttra(:)                          ! = rdtra (restarting with Euler time stepping)
@@ -92,37 +94,37 @@ CONTAINS
       zwn(:,:,jpk) = 0._wp                                                     ! no transport trough the bottom
       !
       IF( lk_traldf_eiv .AND. .NOT. ln_traldf_grif )   &
-         &              CALL tra_adv_eiv( kt, zun, zvn, zwn, 'TRA' )          ! add the eiv transport (if necessary)
+         &              CALL tra_adv_eiv( kt, nit000, zun, zvn, zwn, 'TRA' )    ! add the eiv transport (if necessary)
       !
       CALL iom_put( "uocetr_eff", zun )                                         ! output effective transport      
       CALL iom_put( "vocetr_eff", zvn )
       CALL iom_put( "wocetr_eff", zwn )
 
       SELECT CASE ( nadv )                            !==  compute advection trend and add it to general trend  ==!
-      CASE ( 1 )   ;    CALL tra_adv_cen2  ( kt, 'TRA',         zun, zvn, zwn, tsb, tsn, tsa, jpts )   !  2nd order centered
-      CASE ( 2 )   ;    CALL tra_adv_tvd   ( kt, 'TRA', r2dtra, zun, zvn, zwn, tsb, tsn, tsa, jpts )   !  TVD 
-      CASE ( 3 )   ;    CALL tra_adv_muscl ( kt, 'TRA', r2dtra, zun, zvn, zwn, tsb,      tsa, jpts )   !  MUSCL 
-      CASE ( 4 )   ;    CALL tra_adv_muscl2( kt, 'TRA', r2dtra, zun, zvn, zwn, tsb, tsn, tsa, jpts )   !  MUSCL2 
-      CASE ( 5 )   ;    CALL tra_adv_ubs   ( kt, 'TRA', r2dtra, zun, zvn, zwn, tsb, tsn, tsa, jpts )   !  UBS 
-      CASE ( 6 )   ;    CALL tra_adv_qck   ( kt, 'TRA', r2dtra, zun, zvn, zwn, tsb, tsn, tsa, jpts )   !  QUICKEST 
+      CASE ( 1 )   ;    CALL tra_adv_cen2  ( kt, nit000, 'TRA',         zun, zvn, zwn, tsb, tsn, tsa, jpts )   !  2nd order centered
+      CASE ( 2 )   ;    CALL tra_adv_tvd   ( kt, nit000, 'TRA', r2dtra, zun, zvn, zwn, tsb, tsn, tsa, jpts )   !  TVD 
+      CASE ( 3 )   ;    CALL tra_adv_muscl ( kt, nit000, 'TRA', r2dtra, zun, zvn, zwn, tsb,      tsa, jpts )   !  MUSCL 
+      CASE ( 4 )   ;    CALL tra_adv_muscl2( kt, nit000, 'TRA', r2dtra, zun, zvn, zwn, tsb, tsn, tsa, jpts )   !  MUSCL2 
+      CASE ( 5 )   ;    CALL tra_adv_ubs   ( kt, nit000, 'TRA', r2dtra, zun, zvn, zwn, tsb, tsn, tsa, jpts )   !  UBS 
+      CASE ( 6 )   ;    CALL tra_adv_qck   ( kt, nit000, 'TRA', r2dtra, zun, zvn, zwn, tsb, tsn, tsa, jpts )   !  QUICKEST 
       !
       CASE (-1 )                                      !==  esopa: test all possibility with control print  ==!
-         CALL tra_adv_cen2  ( kt, 'TRA',         zun, zvn, zwn, tsb, tsn, tsa, jpts )          
+         CALL tra_adv_cen2  ( kt, nit000, 'TRA',         zun, zvn, zwn, tsb, tsn, tsa, jpts )          
          CALL prt_ctl( tab3d_1=tsa(:,:,:,jp_tem), clinfo1=' adv0 - Ta: ', mask1=tmask,               &
             &          tab3d_2=tsa(:,:,:,jp_sal), clinfo2=       ' Sa: ', mask2=tmask, clinfo3='tra' )
-         CALL tra_adv_tvd   ( kt, 'TRA', r2dtra, zun, zvn, zwn, tsb, tsn, tsa, jpts )          
+         CALL tra_adv_tvd   ( kt, nit000, 'TRA', r2dtra, zun, zvn, zwn, tsb, tsn, tsa, jpts )          
          CALL prt_ctl( tab3d_1=tsa(:,:,:,jp_tem), clinfo1=' adv1 - Ta: ', mask1=tmask,               &
             &          tab3d_2=tsa(:,:,:,jp_sal), clinfo2=       ' Sa: ', mask2=tmask, clinfo3='tra' )
-         CALL tra_adv_muscl ( kt, 'TRA', r2dtra, zun, zvn, zwn, tsb,      tsa, jpts )          
+         CALL tra_adv_muscl ( kt, nit000, 'TRA', r2dtra, zun, zvn, zwn, tsb,      tsa, jpts )          
          CALL prt_ctl( tab3d_1=tsa(:,:,:,jp_tem), clinfo1=' adv3 - Ta: ', mask1=tmask,               &
             &          tab3d_2=tsa(:,:,:,jp_sal), clinfo2=       ' Sa: ', mask2=tmask, clinfo3='tra' )
-         CALL tra_adv_muscl2( kt, 'TRA', r2dtra, zun, zvn, zwn, tsb, tsn, tsa, jpts )          
+         CALL tra_adv_muscl2( kt, nit000, 'TRA', r2dtra, zun, zvn, zwn, tsb, tsn, tsa, jpts )          
          CALL prt_ctl( tab3d_1=tsa(:,:,:,jp_tem), clinfo1=' adv4 - Ta: ', mask1=tmask,               &
             &          tab3d_2=tsa(:,:,:,jp_sal), clinfo2=       ' Sa: ', mask2=tmask, clinfo3='tra' )
-         CALL tra_adv_ubs   ( kt, 'TRA', r2dtra, zun, zvn, zwn, tsb, tsn, tsa, jpts )          
+         CALL tra_adv_ubs   ( kt, nit000, 'TRA', r2dtra, zun, zvn, zwn, tsb, tsn, tsa, jpts )          
          CALL prt_ctl( tab3d_1=tsa(:,:,:,jp_tem), clinfo1=' adv5 - Ta: ', mask1=tmask,               &
             &          tab3d_2=tsa(:,:,:,jp_sal), clinfo2=       ' Sa: ', mask2=tmask, clinfo3='tra' )
-         CALL tra_adv_qck   ( kt, 'TRA', r2dtra, zun, zvn, zwn, tsb, tsn, tsa, jpts )          
+         CALL tra_adv_qck   ( kt, nit000, 'TRA', r2dtra, zun, zvn, zwn, tsb, tsn, tsa, jpts )          
          CALL prt_ctl( tab3d_1=tsa(:,:,:,jp_tem), clinfo1=' adv6 - Ta: ', mask1=tmask,               &
             &          tab3d_2=tsa(:,:,:,jp_sal), clinfo2=       ' Sa: ', mask2=tmask, clinfo3='tra' )
       END SELECT
@@ -131,8 +133,10 @@ CONTAINS
       IF(ln_ctl)   CALL prt_ctl( tab3d_1=tsa(:,:,:,jp_tem), clinfo1=' adv  - Ta: ', mask1=tmask,               &
          &                       tab3d_2=tsa(:,:,:,jp_sal), clinfo2=       ' Sa: ', mask2=tmask, clinfo3='tra' )
       !
-      IF( wrk_not_released(3,1,2,3) )   CALL ctl_stop('tra_adv: failed to release workspace arrays')
+      IF( nn_timing == 1 )  CALL timing_stop('tra_adv')
       !
+      CALL wrk_dealloc( jpi, jpj, jpk, zun, zvn, zwn )
+      !                                          
    END SUBROUTINE tra_adv
 
 

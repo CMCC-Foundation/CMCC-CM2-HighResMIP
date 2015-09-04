@@ -35,18 +35,18 @@ MODULE tranxt
    USE phycst
    USE obc_oce
    USE obctra          ! open boundary condition (obc_tra routine)
-   USE bdy_par         ! Unstructured open boundary condition (bdy_tra_frs routine)
-   USE bdytra          ! Unstructured open boundary condition (bdy_tra_frs routine)
+   USE bdy_oce
+   USE bdytra          ! open boundary condition (bdy_tra routine)
    USE in_out_manager  ! I/O manager
    USE lbclnk          ! ocean lateral boundary conditions (or mpp link)
    USE prtctl          ! Print control
    USE traqsr          ! penetrative solar radiation (needed for nksr)
-   USE traswp          ! swap array
-   USE obc_oce 
 #if defined key_agrif
    USE agrif_opa_update
    USE agrif_opa_interp
 #endif
+   USE wrk_nemo        ! Memory allocation
+   USE timing          ! Timing
 
    IMPLICIT NONE
    PRIVATE
@@ -61,7 +61,7 @@ MODULE tranxt
 #  include "domzgr_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO-Consortium (2010) 
-   !! $Id: tranxt.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -80,8 +80,7 @@ CONTAINS
       !!
       !!              - Apply lateral boundary conditions on (ta,sa) 
       !!             at the local domain   boundaries through lbc_lnk call, 
-      !!             at the radiative open boundaries (lk_obc=T), 
-      !!             at the relaxed   open boundaries (lk_bdy=T), and
+      !!             at the one-way open boundaries (lk_obc=T), 
       !!             at the AGRIF zoom     boundaries (lk_agrif=T)
       !!
       !!              - Update lateral boundary conditions on AGRIF children
@@ -94,9 +93,11 @@ CONTAINS
       !!
       INTEGER  ::   jk, jn    ! dummy loop indices
       REAL(wp) ::   zfact     ! local scalars
-      REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  ztrdt, ztrds
+      REAL(wp), POINTER, DIMENSION(:,:,:) ::  ztrdt, ztrds
       !!----------------------------------------------------------------------
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start( 'tra_nxt')
+      !
       IF( kt == nit000 ) THEN
          IF(lwp) WRITE(numout,*)
          IF(lwp) WRITE(numout,*) 'tra_nxt : achieve the time stepping by Asselin filter and array swap'
@@ -110,22 +111,14 @@ CONTAINS
       CALL lbc_lnk( tsa(:,:,:,jp_tem), 'T', 1. )      ! local domain boundaries  (T-point, unchanged sign)
       CALL lbc_lnk( tsa(:,:,:,jp_sal), 'T', 1. )
       !
-#if defined key_obc || defined key_bdy || defined key_agrif
-      CALL tra_unswap
-#endif
-
 #if defined key_obc 
       IF( lk_obc )   CALL obc_tra( kt )  ! OBC open boundaries
 #endif
 #if defined key_bdy 
-      IF( lk_bdy )   CALL bdy_tra_frs( kt )  ! BDY open boundaries
+      IF( lk_bdy )   CALL bdy_tra( kt )  ! BDY open boundaries
 #endif
 #if defined key_agrif
       CALL Agrif_tra                     ! AGRIF zoom boundaries
-#endif
-
-#if defined key_obc || defined key_bdy || defined key_agrif
-      CALL tra_swap
 #endif
  
       ! set time step size (Euler/Leapfrog)
@@ -135,8 +128,9 @@ CONTAINS
 
       ! trends computation initialisation
       IF( l_trdtra )   THEN                    ! store now fields before applying the Asselin filter
-         ALLOCATE( ztrdt(jpi,jpj,jpk) )   ;    ztrdt(:,:,:) = tsn(:,:,:,jp_tem) 
-         ALLOCATE( ztrds(jpi,jpj,jpk) )   ;    ztrds(:,:,:) = tsn(:,:,:,jp_sal)
+         CALL wrk_alloc( jpi, jpj, jpk, ztrdt, ztrds )
+         ztrdt(:,:,:) = tsn(:,:,:,jp_tem) 
+         ztrds(:,:,:) = tsn(:,:,:,jp_sal)
       ENDIF
 
       IF( neuler == 0 .AND. kt == nit000 ) THEN       ! Euler time-stepping at first time-step (only swap)
@@ -147,16 +141,14 @@ CONTAINS
          END DO
       ELSE                                            ! Leap-Frog + Asselin filter time stepping
          !
-         IF( lk_vvl )  THEN   ;   CALL tra_nxt_vvl( kt, 'TRA', tsb, tsn, tsa, jpts )  ! variable volume level (vvl)     
-         ELSE                 ;   CALL tra_nxt_fix( kt, 'TRA', tsb, tsn, tsa, jpts )  ! fixed    volume level 
+         IF( lk_vvl )  THEN   ;   CALL tra_nxt_vvl( kt, nit000, 'TRA', tsb, tsn, tsa, jpts )  ! variable volume level (vvl)     
+         ELSE                 ;   CALL tra_nxt_fix( kt, nit000, 'TRA', tsb, tsn, tsa, jpts )  ! fixed    volume level 
          ENDIF
       ENDIF 
       !
 #if defined key_agrif
       ! Update tracer at AGRIF zoom boundaries
-      CALL tra_unswap
       IF( .NOT.Agrif_Root() )    CALL Agrif_Update_Tra( kt )      ! children only
-      CALL tra_swap
 #endif      
       !
       ! trends computation
@@ -168,17 +160,20 @@ CONTAINS
          END DO
          CALL trd_tra( kt, 'TRA', jp_tem, jptra_trd_atf, ztrdt )
          CALL trd_tra( kt, 'TRA', jp_sal, jptra_trd_atf, ztrds )
-         DEALLOCATE( ztrdt )      ;     DEALLOCATE( ztrds ) 
+         CALL wrk_dealloc( jpi, jpj, jpk, ztrdt, ztrds )
       END IF
       !
       !                        ! control print
       IF(ln_ctl)   CALL prt_ctl( tab3d_1=tsn(:,:,:,jp_tem), clinfo1=' nxt  - Tn: ', mask1=tmask,   &
          &                       tab3d_2=tsn(:,:,:,jp_sal), clinfo2=       ' Sn: ', mask2=tmask )
       !
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('tra_nxt')
+      !
    END SUBROUTINE tra_nxt
 
 
-   SUBROUTINE tra_nxt_fix( kt, cdtype, ptb, ptn, pta, kjpt )
+   SUBROUTINE tra_nxt_fix( kt, kit000, cdtype, ptb, ptn, pta, kjpt )
       !!----------------------------------------------------------------------
       !!                   ***  ROUTINE tra_nxt_fix  ***
       !!
@@ -202,6 +197,7 @@ CONTAINS
       !!              - (ta,sa) time averaged (t,s)   (ln_dynhpg_imp = T)
       !!----------------------------------------------------------------------
       INTEGER         , INTENT(in   )                               ::   kt       ! ocean time-step index
+      INTEGER         , INTENT(in   )                               ::   kit000   ! first time step index
       CHARACTER(len=3), INTENT(in   )                               ::   cdtype   ! =TRA or TRC (tracer indicator)
       INTEGER         , INTENT(in   )                               ::   kjpt     ! number of tracers
       REAL(wp)        , INTENT(inout), DIMENSION(jpi,jpj,jpk,kjpt)  ::   ptb      ! before tracer fields
@@ -213,9 +209,9 @@ CONTAINS
       REAL(wp) ::   ztn, ztd         ! local scalars
       !!----------------------------------------------------------------------
 
-      IF( kt == nit000 )  THEN
+      IF( kt == kit000 )  THEN
          IF(lwp) WRITE(numout,*)
-         IF(lwp) WRITE(numout,*) 'tra_nxt_fix : time stepping'
+         IF(lwp) WRITE(numout,*) 'tra_nxt_fix : time stepping', cdtype
          IF(lwp) WRITE(numout,*) '~~~~~~~~~~~'
       ENDIF
       !
@@ -244,7 +240,7 @@ CONTAINS
    END SUBROUTINE tra_nxt_fix
 
 
-   SUBROUTINE tra_nxt_vvl( kt, cdtype, ptb, ptn, pta, kjpt )
+   SUBROUTINE tra_nxt_vvl( kt, kit000, cdtype, ptb, ptn, pta, kjpt )
       !!----------------------------------------------------------------------
       !!                   ***  ROUTINE tra_nxt_vvl  ***
       !!
@@ -269,6 +265,7 @@ CONTAINS
       !!              - (ta,sa) time averaged (t,s)   (ln_dynhpg_imp = T)
       !!----------------------------------------------------------------------
       INTEGER         , INTENT(in   )                               ::   kt       ! ocean time-step index
+      INTEGER         , INTENT(in   )                               ::   kit000   ! first time step index
       CHARACTER(len=3), INTENT(in   )                               ::   cdtype   ! =TRA or TRC (tracer indicator)
       INTEGER         , INTENT(in   )                               ::   kjpt     ! number of tracers
       REAL(wp)        , INTENT(inout), DIMENSION(jpi,jpj,jpk,kjpt)  ::   ptb      ! before tracer fields
@@ -280,10 +277,10 @@ CONTAINS
       REAL(wp) ::   zfact1, ztc_a , ztc_n , ztc_b , ztc_f , ztc_d    ! local scalar
       REAL(wp) ::   zfact2, ze3t_b, ze3t_n, ze3t_a, ze3t_f, ze3t_d   !   -      -
       !!----------------------------------------------------------------------
-
-      IF( kt == nit000 ) THEN
+      !
+      IF( kt == kit000 )  THEN
          IF(lwp) WRITE(numout,*)
-         IF(lwp) WRITE(numout,*) 'tra_nxt_vvl : time stepping'
+         IF(lwp) WRITE(numout,*) 'tra_nxt_vvl : time stepping', cdtype
          IF(lwp) WRITE(numout,*) '~~~~~~~~~~~'
       ENDIF
       !

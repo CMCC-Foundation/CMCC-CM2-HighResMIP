@@ -21,6 +21,7 @@ MODULE diafwb
    USE zdf_oce         ! ocean vertical physics
    USE in_out_manager  ! I/O manager
    USE lib_mpp         ! distributed memory computing library
+   USE timing          ! preformance summary
 
    IMPLICIT NONE
    PRIVATE
@@ -38,7 +39,7 @@ MODULE diafwb
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: diafwb.F90 2528 2010-12-27 17:33:53Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 
@@ -60,6 +61,7 @@ CONTAINS
       REAL(wp) ::  zt, zs, zu  
       REAL(wp) ::  zsm0, zfwfnew
       !!----------------------------------------------------------------------
+      IF( nn_timing == 1 )   CALL timing_start('dia_fwb')
 
       ! Mean global salinity
       zsm0 = 34.72654
@@ -79,7 +81,7 @@ CONTAINS
             DO jj = 2, jpjm1
                DO ji = fs_2, fs_jpim1   ! vector opt.
                   zwei  = e1t(ji,jj) * e2t(ji,jj) * fse3t(ji,jj,jk) * tmask(ji,jj,jk) * tmask_i(ji,jj)
-                  a_salb = a_salb + ( sb(ji,jj,jk) - zsm0 ) * zwei
+                  a_salb = a_salb + ( tsb(ji,jj,jk,jp_sal) - zsm0 ) * zwei
                END DO
             END DO
          END DO
@@ -105,7 +107,7 @@ CONTAINS
             DO jj = 2, jpjm1
                DO ji = fs_2, fs_jpim1   ! vector opt.
                   zwei  = e1t(ji,jj) * e2t(ji,jj) * fse3t(ji,jj,jk) * tmask(ji,jj,jk) * tmask_i(ji,jj)
-                  a_saln = a_saln + ( sn(ji,jj,jk) - zsm0 ) * zwei
+                  a_saln = a_saln + ( tsn(ji,jj,jk,jp_sal) - zsm0 ) * zwei
                   zvol  = zvol  + zwei
                END DO
             END DO
@@ -176,8 +178,8 @@ CONTAINS
          DO ji = mi0(ii0), MIN(mi1(ii1),jpim1)
             DO jj = mj0(ij0), mj1(ij1)
                DO jk = 1, jpk 
-                  zt = 0.5 * ( tn(ji,jj,jk) + tn(ji+1,jj,jk) )
-                  zs = 0.5 * ( sn(ji,jj,jk) + sn(ji+1,jj,jk) )
+                  zt = 0.5 * ( tsn(ji,jj,jk,jp_tem) + tsn(ji+1,jj,jk,jp_tem) )
+                  zs = 0.5 * ( tsn(ji,jj,jk,jp_sal) + tsn(ji+1,jj,jk,jp_sal) )
                   zu = un(ji,jj,jk) * fse3t(ji,jj,jk) * e2u(ji,jj) * tmask_i(ji,jj)
 
                   IF( un(ji,jj,jk) > 0.e0 ) THEN 
@@ -223,8 +225,8 @@ CONTAINS
          DO ji = mi0(ii0), MIN(mi1(ii1),jpim1)
             DO jj = mj0(ij0), mj1(ij1)
                DO jk = 1, jpk 
-                  zt = 0.5 * ( tn(ji,jj,jk) + tn(ji+1,jj,jk) )
-                  zs = 0.5 * ( sn(ji,jj,jk) + sn(ji+1,jj,jk) )
+                  zt = 0.5 * ( tsn(ji,jj,jk,jp_tem) + tsn(ji+1,jj,jk,jp_tem) )
+                  zs = 0.5 * ( tsn(ji,jj,jk,jp_sal) + tsn(ji+1,jj,jk,jp_sal) )
                   zu = un(ji,jj,jk) * fse3t(ji,jj,jk) * e2u(ji,jj) * tmask_i(ji,jj)
                   
                   IF( un(ji,jj,jk) > 0.e0 ) THEN 
@@ -270,8 +272,8 @@ CONTAINS
          DO ji = mi0(ii0), MIN(mi1(ii1),jpim1)
             DO jj = mj0(ij0), mj1(ij1)
                DO jk = 1, jpk 
-                  zt = 0.5 * ( tn(ji,jj,jk) + tn(ji+1,jj,jk) )
-                  zs = 0.5 * ( sn(ji,jj,jk) + sn(ji+1,jj,jk) )
+                  zt = 0.5 * ( tsn(ji,jj,jk,jp_tem) + tsn(ji+1,jj,jk,jp_tem) )
+                  zs = 0.5 * ( tsn(ji,jj,jk,jp_sal) + tsn(ji+1,jj,jk,jp_sal) )
                   zu = un(ji,jj,jk) * fse3t(ji,jj,jk) * e2u(ji,jj) * tmask_i(ji,jj)
                   
                   IF( un(ji,jj,jk) > 0.e0 ) THEN 
@@ -317,8 +319,8 @@ CONTAINS
          DO ji = mi0(ii0), MIN(mi1(ii1),jpim1)
             DO jj = mj0(ij0), mj1(ij1)
                DO jk = 1, jpk
-                  zt = 0.5 * ( tn(ji,jj,jk) + tn(ji+1,jj,jk) )
-                  zs = 0.5 * ( sn(ji,jj,jk) + sn(ji+1,jj,jk) )
+                  zt = 0.5 * ( tsn(ji,jj,jk,jp_tem) + tsn(ji+1,jj,jk,jp_tem) )
+                  zs = 0.5 * ( tsn(ji,jj,jk,jp_sal) + tsn(ji+1,jj,jk,jp_sal) )
                   zu = un(ji,jj,jk) * fse3t(ji,jj,jk) * e2u(ji,jj) * tmask_i(ji,jj)
                   
                   IF( un(ji,jj,jk) > 0.e0 ) THEN 
@@ -436,6 +438,8 @@ CONTAINS
          WRITE(inum,9030) '  S sortant (psu)   :', a_salo(4)
          CLOSE(inum)
       ENDIF
+
+      IF( nn_timing == 1 )   CALL timing_start('dia_fwb')
 
  9005 FORMAT(1X,A,ES24.16)
  9010 FORMAT(1X,A,ES12.5,A,F10.5,A)

@@ -21,6 +21,9 @@ MODULE dynzdf_exp
    USE lib_mpp         ! MPP library
    USE in_out_manager  ! I/O manager
    USE lib_mpp         ! MPP library
+   USE wrk_nemo        ! Memory Allocation
+   USE timing          ! Timing
+
 
    IMPLICIT NONE
    PRIVATE
@@ -32,7 +35,7 @@ MODULE dynzdf_exp
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: dynzdf_exp.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -53,21 +56,18 @@ CONTAINS
       !!
       !! ** Action : - Update (ua,va) with the vertical diffusive trend
       !!---------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE oce     , ONLY:   zwx => ta       , zwy => sa         ! (ta,sa) used as 3D workspace
-      USE wrk_nemo, ONLY:   zwz => wrk_3d_1 , zww => wrk_3d_2   ! 3D workspace
-      !
       INTEGER , INTENT(in) ::   kt     ! ocean time-step index
       REAL(wp), INTENT(in) ::   p2dt   ! time-step 
       !
       INTEGER  ::   ji, jj, jk, jl   ! dummy loop indices
       REAL(wp) ::   zrau0r, zlavmr, zua, zva   ! local scalars
+      REAL(wp), POINTER, DIMENSION(:,:,:) ::  zwx, zwy, zwz, zww
       !!----------------------------------------------------------------------
-
-      IF( wrk_in_use(3, 1,2) ) THEN
-         CALL ctl_stop('dyn_zdf_exp: requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('dyn_zdf_exp')
+      !
+      CALL wrk_alloc( jpi,jpj,jpk, zwx, zwy, zwz, zww ) 
+      !
       IF( kt == nit000 .AND. lwp ) THEN
          WRITE(numout,*)
          WRITE(numout,*) 'dyn_zdf_exp : vertical momentum diffusion - explicit operator'
@@ -119,7 +119,9 @@ CONTAINS
          !
       END DO                           ! End of time splitting
       !
-      IF( wrk_not_released(3, 1,2) )   CALL ctl_stop('dyn_zdf_exp: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi,jpj,jpk, zwx, zwy, zwz, zww ) 
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('dyn_zdf_exp')
       !
    END SUBROUTINE dyn_zdf_exp
 

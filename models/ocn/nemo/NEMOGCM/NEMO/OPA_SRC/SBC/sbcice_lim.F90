@@ -49,6 +49,7 @@ MODULE sbcice_lim
    USE c1d             ! 1D vertical configuration
    USE lbclnk          ! lateral boundary condition - MPP link
    USE lib_mpp         ! MPP library
+   USE wrk_nemo        ! work arrays
    USE iom             ! I/O manager library
    USE in_out_manager  ! I/O manager
    USE prtctl          ! Print control
@@ -63,7 +64,7 @@ MODULE sbcice_lim
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 4.0 , UCL NEMO Consortium (2011)
-   !! $Id: sbcice_lim.F90 2777 2011-06-07 09:55:02Z smasson $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -88,9 +89,6 @@ CONTAINS
       !!              - update all sbc variables below sea-ice:
       !!                utau, vtau, taum, wndm, qns , qsr, emp , emps
       !!---------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   wrk_3d_1, wrk_3d_2   ! for albedo of ice under overcast/clear sky
-      !!
       INTEGER, INTENT(in) ::   kt      ! ocean time step
       INTEGER, INTENT(in) ::   kblk    ! type of bulk (=3 CLIO, =4 CORE)
       !!
@@ -99,10 +97,7 @@ CONTAINS
       REAL(wp), POINTER, DIMENSION(:,:,:)   ::   zalb_ice_os, zalb_ice_cs  ! albedo of the ice under overcast/clear sky
       !!----------------------------------------------------------------------
 
-      IF( wrk_in_use(3, 1,2) ) THEN
-         CALL ctl_stop( 'sbc_ice_lim: requested workspace arrays are unavailable' )   ;   RETURN
-      ENDIF
-      zalb_ice_os => wrk_3d_1(:,:,1:jpl)   ;    zalb_ice_cs => wrk_3d_2(:,:,1:jpl)
+      CALL wrk_alloc( jpi,jpj,jpl, zalb_ice_os, zalb_ice_cs )
 
       IF( kt == nit000 ) THEN
          IF(lwp) WRITE(numout,*)
@@ -252,7 +247,7 @@ CONTAINS
       
 !!gm   remark, the ocean-ice stress is not saved in ice diag call above .....  find a solution!!!
       !
-      IF( wrk_not_released(3, 1,2) )   CALL ctl_stop( 'sbc_ice_lim: failed to release workspace arrays' )
+      CALL wrk_dealloc( jpi,jpj,jpl, zalb_ice_os, zalb_ice_cs )
       !
    END SUBROUTINE sbc_ice_lim
 

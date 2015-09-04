@@ -30,6 +30,8 @@ MODULE trasbc
 #endif
    USE iom
    USE lbclnk          ! ocean lateral boundary conditions (or mpp link)
+   USE wrk_nemo        ! Memory Allocation
+   USE timing          ! Timing
 
    IMPLICIT NONE
    PRIVATE
@@ -41,7 +43,7 @@ MODULE trasbc
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: trasbc.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -110,26 +112,29 @@ CONTAINS
       !!
       INTEGER  ::   ji, jj, jk, jn           ! dummy loop indices  
       REAL(wp) ::   zfact, z1_e3t, zsrau, zdep
-      REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  ztrdt, ztrds
+      REAL(wp), POINTER, DIMENSION(:,:,:) ::  ztrdt, ztrds
       !!----------------------------------------------------------------------
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('tra_sbc')
+      !
       IF( kt == nit000 ) THEN
          IF(lwp) WRITE(numout,*)
          IF(lwp) WRITE(numout,*) 'tra_sbc : TRAcer Surface Boundary Condition'
          IF(lwp) WRITE(numout,*) '~~~~~~~ '
       ENDIF
 
-      zsrau = 1._wp / rau0             ! initialization
+      zsrau = 1. / rau0             ! initialization
 
       IF( l_trdtra )   THEN                    !* Save ta and sa trends
-         ALLOCATE( ztrdt(jpi,jpj,jpk) )   ;    ztrdt(:,:,:) = tsa(:,:,:,jp_tem)
-         ALLOCATE( ztrds(jpi,jpj,jpk) )   ;    ztrds(:,:,:) = tsa(:,:,:,jp_sal)
+         CALL wrk_alloc( jpi, jpj, jpk, ztrdt, ztrds ) 
+         ztrdt(:,:,:) = tsa(:,:,:,jp_tem)
+         ztrds(:,:,:) = tsa(:,:,:,jp_sal)
       ENDIF
 
 !!gm      IF( .NOT.ln_traqsr )   qsr(:,:) = 0.e0   ! no solar radiation penetration
       IF( .NOT.ln_traqsr ) THEN     ! no solar radiation penetration
          qns(:,:) = qns(:,:) + qsr(:,:)      ! total heat flux in qns
-         qsr(:,:) = 0.e0_wp                  ! qsr set to zero
+         qsr(:,:) = 0.e0                     ! qsr set to zero
       ENDIF
 
       !----------------------------------------
@@ -143,16 +148,16 @@ CONTAINS
          IF( ln_rstart .AND.    &                     ! Restart: read in restart file
               & iom_varid( numror, 'sbc_hc_b', ldstop = .FALSE. ) > 0 ) THEN
             IF(lwp) WRITE(numout,*) '          nit000-1 surface tracer content forcing fields red in the restart file'
-            zfact = 0.5e0_wp
+            zfact = 0.5e0
             CALL iom_get( numror, jpdom_autoglo, 'sbc_hc_b', sbc_tsc_b(:,:,jp_tem) )   ! before heat content sbc trend
             CALL iom_get( numror, jpdom_autoglo, 'sbc_sc_b', sbc_tsc_b(:,:,jp_sal) )   ! before salt content sbc trend
          ELSE                                         ! No restart or restart not found: Euler forward time stepping
-            zfact = 1.e0_wp
-            sbc_tsc_b(:,:,:) = 0.e0_wp
+            zfact = 1.e0
+            sbc_tsc_b(:,:,:) = 0.e0
          ENDIF
       ELSE                                         ! Swap of forcing fields
          !                                         ! ----------------------
-         zfact = 0.5e0_wp
+         zfact = 0.5e0
          sbc_tsc_b(:,:,:) = sbc_tsc(:,:,:)
       ENDIF
       !                                          Compute now sbc tracer content fields
@@ -163,7 +168,7 @@ CONTAINS
                                                
       IF( lk_vvl ) THEN                            ! Variable Volume case
          DO jj = 1, jpj
-            DO ji = 1, jpi
+            DO ji = 1, jpi 
                ! temperature : heat flux + cooling/heating effet of EMP flux
                sbc_tsc(ji,jj,jp_tem) = ro0cpr * qns(ji,jj) - zsrau * emp(ji,jj) * tsn(ji,jj,1,jp_tem)
                ! concent./dilut. effect due to sea-ice melt/formation and (possibly) SSS restoration
@@ -215,12 +220,12 @@ CONTAINS
 #if defined CCSMCOUPLED
       IF( ln_rnf_cpl ) THEN       ! input of heat and salt due to river runoff 
 #else
-      IF( ln_rnf ) THEN           ! input of heat and salt due to river runoff 
+      IF( ln_rnf ) THEN         ! input of heat and salt due to river runoff 
 #endif
          zfact = 0.5_wp
          DO jj = 2, jpj 
             DO ji = fs_2, fs_jpim1
-               IF ( rnf(ji,jj) /= 0._wp ) THEN
+               IF( rnf(ji,jj) /= 0._wp ) THEN
                   zdep = zfact / h_rnf(ji,jj)
                   DO jk = 1, nk_rnf(ji,jj)
                                         tsa(ji,jj,jk,jp_tem) = tsa(ji,jj,jk,jp_tem)   &
@@ -231,20 +236,20 @@ CONTAINS
                ENDIF
             END DO  
          END DO  
-      ENDIF  
-!!gm  It should be useless
-!      CALL lbc_lnk( tsa(:,:,:,jp_tem), 'T', 1. )    ;    CALL lbc_lnk( tsa(:,:,:,jp_sal), 'T', 1. )
-
+      ENDIF
+ 
       IF( l_trdtra )   THEN                      ! save the horizontal diffusive trends for further diagnostics
          ztrdt(:,:,:) = tsa(:,:,:,jp_tem) - ztrdt(:,:,:)
          ztrds(:,:,:) = tsa(:,:,:,jp_sal) - ztrds(:,:,:)
          CALL trd_tra( kt, 'TRA', jp_tem, jptra_trd_nsr, ztrdt )
          CALL trd_tra( kt, 'TRA', jp_sal, jptra_trd_nsr, ztrds )
-         DEALLOCATE( ztrdt )      ;     DEALLOCATE( ztrds )
+         CALL wrk_dealloc( jpi, jpj, jpk, ztrdt, ztrds ) 
       ENDIF
       !
       IF(ln_ctl)   CALL prt_ctl( tab3d_1=tsa(:,:,:,jp_tem), clinfo1=' sbc  - Ta: ', mask1=tmask,   &
          &                       tab3d_2=tsa(:,:,:,jp_sal), clinfo2=       ' Sa: ', mask2=tmask, clinfo3='tra' )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('tra_sbc')
       !
    END SUBROUTINE tra_sbc
 

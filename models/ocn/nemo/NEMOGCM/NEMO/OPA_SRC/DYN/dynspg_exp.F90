@@ -20,13 +20,15 @@ MODULE dynspg_exp
    USE obc_oce         ! Lateral open boundary condition
    USE phycst          ! physical constants
    USE obc_par         ! open boundary condition parameters
-   USE obcdta          ! open boundary condition data     (obc_dta_bt routine)
+   USE obcdta          ! open boundary condition data     (bdy_dta_bt routine)
    USE in_out_manager  ! I/O manager
    USE lib_mpp         ! distributed memory computing library
    USE lbclnk          ! ocean lateral boundary conditions (or mpp link)
    USE prtctl          ! Print control
    USE iom             ! I/O library
    USE restart         ! only for lrst_oce
+   USE timing          ! Timing
+
 
    IMPLICIT NONE
    PRIVATE
@@ -38,7 +40,7 @@ MODULE dynspg_exp
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: dynspg_exp.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -64,7 +66,9 @@ CONTAINS
       !!
       INTEGER ::   ji, jj, jk   ! dummy loop indices
       !!----------------------------------------------------------------------
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('dyn_spg_exp')
+      !
       IF( kt == nit000 ) THEN
          IF(lwp) WRITE(numout,*)
          IF(lwp) WRITE(numout,*) 'dyn_spg_exp : surface pressure gradient trend'
@@ -98,6 +102,8 @@ CONTAINS
          END DO
          !
       ENDIF
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('dyn_spg_exp')
       !
    END SUBROUTINE dyn_spg_exp
 

@@ -13,7 +13,9 @@ MODULE solpcg
    USE lib_mpp         ! distributed memory computing
    USE lbclnk          ! ocean lateral boundary conditions (or mpp link)
    USE in_out_manager  ! I/O manager
-   USE lib_fortran
+   USE lib_fortran     ! Fortran routines library
+   USE wrk_nemo        ! Memory allocation
+   USE timing          ! Timing
 
    IMPLICIT NONE
    PRIVATE
@@ -24,7 +26,7 @@ MODULE solpcg
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: solpcg.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -82,8 +84,6 @@ CONTAINS
       !!   8.5  !  02-08  (G. Madec)  F90: Free form
       !!        !  08-01  (R. Benshila) mpp optimization
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zgcr => wrk_2d_1
       !!
       INTEGER, INTENT(inout) ::   kindic   ! solver indicator, < 0 if the conver-
       !                                    ! gence is not reached: the model is stopped in step
@@ -92,12 +92,13 @@ CONTAINS
       INTEGER  ::   ji, jj, jn   ! dummy loop indices
       REAL(wp) ::   zgcad        ! temporary scalars
       REAL(wp), DIMENSION(2) ::   zsum
+      REAL(wp), POINTER, DIMENSION(:,:) ::   zgcr
       !!----------------------------------------------------------------------
-      
-      IF( wrk_in_use(2, 1) )THEN
-         CALL ctl_stop('sol_pcg: requested workspace array is unavailable')   ;   RETURN
-      ENDIF
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('sol_pcg')
+      !
+      CALL wrk_alloc( jpi, jpj, zgcr )
+      !
       ! Initialization of the algorithm with standard PCG
       ! -------------------------------------------------
       zgcr = 0._wp
@@ -208,7 +209,9 @@ CONTAINS
           
       CALL lbc_lnk( gcx, c_solver_pt, 1. )      ! Output in gcx with lateral b.c. applied
       ! 
-      IF( wrk_not_released(2, 1) )   CALL ctl_stop('sol_pcg: failed to release workspace array')
+      CALL wrk_dealloc( jpi, jpj, zgcr )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('sol_pcg')
       !
    END SUBROUTINE sol_pcg
 

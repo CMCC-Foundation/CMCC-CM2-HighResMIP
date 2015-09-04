@@ -15,6 +15,8 @@ MODULE zdfmxl
    USE prtctl          ! Print control
    USE iom             ! I/O library
    USE lib_mpp         ! MPP library
+   USE wrk_nemo        ! work arrays
+   USE timing          ! Timing
    USE trc_oce, ONLY : lk_offline ! offline flag
 
    IMPLICIT NONE
@@ -31,7 +33,7 @@ MODULE zdfmxl
 #  include "domzgr_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 4.0 , NEMO Consortium (2011)
-   !! $Id: zdfmxl.F90 2758 2011-05-02 14:04:25Z cetlod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -40,6 +42,7 @@ CONTAINS
       !!----------------------------------------------------------------------
       !!               ***  FUNCTION zdf_mxl_alloc  ***
       !!----------------------------------------------------------------------
+      zdf_mxl_alloc = 0      ! set to zero if no array to be allocated
       IF( .NOT. ALLOCATED( nmln ) ) THEN
          ALLOCATE( nmln(jpi,jpj), hmld(jpi,jpj), hmlp(jpi,jpj), hmlpt(jpi,jpj), STAT= zdf_mxl_alloc )
          !
@@ -67,20 +70,18 @@ CONTAINS
       !!
       !! ** Action  :   nmln, hmld, hmlp, hmlpt
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   iwrk_in_use, iwrk_not_released
-      USE wrk_nemo, ONLY:   imld => iwrk_2d_1    ! 2D integer workspace
-      !!
       INTEGER, INTENT(in) ::   kt   ! ocean time-step index
       !!
       INTEGER  ::   ji, jj, jk          ! dummy loop indices
       INTEGER  ::   iikn, iiki          ! temporary integer within a do loop
+      INTEGER, POINTER, DIMENSION(:,:) ::   imld                ! temporary workspace
       REAL(wp) ::   zrho_c = 0.01_wp    ! density criterion for mixed layer depth
       REAL(wp) ::   zavt_c = 5.e-4_wp   ! Kz criterion for the turbocline depth
       !!----------------------------------------------------------------------
-
-      IF( iwrk_in_use(2, 1) ) THEN
-         CALL ctl_stop('zdf_mxl : requested workspace array unavailable')   ;   RETURN
-      ENDIF
+      !
+      IF( nn_timing == 1 )  CALL timing_start('zdf_mxl')
+      !
+      CALL wrk_alloc( jpi,jpj, imld )
 
       IF( kt == nit000 ) THEN
          IF(lwp) WRITE(numout,*)
@@ -118,7 +119,9 @@ CONTAINS
       
       IF(ln_ctl)   CALL prt_ctl( tab2d_1=REAL(nmln,wp), clinfo1=' nmln : ', tab2d_2=hmlp, clinfo2=' hmlp : ', ovlap=1 )
       !
-      IF( iwrk_not_released(2, 1) )   CALL ctl_stop('zdf_mxl: failed to release workspace array')
+      CALL wrk_dealloc( jpi,jpj, imld )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('zdf_mxl')
       !
    END SUBROUTINE zdf_mxl
 

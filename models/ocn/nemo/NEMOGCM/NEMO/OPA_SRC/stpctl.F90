@@ -28,7 +28,7 @@ MODULE stpctl
    PUBLIC stp_ctl           ! routine called by step.F90
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: stpctl.F90 2528 2010-12-27 17:33:53Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 
@@ -115,7 +115,7 @@ CONTAINS
 !      DO jj = jpjm1, 2, -1
          DO ji = 2, jpim1
 !         DO ji = jpim1, 2, -1
-            zsmin = sn(ji,jj,1)*tmask(ji,jj,1)
+            zsmin = tsn(ji,jj,jp_sal)*tmask(ji,jj,1)
             IF (zsmin < 0._wp .AND. zsmin > -0.25_wp) THEN
                nnp  = 1
                nji1 = MAX(ji-nnp,1)
@@ -123,7 +123,7 @@ CONTAINS
                njj1 = MAX(jj-nnp,1)
                njj2 = MIN(jj+nnp,jpj)
                nsp  = SUM(tmask(nji1:nji2,njj1:njj2,1))
-               zsm  = SUM(sn(nji1:nji2,njj1:njj2,1)*tmask(nji1:nji2,njj1:njj2,1))/nsp
+               zsm  = SUM(tsn(nji1:nji2,njj1:njj2,jp_sal)*tmask(nji1:nji2,njj1:njj2,1))/nsp
                if (zsm<0.0_wp) then
                  nnp  = 2
                  nji1 = MAX(ji-nnp,1)
@@ -131,7 +131,7 @@ CONTAINS
                  njj1 = MAX(jj-nnp,1)
                  njj2 = MIN(jj+nnp,jpj)
                  nsp  = SUM(tmask(nji1:nji2,njj1:njj2,1))
-                 zsm  = SUM(sn(nji1:nji2,njj1:njj2,1)*tmask(nji1:nji2,njj1:njj2,1))/nsp
+                 zsm  = SUM(tsn(nji1:nji2,njj1:njj2,jp_sal)*tmask(nji1:nji2,njj1:njj2,1))/nsp
                  if (zsm<0.0_wp) then
                    nnp  = 3
                    nji1 = MAX(ji-nnp,1)
@@ -139,19 +139,19 @@ CONTAINS
                    njj1 = MAX(jj-nnp,1)
                    njj2 = MIN(jj+nnp,jpj)
                    nsp  = SUM(tmask(nji1:nji2,njj1:njj2,1))
-                   zsm  = SUM(sn(nji1:nji2,njj1:njj2,1)*tmask(nji1:nji2,njj1:njj2,1))/nsp
+                   zsm  = SUM(tsn(nji1:nji2,njj1:njj2,jp_sal)*tmask(nji1:nji2,njj1:njj2,1))/nsp
                  end if
                end if
 !method 1               znsm = (zsm*nsp - zsmin)/(nsp-1.0_wp)
 !method 1               zns = (zsm - zsmin)/(nsp-1.0_wp)
-!method 1               sn(ji-1:ji+1,jj-1:jj+1,1) = (sn(ji-1:ji+1,jj-1:jj+1,1)-zns)*tmask(ji-1:ji+1,jj-1:jj+1,1)
+!method 1               tsn(ji-1:ji+1,jj-1:jj+1,jp_sal) = (tsn(ji-1:ji+1,jj-1:jj+1,jp_sal)-zns)*tmask(ji-1:ji+1,jj-1:jj+1,1)
                znsm = (zsm*nsp - zsmin)
                zns = 1.0_wp - (zsm-zsmin)/znsm
-               sn(nji1:nji2,njj1:njj2,1) = sn(nji1:nji2,njj1:njj2,1)* &
+               tsn(nji1:nji2,njj1:njj2,jp_sal) = tsn(nji1:nji2,njj1:njj2,jp_sal)* &
                                            tmask(nji1:nji2,njj1:njj2,1)*zns
-               sn(ji,jj,1) = zsm
+               tsn(ji,jj,jp_sal) = zsm
                !
-               znsm = SUM(sn(nji1:nji2,njj1:njj2,1)*tmask(nji1:nji2,njj1:njj2,1))/nsp
+               znsm = SUM(tsn(nji1:nji2,njj1:njj2,jp_sal)*tmask(nji1:nji2,njj1:njj2,1))/nsp
                !
                WRITE(numout,cform_war)
                WRITE(numout,*) 'stp_ctl : NEGATIVE SSS CORRECTED !'
@@ -170,22 +170,22 @@ CONTAINS
 
       !                                              !* Test minimum of salinity
       !                                              !  ------------------------
-      !! zsmin = MINVAL( sn(:,:,1), mask = tmask(:,:,1) == 1.e0 )  slower than the following loop on NEC SX5
+      !! zsmin = MINVAL( tsn(:,:,1,jp_sal), mask = tmask(:,:,1) == 1.e0 )  slower than the following loop on NEC SX5
       zsmin = 100.e0
       DO jj = 2, jpjm1
          DO ji = 1, jpi
-            IF( tmask(ji,jj,1) == 1) zsmin = MIN(zsmin,sn(ji,jj,1))
+            IF( tmask(ji,jj,1) == 1) zsmin = MIN(zsmin,tsn(ji,jj,1,jp_sal))
          END DO
       END DO
       IF( lk_mpp )   CALL mpp_min( zsmin )                ! min over the global domain
       !
       IF( MOD( kt, nwrite ) == 1 .AND. lwp )   WRITE(numout,*) ' ==>> time-step= ',kt,' SSS min:', zsmin
       !
-      IF( zsmin < 0._wp) THEN 
+      IF( zsmin < 0.) THEN 
          IF (lk_mpp) THEN
-            CALL mpp_minloc ( sn(:,:,1),tmask(:,:,1), zsmin, ii,ij )
+            CALL mpp_minloc ( tsn(:,:,1,jp_sal),tmask(:,:,1), zsmin, ii,ij )
          ELSE
-            ilocs = MINLOC( sn(:,:,1), mask = tmask(:,:,1) == 1.e0 )
+            ilocs = MINLOC( tsn(:,:,1,jp_sal), mask = tmask(:,:,1) == 1.e0 )
             ii = ilocs(1) + nimpp - 1
             ij = ilocs(2) + njmpp - 1
          ENDIF
@@ -202,7 +202,7 @@ CONTAINS
       ENDIF
 9500  FORMAT (' kt=',i6,' min SSS: ',1pg11.4,', i j: ',2i5)
 
-     
+      
       IF( lk_c1d )  RETURN          ! No log file in case of 1D vertical configuration
 
       ! log file (solver or ssh statistics)

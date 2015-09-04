@@ -12,6 +12,7 @@ MODULE cpl_oasis3
    !!   " "  !  05-09  (R. Redler) extended to allow for communication over root only
    !!   " "  !  06-01  (W. Park) modification of physical part
    !!   " "  !  06-02  (R. Redler, W. Park) buffer array fix for root exchange
+   !!   3.4  !  11-11  (C. Harris) Changes to allow mutiple category fields
    !!----------------------------------------------------------------------
 #if defined key_oasis3
    !!----------------------------------------------------------------------
@@ -51,12 +52,13 @@ MODULE cpl_oasis3
 
    INTEGER, PARAMETER ::   nmaxfld=40    ! Maximum number of coupling fields
    
-   TYPE, PUBLIC ::   FLD_CPL            !: Type for coupling field information
-      LOGICAL            ::   laction   ! To be coupled or not
-      CHARACTER(len = 8) ::   clname    ! Name of the coupling field   
-      CHARACTER(len = 1) ::   clgrid    ! Grid type  
-      REAL(wp)           ::   nsgn      ! Control of the sign change
-      INTEGER            ::   nid       ! Id of the field
+   TYPE, PUBLIC ::   FLD_CPL               !: Type for coupling field information
+      LOGICAL               ::   laction   ! To be coupled or not
+      CHARACTER(len = 8)    ::   clname    ! Name of the coupling field   
+      CHARACTER(len = 1)    ::   clgrid    ! Grid type  
+      REAL(wp)              ::   nsgn      ! Control of the sign change
+      INTEGER, DIMENSION(9) ::   nid       ! Id of the field (no more than 9 categories)
+      INTEGER               ::   nct       ! Number of categories in field
    END TYPE FLD_CPL
 
    TYPE(FLD_CPL), DIMENSION(nmaxfld), PUBLIC ::   srcv, ssnd   !: Coupling fields
@@ -65,7 +67,7 @@ MODULE cpl_oasis3
 
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: cpl_oasis3.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -117,7 +119,8 @@ CONTAINS
       INTEGER :: id_part
       INTEGER :: paral(5)       ! OASIS3 box partition
       INTEGER :: ishape(2,2)    ! shape of arrays passed to PSMILe
-      INTEGER :: ji             ! local loop indicees
+      INTEGER :: ji,jc          ! local loop indicees
+      CHARACTER(LEN=8) :: zclname
       !!--------------------------------------------------------------------
 
       IF(lwp) WRITE(numout,*)
@@ -163,12 +166,20 @@ CONTAINS
       !
       DO ji = 1, ksnd
          IF ( ssnd(ji)%laction ) THEN 
-            CALL prism_def_var_proto (ssnd(ji)%nid, ssnd(ji)%clname, id_part, (/ 2, 0/),  &
-               &                      PRISM_Out   , ishape   , PRISM_REAL, nerror)
-            IF ( nerror /= PRISM_Ok ) THEN
-               WRITE(numout,*) 'Failed to define transient ', ji, TRIM(ssnd(ji)%clname)
-               CALL prism_abort_proto ( ssnd(ji)%nid, 'cpl_prism_define', 'Failure in prism_def_var')
-            ENDIF
+            DO jc = 1, ssnd(ji)%nct
+               IF ( ssnd(ji)%nct .gt. 1 ) THEN
+                  WRITE(zclname,'( a7, i1)') ssnd(ji)%clname,jc
+               ELSE
+                  zclname=ssnd(ji)%clname
+               ENDIF
+               WRITE(numout,*) "Define",ji,jc,zclname," for",PRISM_Out
+               CALL prism_def_var_proto (ssnd(ji)%nid(jc), zclname, id_part, (/ 2, 0/),   &
+                    PRISM_Out, ishape, PRISM_REAL, nerror)
+               IF ( nerror /= PRISM_Ok ) THEN
+                  WRITE(numout,*) 'Failed to define transient ', ji, TRIM(zclname)
+                  CALL prism_abort_proto ( ssnd(ji)%nid(jc), 'cpl_prism_define', 'Failure in prism_def_var')
+               ENDIF
+            END DO
          ENDIF
       END DO
       !
@@ -176,12 +187,20 @@ CONTAINS
       !
       DO ji = 1, krcv
          IF ( srcv(ji)%laction ) THEN 
-            CALL prism_def_var_proto ( srcv(ji)%nid, srcv(ji)%clname, id_part, (/ 2, 0/),   &
-               &                      PRISM_In    , ishape   , PRISM_REAL, nerror)
-            IF ( nerror /= PRISM_Ok ) THEN
-               WRITE(numout,*) 'Failed to define transient ', ji, TRIM(srcv(ji)%clname)
-               CALL prism_abort_proto ( srcv(ji)%nid, 'cpl_prism_define', 'Failure in prism_def_var')
-            ENDIF
+            DO jc = 1, srcv(ji)%nct
+               IF ( srcv(ji)%nct .gt. 1 ) THEN
+                  WRITE(zclname,'( a7, i1)') srcv(ji)%clname,jc
+               ELSE
+                  zclname=srcv(ji)%clname
+               ENDIF
+               WRITE(numout,*) "Define",ji,jc,zclname," for",PRISM_In
+               CALL prism_def_var_proto ( srcv(ji)%nid(jc), zclname, id_part, (/ 2, 0/),   &
+                    &                      PRISM_In    , ishape   , PRISM_REAL, nerror)
+               IF ( nerror /= PRISM_Ok ) THEN
+                  WRITE(numout,*) 'Failed to define transient ', ji, TRIM(zclname)
+                  CALL prism_abort_proto ( srcv(ji)%nid(jc), 'cpl_prism_define', 'Failure in prism_def_var')
+               ENDIF
+            END DO
          ENDIF
       END DO
       
@@ -202,30 +221,36 @@ CONTAINS
       !! ** Purpose : - At each coupling time-step,this routine sends fields
       !!      like sst or ice cover to the coupler or remote application.
       !!----------------------------------------------------------------------
-      INTEGER                 , INTENT(in   ) ::   kid       ! variable index in the array
-      INTEGER                 , INTENT(  out) ::   kinfo     ! OASIS3 info argument
-      INTEGER                 , INTENT(in   ) ::   kstep     ! ocean time-step in seconds
-      REAL(wp), DIMENSION(:,:), INTENT(in   ) ::   pdata
+      INTEGER                   , INTENT(in   ) ::   kid       ! variable index in the array
+      INTEGER                   , INTENT(  out) ::   kinfo     ! OASIS3 info argument
+      INTEGER                   , INTENT(in   ) ::   kstep     ! ocean time-step in seconds
+      REAL(wp), DIMENSION(:,:,:), INTENT(in   ) ::   pdata
+      !!
+      INTEGER                                   ::   jc        ! local loop index
       !!--------------------------------------------------------------------
       !
       ! snd data to OASIS3
       !
-      CALL prism_put_proto ( ssnd(kid)%nid, kstep, pdata(nldi:nlei, nldj:nlej), kinfo )
-      
-      IF ( ln_ctl ) THEN        
-         IF ( kinfo == PRISM_Sent     .OR. kinfo == PRISM_ToRest .OR.   &
-            & kinfo == PRISM_SentOut  .OR. kinfo == PRISM_ToRestOut ) THEN
-            WRITE(numout,*) '****************'
-            WRITE(numout,*) 'prism_put_proto: Outgoing ', ssnd(kid)%clname
-            WRITE(numout,*) 'prism_put_proto: ivarid ', ssnd(kid)%nid
-            WRITE(numout,*) 'prism_put_proto:  kstep ', kstep
-            WRITE(numout,*) 'prism_put_proto:   info ', kinfo
-            WRITE(numout,*) '     - Minimum value is ', MINVAL(pdata)
-            WRITE(numout,*) '     - Maximum value is ', MAXVAL(pdata)
-            WRITE(numout,*) '     -     Sum value is ', SUM(pdata)
-            WRITE(numout,*) '****************'
+      DO jc = 1, ssnd(kid)%nct
+
+         CALL prism_put_proto ( ssnd(kid)%nid(jc), kstep, pdata(nldi:nlei, nldj:nlej,jc), kinfo )
+         
+         IF ( ln_ctl ) THEN        
+            IF ( kinfo == PRISM_Sent     .OR. kinfo == PRISM_ToRest .OR.   &
+                 & kinfo == PRISM_SentOut  .OR. kinfo == PRISM_ToRestOut ) THEN
+               WRITE(numout,*) '****************'
+               WRITE(numout,*) 'prism_put_proto: Outgoing ', ssnd(kid)%clname
+               WRITE(numout,*) 'prism_put_proto: ivarid ', ssnd(kid)%nid(jc)
+               WRITE(numout,*) 'prism_put_proto:  kstep ', kstep
+               WRITE(numout,*) 'prism_put_proto:   info ', kinfo
+               WRITE(numout,*) '     - Minimum value is ', MINVAL(pdata(:,:,jc))
+               WRITE(numout,*) '     - Maximum value is ', MAXVAL(pdata(:,:,jc))
+               WRITE(numout,*) '     -     Sum value is ', SUM(pdata(:,:,jc))
+               WRITE(numout,*) '****************'
+            ENDIF
          ENDIF
-      ENDIF
+
+      ENDDO
       !
     END SUBROUTINE cpl_prism_snd
 
@@ -237,48 +262,57 @@ CONTAINS
       !! ** Purpose : - At each coupling time-step,this routine receives fields
       !!      like stresses and fluxes from the coupler or remote application.
       !!----------------------------------------------------------------------
-      INTEGER                 , INTENT(in   ) ::   kid       ! variable index in the array
-      INTEGER                 , INTENT(in   ) ::   kstep     ! ocean time-step in seconds
-      REAL(wp), DIMENSION(:,:), INTENT(inout) ::   pdata     ! IN to keep the value if nothing is done
-      INTEGER                 , INTENT(  out) ::   kinfo     ! OASIS3 info argument
+      INTEGER                   , INTENT(in   ) ::   kid       ! variable index in the array
+      INTEGER                   , INTENT(in   ) ::   kstep     ! ocean time-step in seconds
+      REAL(wp), DIMENSION(:,:,:), INTENT(inout) ::   pdata     ! IN to keep the value if nothing is done
+      INTEGER                   , INTENT(  out) ::   kinfo     ! OASIS3 info argument
       !!
-      LOGICAL ::   llaction
+      INTEGER                                   ::   jc        ! local loop index
+      LOGICAL                                   ::   llaction
       !!--------------------------------------------------------------------
       !
       ! receive local data from OASIS3 on every process
       !
-      CALL prism_get_proto ( srcv(kid)%nid, kstep, exfld, kinfo )         
+      DO jc = 1, srcv(kid)%nct
 
-      llaction = .false.
-      IF( kinfo == PRISM_Recvd   .OR. kinfo == PRISM_FromRest .OR.   &
-          kinfo == PRISM_RecvOut .OR. kinfo == PRISM_FromRestOut )   llaction = .TRUE.
-
-      IF ( ln_ctl )   WRITE(numout,*) "llaction, kinfo, kstep, ivarid: " , llaction, kinfo, kstep, srcv(kid)%nid
-
-      IF ( llaction ) THEN
-
-         kinfo = OASIS_Rcv
-         pdata(nldi:nlei, nldj:nlej) = exfld(:,:)
+         CALL prism_get_proto ( srcv(kid)%nid(jc), kstep, exfld, kinfo )         
          
-         !--- Fill the overlap areas and extra hallows (mpp)
-         !--- check periodicity conditions (all cases)
-         CALL lbc_lnk( pdata, srcv(kid)%clgrid, srcv(kid)%nsgn )   
+         llaction = .false.
+         IF( kinfo == PRISM_Recvd   .OR. kinfo == PRISM_FromRest .OR.   &
+              kinfo == PRISM_RecvOut .OR. kinfo == PRISM_FromRestOut )   llaction = .TRUE.
          
-         IF ( ln_ctl ) THEN        
-            WRITE(numout,*) '****************'
-            WRITE(numout,*) 'prism_get_proto: Incoming ', srcv(kid)%clname
-            WRITE(numout,*) 'prism_get_proto: ivarid '  , srcv(kid)%nid
-            WRITE(numout,*) 'prism_get_proto:   kstep', kstep
-            WRITE(numout,*) 'prism_get_proto:   info ', kinfo
-            WRITE(numout,*) '     - Minimum value is ', MINVAL(pdata)
-            WRITE(numout,*) '     - Maximum value is ', MAXVAL(pdata)
-            WRITE(numout,*) '     -     Sum value is ', SUM(pdata)
-            WRITE(numout,*) '****************'
+         IF ( ln_ctl )   WRITE(numout,*) "llaction, kinfo, kstep, ivarid: " , llaction, kinfo, kstep, srcv(kid)%nid(jc)
+         
+         IF ( llaction ) THEN
+            
+            pdata(nldi:nlei, nldj:nlej,jc) = exfld(:,:)
+            
+            !--- Fill the overlap areas and extra hallows (mpp)
+            !--- check periodicity conditions (all cases)
+            CALL lbc_lnk( pdata(:,:,jc), srcv(kid)%clgrid, srcv(kid)%nsgn )   
+            
+            IF ( ln_ctl ) THEN        
+               WRITE(numout,*) '****************'
+               WRITE(numout,*) 'prism_get_proto: Incoming ', srcv(kid)%clname
+               WRITE(numout,*) 'prism_get_proto: ivarid '  , srcv(kid)%nid(jc)
+               WRITE(numout,*) 'prism_get_proto:   kstep', kstep
+               WRITE(numout,*) 'prism_get_proto:   info ', kinfo
+               WRITE(numout,*) '     - Minimum value is ', MINVAL(pdata(:,:,jc))
+               WRITE(numout,*) '     - Maximum value is ', MAXVAL(pdata(:,:,jc))
+               WRITE(numout,*) '     -     Sum value is ', SUM(pdata(:,:,jc))
+               WRITE(numout,*) '****************'
+            ENDIF
+
+            ! Ideally we would not reuse kinfo, but define a separate variable
+            ! for use as the return code from this routine to avoid confusion
+            ! with the return code previously obtained from the coupler.
+            kinfo = OASIS_Rcv
+            
+         ELSE
+            kinfo = OASIS_idle     
          ENDIF
-      
-      ELSE
-         kinfo = OASIS_idle     
-      ENDIF
+         
+      ENDDO
       !
    END SUBROUTINE cpl_prism_rcv
 

@@ -19,6 +19,8 @@ MODULE domwri
    USE iom             ! I/O library
    USE lbclnk          ! lateral boundary conditions - mpp exchanges
    USE lib_mpp         ! MPP library
+   USE wrk_nemo        ! Memory allocation
+   USE timing          ! Timing
 
    IMPLICIT NONE
    PRIVATE
@@ -29,7 +31,7 @@ MODULE domwri
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: domwri.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -62,9 +64,6 @@ CONTAINS
       !! ** output file :   meshmask.nc  : domain size, horizontal grid-point position,
       !!                                   masks, depth and vertical scale factors
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zprt  => wrk_2d_1 , zprw  => wrk_2d_2    ! 2D workspace
-      USE wrk_nemo, ONLY:   zdepu => wrk_3d_1 , zdepv => wrk_3d_2    ! 3D     -
       !!
       INTEGER           ::   inum0    ! temprary units for 'mesh_mask.nc' file
       INTEGER           ::   inum1    ! temprary units for 'mesh.nc'      file
@@ -77,12 +76,16 @@ CONTAINS
       CHARACTER(len=21) ::   clnam3   ! filename (horizontal mesh informations)
       CHARACTER(len=21) ::   clnam4   ! filename (vertical   mesh informations)
       INTEGER           ::   ji, jj, jk   ! dummy loop indices
+      !                                   !  workspaces
+      REAL(wp), POINTER, DIMENSION(:,:  ) :: zprt, zprw 
+      REAL(wp), POINTER, DIMENSION(:,:,:) :: zdepu, zdepv
       !!----------------------------------------------------------------------
-
-      IF( wrk_in_use(2, 1,2) .OR. wrk_in_use(3, 1,2) )THEN
-         CALL ctl_stop('dom_wri: requested workspace arrays unavailable')   ;   RETURN
-      END IF
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('dom_wri')
+      !
+      CALL wrk_alloc( jpi, jpj, zprt, zprw )
+      CALL wrk_alloc( jpi, jpj, jpk, zdepu, zdepv )
+      !
       IF(lwp) WRITE(numout,*)
       IF(lwp) WRITE(numout,*) 'dom_wri : create NetCDF mesh and mask information file(s)'
       IF(lwp) WRITE(numout,*) '~~~~~~~'
@@ -259,8 +262,10 @@ CONTAINS
          CALL iom_close( inum4 )
       END SELECT
       !
-      IF( wrk_not_released(2, 1,2)  .OR.   &
-          wrk_not_released(3, 1,2)  )   CALL ctl_stop('dom_wri: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi, jpj, zprt, zprw )
+      CALL wrk_dealloc( jpi, jpj, jpk, zdepu, zdepv )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('dom_wri')
       !
    END SUBROUTINE dom_wri
 
@@ -274,8 +279,6 @@ CONTAINS
       !! ** Method  :   1) aplly lbc_lnk on an array with different values for each element
       !!                2) check which elements have been changed
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   ztstref => wrk_2d_3      ! array with different values for each element
       !
       CHARACTER(len=1)        , INTENT(in   ) ::   cdgrd   ! 
       REAL(wp), DIMENSION(:,:), INTENT(inout) ::   puniq   ! 
@@ -283,12 +286,13 @@ CONTAINS
       REAL(wp) ::  zshift   ! shift value link to the process number
       INTEGER  ::  ji       ! dummy loop indices
       LOGICAL, DIMENSION(SIZE(puniq,1),SIZE(puniq,2),1) ::  lldbl  ! store whether each point is unique or not
+      REAL(wp), POINTER, DIMENSION(:,:) :: ztstref
       !!----------------------------------------------------------------------
-
-      IF( wrk_in_use(2, 3) ) THEN
-         CALL ctl_stop('dom_uniq: requested workspace array unavailable')   ;   RETURN
-      ENDIF
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('dom_uniq')
+      !
+      CALL wrk_alloc( jpi, jpj, ztstref )
+      !
       ! build an array with different values for each element 
       ! in mpp: make sure that these values are different even between process
       ! -> apply a shift value according to the process number
@@ -303,7 +307,9 @@ CONTAINS
       ! fill only the inner part of the cpu with llbl converted into real 
       puniq(nldi:nlei,nldj:nlej) = REAL( COUNT( lldbl(nldi:nlei,nldj:nlej,:), dim = 3 ) , wp )
       !
-      IF( wrk_not_released(2, 3) )   CALL ctl_stop('dom_uniq: failed to release workspace array')
+      CALL wrk_dealloc( jpi, jpj, ztstref )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('dom_uniq')
       !
    END SUBROUTINE dom_uniq
 

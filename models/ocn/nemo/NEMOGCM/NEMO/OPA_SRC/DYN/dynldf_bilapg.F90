@@ -26,6 +26,9 @@ MODULE dynldf_bilapg
    USE lib_mpp         ! MPP library
    USE lbclnk          ! ocean lateral boundary conditions (or mpp link)
    USE prtctl          ! Print control
+   USE wrk_nemo        ! Memory Allocation
+   USE timing          ! Timing
+
 
    IMPLICIT NONE
    PRIVATE
@@ -40,7 +43,7 @@ MODULE dynldf_bilapg
 #  include "ldfdyn_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: dynldf_bilapg.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -83,28 +86,26 @@ CONTAINS
       !!                biharmonic mixing trend.
       !!              - save the trend in (zwk3,zwk4) ('key_trddyn')
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zwk1 => wrk_3d_3 , zwk2 => wrk_3d_4   ! 3D workspace
-      USE oce     , ONLY:   zwk3 => ta       , zwk4 => sa         ! ta, sa used as 3D workspace   
-      !
       INTEGER, INTENT( in ) ::   kt           ! ocean time-step index
       !
       INTEGER ::   ji, jj, jk                 ! dummy loop indices
+      REAL(wp), POINTER, DIMENSION(:,:,:) ::  zwk1, zwk2, zwk3, zwk4
       !!----------------------------------------------------------------------
-
-      IF( wrk_in_use(3, 3,4) ) THEN
-         CALL ctl_stop('dyn_ldf_bilapg: requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('dyn_ldf_bilapg')
+      !
+      CALL wrk_alloc( jpi, jpj, jpk, zwk1, zwk2, zwk3, zwk4 ) 
+      !
       IF( kt == nit000 ) THEN
          IF(lwp) WRITE(numout,*)
          IF(lwp) WRITE(numout,*) 'dyn_ldf_bilapg : horizontal biharmonic operator in s-coordinate'
          IF(lwp) WRITE(numout,*) '~~~~~~~~~~~~~~'
-         zwk1(:,:,:) = 0.e0   ;   zwk3(:,:,:) = 0.e0
-         zwk2(:,:,:) = 0.e0   ;   zwk4(:,:,:) = 0.e0
          !                                      ! allocate dyn_ldf_bilapg arrays
          IF( dyn_ldf_bilapg_alloc() /= 0 )   CALL ctl_stop('STOP', 'dyn_ldf_bilapg: failed to allocate arrays')
       ENDIF
+      !
+      zwk1(:,:,:) = 0.e0   ;   zwk3(:,:,:) = 0.e0
+      zwk2(:,:,:) = 0.e0   ;   zwk4(:,:,:) = 0.e0
 
       ! Laplacian of (ub,vb) multiplied by ahm
       ! --------------------------------------  
@@ -128,7 +129,9 @@ CONTAINS
          END DO
       END DO
       !
-      IF( wrk_not_released(3, 3,4) )   CALL ctl_stop('dyn_ldf_bilapg: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi, jpj, jpk, zwk1, zwk2, zwk3, zwk4 ) 
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('dyn_ldf_bilapg')
       !
    END SUBROUTINE dyn_ldf_bilapg
 
@@ -174,10 +177,6 @@ CONTAINS
       !!                          second order vertical derivative term)
       !!      'key_trddyn' defined: the trend is saved for diagnostics.
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   ziut => wrk_2d_1 , zjuf  => wrk_2d_2 , zjvt  => wrk_2d_3
-      USE wrk_nemo, ONLY:   zivf => wrk_2d_4 , zdku  => wrk_2d_5 , zdk1u => wrk_2d_6
-      USE wrk_nemo, ONLY:   zdkv => wrk_2d_7 , zdk1v => wrk_2d_8
       !!
       REAL(wp), DIMENSION(jpi,jpj,jpk), INTENT(in   ) ::   pu , pv    ! 1st call: before horizontal velocity 
       !                                                               ! 2nd call: ahm x these fields
@@ -191,11 +190,14 @@ CONTAINS
       REAL(wp) ::   zcoef0, zcoef3, zcoef4               !   -      -
       REAL(wp) ::   zbur, zbvr, zmkt, zmkf, zuav, zvav   !   -      -
       REAL(wp) ::   zuwslpi, zuwslpj, zvwslpi, zvwslpj   !   -      -
+      !
+      REAL(wp), POINTER, DIMENSION(:,:) :: ziut, zjuf, zjvt, zivf, zdku, zdk1u, zdkv, zdk1v
       !!----------------------------------------------------------------------
-
-      IF( wrk_in_use(2, 1,2,3,4,5,6,7,8) ) THEN
-         CALL ctl_stop('dyn:ldfguv: requested workspace arrays unavailable')   ;   RETURN
-      END IF
+      !
+      IF( nn_timing == 1 )  CALL timing_start('ldfguv')
+      !
+      CALL wrk_alloc( jpi, jpj, ziut, zjuf, zjvt, zivf, zdku, zdk1u, zdkv, zdk1v ) 
+      !
       !                               ! ********** !   ! ===============
       DO jk = 1, jpkm1                ! First step !   ! Horizontal slab
          !                            ! ********** !   ! ===============
@@ -451,7 +453,9 @@ CONTAINS
       END DO                                           !   End of slab
       !                                                ! ===============
 
-      IF( wrk_not_released(2, 1,2,3,4,5,6,7,8) )   CALL ctl_stop('dyn:ldfguv: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi, jpj, ziut, zjuf, zjvt, zivf, zdku, zdk1u, zdkv, zdk1v ) 
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('ldfguv')
       !
    END SUBROUTINE ldfguv
 

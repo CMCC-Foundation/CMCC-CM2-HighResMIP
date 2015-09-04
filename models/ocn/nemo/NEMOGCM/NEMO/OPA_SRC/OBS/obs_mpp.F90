@@ -36,7 +36,7 @@ MODULE obs_mpp
 
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: obs_mpp.F90 2513 2010-12-23 16:01:47Z smasson $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS

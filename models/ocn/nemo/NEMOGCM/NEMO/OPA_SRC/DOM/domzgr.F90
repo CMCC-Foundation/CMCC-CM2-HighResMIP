@@ -14,7 +14,8 @@ MODULE domzgr
    !!            3.0  ! 2008-06  (G. Madec)  insertion of domzgr_zps.h90 & conding style
    !!            3.2  ! 2009-07  (R. Benshila) Suppression of rigid-lid option
    !!            3.3  ! 2010-11  (G. Madec) add mbk. arrays associated to the deepest ocean level
-   !!----------------------------------------------------------------------
+   !!            3.4  ! 2012-12  (R. Bourdalle-Badie and G. Reffray)  modify C1D case  
+  !!----------------------------------------------------------------------
 
    !!----------------------------------------------------------------------
    !!   dom_zgr          : defined the ocean vertical coordinate system
@@ -37,6 +38,8 @@ MODULE domzgr
    USE iom               ! I/O library
    USE lbclnk            ! ocean lateral boundary conditions (or mpp link)
    USE lib_mpp           ! distributed memory computing library
+   USE wrk_nemo          ! Memory allocation
+   USE timing            ! Timing
 
    IMPLICIT NONE
    PRIVATE
@@ -59,7 +62,7 @@ MODULE domzgr
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3.1 , NEMO Consortium (2011)
-   !! $Id: domzgr.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS       
@@ -68,8 +71,8 @@ CONTAINS
       !!----------------------------------------------------------------------
       !!                ***  ROUTINE dom_zgr  ***
       !!                   
-      !! ** Purpose :  set the depth of model levels and the resulting 
-      !!      vertical scale factors.
+      !! ** Purpose :   set the depth of model levels and the resulting 
+      !!              vertical scale factors.
       !!
       !! ** Method  : - reference 1D vertical coordinate (gdep._0, e3._0)
       !!              - read/set ocean depth and ocean levels (bathy, mbathy)
@@ -81,11 +84,13 @@ CONTAINS
       !!
       !! ** Action  :   define gdep., e3., mbathy and bathy
       !!----------------------------------------------------------------------
-      INTEGER ::   ioptio = 0   ! temporary integer
+      INTEGER ::   ioptio, ibat   ! local integer
       !
       NAMELIST/namzgr/ ln_zco, ln_zps, ln_sco
       !!----------------------------------------------------------------------
-
+      !
+      IF( nn_timing == 1 )   CALL timing_start('dom_zgr')
+      !
       REWIND( numnam )                 ! Read Namelist namzgr : vertical coordinate'
       READ  ( numnam, namzgr )
 
@@ -100,27 +105,32 @@ CONTAINS
       ENDIF
 
       ioptio = 0                       ! Check Vertical coordinate options
-      IF( ln_zco ) ioptio = ioptio + 1
-      IF( ln_zps ) ioptio = ioptio + 1
-      IF( ln_sco ) ioptio = ioptio + 1
+      IF( ln_zco      )   ioptio = ioptio + 1
+      IF( ln_zps      )   ioptio = ioptio + 1
+      IF( ln_sco      )   ioptio = ioptio + 1
       IF( ioptio /= 1 )   CALL ctl_stop( ' none or several vertical coordinate options used' )
       !
       ! Build the vertical coordinate system
       ! ------------------------------------
                           CALL zgr_z            ! Reference z-coordinate system (always called)
                           CALL zgr_bat          ! Bathymetry fields (levels and meters)
+      IF( lk_c1d      )   CALL lbc_lnk( bathy , 'T', 1._wp )   ! 1D config.: same bathy value over the 3x3 domain
       IF( ln_zco      )   CALL zgr_zco          ! z-coordinate
       IF( ln_zps      )   CALL zgr_zps          ! Partial step z-coordinate
       IF( ln_sco      )   CALL zgr_sco          ! s-coordinate or hybrid z-s coordinate
       !
+      !
       ! final adjustment of mbathy & check 
       ! -----------------------------------
       IF( lzoom       )   CALL zgr_bat_zoom     ! correct mbathy in case of zoom subdomain
-      IF( .NOT.lk_c1d )   CALL zgr_bat_ctl      ! check bathymetry (mbathy) and suppress isoated ocean points
+      IF( .NOT.lk_c1d )   CALL zgr_bat_ctl      ! check bathymetry (mbathy) and suppress isolated ocean points
                           CALL zgr_bot_level    ! deepest ocean level for t-, u- and v-points
       !
+      IF( lk_c1d ) THEN                         ! 1D config.: same mbathy value over the 3x3 domain
+         ibat = mbathy(2,2)
+         mbathy(:,:) = ibat
+      END IF
       !
-
       IF( nprint == 1 .AND. lwp )   THEN
          WRITE(numout,*) ' MIN val mbathy ', MINVAL( mbathy(:,:) ), ' MAX ', MAXVAL( mbathy(:,:) )
          WRITE(numout,*) ' MIN val depth t ', MINVAL( fsdept(:,:,:) ),   &
@@ -137,6 +147,8 @@ CONTAINS
             &                   ' uw',   MAXVAL( fse3uw(:,:,:)), ' vw', MAXVAL( fse3vw(:,:,:)),   &
             &                   ' w ',   MAXVAL( fse3w(:,:,:) )
       ENDIF
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('dom_zgr')
       !
    END SUBROUTINE dom_zgr
 
@@ -169,7 +181,9 @@ CONTAINS
       REAL(wp) ::   zrefdep                ! depth of the reference level (~10m)
       REAL(wp) ::   za2, zkth2, zacr2      ! Values for optional double tanh function set from parameters 
       !!----------------------------------------------------------------------
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('zgr_z')
+      !
       ! Set variables from parameters
       ! ------------------------------
        zkth = ppkth       ;   zacr = ppacr
@@ -279,6 +293,8 @@ CONTAINS
          IF( gdepw_0(jk) <  0._wp .OR. gdept_0(jk) <  0._wp )   CALL ctl_stop( 'dom:zgr_z: gdepw or gdept < 0 ' )
       END DO
       !
+      IF( nn_timing == 1 )  CALL timing_stop('zgr_z')
+      !
    END SUBROUTINE zgr_z
 
 
@@ -318,10 +334,15 @@ CONTAINS
       INTEGER  ::   ii0, ii1, ij0, ij1, ik    ! local indices
       REAL(wp) ::   r_bump , h_bump , h_oce   ! bump characteristics 
       REAL(wp) ::   zi, zj, zh, zhmin         ! local scalars
-      INTEGER , DIMENSION(jpidta,jpjdta) ::   idta   ! global domain integer data
-      REAL(wp), DIMENSION(jpidta,jpjdta) ::   zdta   ! global domain scalar data
+      INTEGER , POINTER, DIMENSION(:,:) ::   idta   ! global domain integer data
+      REAL(wp), POINTER, DIMENSION(:,:) ::   zdta   ! global domain scalar data
       !!----------------------------------------------------------------------
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('zgr_bat')
+      !
+      CALL wrk_alloc( jpidta, jpjdta, idta )
+      CALL wrk_alloc( jpidta, jpjdta, zdta )
+      !
       IF(lwp) WRITE(numout,*)
       IF(lwp) WRITE(numout,*) '    zgr_bat : defines level and meter bathymetry'
       IF(lwp) WRITE(numout,*) '    ~~~~~~~'
@@ -406,9 +427,9 @@ CONTAINS
             CALL iom_get  ( inum, jpdom_data, 'Bathy_level', bathy )
             CALL iom_close( inum )
             mbathy(:,:) = INT( bathy(:,:) )
-            !                                                ! =====================
+            !
             IF( cp_cfg == "orca" .AND. jp_cfg == 2 ) THEN    ! ORCA R2 configuration
-               !                                             ! =====================
+               !
                IF( nn_cla == 0 ) THEN
                   ii0 = 140   ;   ii1 = 140                  ! Gibraltar Strait open 
                   ij0 = 102   ;   ij1 = 102                  ! (Thomson, Ocean Modelling, 1995)
@@ -438,26 +459,9 @@ CONTAINS
             CALL iom_open ( 'bathy_meter.nc', inum ) 
             CALL iom_get  ( inum, jpdom_data, 'Bathymetry', bathy )
             CALL iom_close( inum )
-            !                                                ! =====================
-!            IF( cp_cfg == "orca" .AND. jp_cfg == 1 ) THEN    ! ORCA R1 configuration
-!               ii0 = 142   ;   ii1 = 142                     ! =====================
-!               ij0 =  51   ;   ij1 =  53                     
-!               DO ji = mi0(ii0), mi1(ii1)                    ! Close Halmera Strait
-!                  DO jj = mj0(ij0), mj1(ij1)
-!                     bathy(ji,jj) = 0._wp
-!                  END DO
-!               END DO
-!               IF(lwp) WRITE(numout,*)
-!               IF(lwp) WRITE(numout,*) '      orca_r1: Halmera strait closed at i=',ii0,' j=',ij0,'->',ij1
-!               if (mi0(ii0)<=mi1(ii1) .and. mj0(ij0)<=mj1(ij1)) then
-!                 WRITE(numout,*) 'narea=', narea,': mi0(ii0)= ', mi0(ii0), ' - mi1(ii1)= ', mi1(ii1)
-!                 WRITE(numout,*) 'narea=', narea,': mj0(ij0)= ', mj0(ij0), ' - mj1(ij1)= ', mj1(ij1)
-!                 call flush(numout)
-!               end if
-!            ENDIF
-            !                                                ! =====================
+            !                                                
             IF( cp_cfg == "orca" .AND. jp_cfg == 2 ) THEN    ! ORCA R2 configuration
-               !                                             ! =====================
+               !
               IF( nn_cla == 0 ) THEN
                  ii0 = 140   ;   ii1 = 140                   ! Gibraltar Strait open 
                  ij0 = 102   ;   ij1 = 102                   ! (Thomson, Ocean Modelling, 1995)
@@ -466,7 +470,7 @@ CONTAINS
                        bathy(ji,jj) = 284._wp
                     END DO
                  END DO
-                 IF(lwp) WRITE(numout,*)
+                 IF(lwp) WRITE(numout,*)     
                  IF(lwp) WRITE(numout,*) '      orca_r2: Gibraltar strait open at i=',ii0,' j=',ij0
                  !
                  ii0 = 160   ;   ii1 = 160                   ! Bab el mandeb Strait open
@@ -490,18 +494,10 @@ CONTAINS
          CALL ctl_stop( '    zgr_bat : '//trim(ctmp1) )
       ENDIF
       !
-      !                                               ! =========================== !
-      IF( nclosea == 0 ) THEN                         !   NO closed seas or lakes   !
-         DO jl = 1, jpncs                             ! =========================== !
-            DO jj = ncsj1(jl), ncsj2(jl)
-               DO ji = ncsi1(jl), ncsi2(jl)
-                  mbathy(ji,jj) = 0                   ! suppress closed seas and lakes from bathymetry
-                  bathy (ji,jj) = 0._wp               
-               END DO
-            END DO
-         END DO
+      IF( nn_closea == 0 )   CALL clo_bat( bathy, mbathy )    !==  NO closed seas or lakes  ==!
+
 #if defined CCSMCOUPLED
-      ELSE IF (nclosea == 1) THEN
+      IF (nn_closea == 1) THEN
          ! suppress lakes from bathymetry
          SELECT CASE ( jp_cfg )
          CASE ( 2 )                               ! Suppress North American Great Lakes
@@ -520,12 +516,8 @@ CONTAINS
             END DO
          END SELECT
 #endif
-      ENDIF
-      !
-      !                                               ! =========================== !
-      !                                               !     set a minimum depth     !
-      !                                               ! =========================== !
-      IF ( .not. ln_sco ) THEN
+      !                       
+      IF ( .not. ln_sco ) THEN                                !==  set a minimum depth  ==!
          IF( rn_hmin < 0._wp ) THEN    ;   ik = - INT( rn_hmin )                                      ! from a nb of level
          ELSE                          ;   ik = MINLOC( gdepw_0, mask = gdepw_0 > rn_hmin, dim = 1 )  ! from a depth
          ENDIF
@@ -535,6 +527,12 @@ CONTAINS
          END WHERE
          IF(lwp) write(numout,*) 'Minimum ocean depth: ', zhmin, ' minimum number of ocean levels : ', ik
       ENDIF
+      !
+      ! 
+      CALL wrk_dealloc( jpidta, jpjdta, idta )
+      CALL wrk_dealloc( jpidta, jpjdta, zdta )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('zgr_bat')
       !
    END SUBROUTINE zgr_bat
 
@@ -613,17 +611,16 @@ CONTAINS
       !! ** Action  : - update mbathy: level bathymetry (in level index)
       !!              - update bathy : meter bathymetry (in meters)
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zbathy => wrk_2d_1
       !!
       INTEGER ::   ji, jj, jl                    ! dummy loop indices
       INTEGER ::   icompt, ibtest, ikmax         ! temporary integers
+      REAL(wp), POINTER, DIMENSION(:,:) ::  zbathy
       !!----------------------------------------------------------------------
-
-      IF( wrk_in_use(2, 1) ) THEN
-         CALL ctl_stop('zgr_bat_ctl: requested workspace array unavailable')   ;   RETURN
-      ENDIF
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('zgr_bat_ctl')
+      !
+      CALL wrk_alloc( jpi, jpj, zbathy )
+      !
       IF(lwp) WRITE(numout,*)
       IF(lwp) WRITE(numout,*) '    zgr_bat_ctl : check the bathymetry'
       IF(lwp) WRITE(numout,*) '    ~~~~~~~~~~~'
@@ -726,7 +723,9 @@ CONTAINS
          WRITE(numout,*)
       ENDIF
       !
-      IF( wrk_not_released(2, 1) )   CALL ctl_stop('zgr_bat_ctl: failed to release workspace array')
+      CALL wrk_dealloc( jpi, jpj, zbathy )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('zgr_bat_ctl')
       !
    END SUBROUTINE zgr_bat_ctl
 
@@ -743,21 +742,21 @@ CONTAINS
       !!                                     ocean level at t-, u- & v-points
       !!                                     (min value = 1 over land)
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zmbk => wrk_2d_1
       !!
       INTEGER ::   ji, jj   ! dummy loop indices
+      REAL(wp), POINTER, DIMENSION(:,:) ::  zmbk
       !!----------------------------------------------------------------------
       !
-      IF( wrk_in_use(2, 1) ) THEN
-         CALL ctl_stop('zgr_bot_level: requested 2D workspace unavailable')   ;   RETURN
-      ENDIF
+      IF( nn_timing == 1 )  CALL timing_start('zgr_bot_level')
+      !
+      CALL wrk_alloc( jpi, jpj, zmbk )
       !
       IF(lwp) WRITE(numout,*)
       IF(lwp) WRITE(numout,*) '    zgr_bot_level : ocean bottom k-index of T-, U-, V- and W-levels '
       IF(lwp) WRITE(numout,*) '    ~~~~~~~~~~~~~'
       !
       mbkt(:,:) = MAX( mbathy(:,:) , 1 )    ! bottom k-index of T-level (=1 over land)
+ 
       !                                     ! bottom k-index of W-level = mbkt+1
       DO jj = 1, jpjm1                      ! bottom k-index of u- (v-) level
          DO ji = 1, jpim1
@@ -769,7 +768,9 @@ CONTAINS
       zmbk(:,:) = REAL( mbku(:,:), wp )   ;   CALL lbc_lnk(zmbk,'U',1.)   ;   mbku  (:,:) = MAX( INT( zmbk(:,:) ), 1 )
       zmbk(:,:) = REAL( mbkv(:,:), wp )   ;   CALL lbc_lnk(zmbk,'V',1.)   ;   mbkv  (:,:) = MAX( INT( zmbk(:,:) ), 1 )
       !
-      IF( wrk_not_released(2, 1) )   CALL ctl_stop('zgr_bot_level: failed to release workspace array')
+      CALL wrk_dealloc( jpi, jpj, zmbk )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('zgr_bot_level')
       !
    END SUBROUTINE zgr_bot_level
 
@@ -785,18 +786,22 @@ CONTAINS
       INTEGER  ::   jk
       !!----------------------------------------------------------------------
       !
+      IF( nn_timing == 1 )  CALL timing_start('zgr_zco')
+      !
       DO jk = 1, jpk
-         fsdept(:,:,jk) = gdept_0(jk)
-         fsdepw(:,:,jk) = gdepw_0(jk)
-         fsde3w(:,:,jk) = gdepw_0(jk)
-         fse3t (:,:,jk) = e3t_0(jk)
-         fse3u (:,:,jk) = e3t_0(jk)
-         fse3v (:,:,jk) = e3t_0(jk)
-         fse3f (:,:,jk) = e3t_0(jk)
-         fse3w (:,:,jk) = e3w_0(jk)
-         fse3uw(:,:,jk) = e3w_0(jk)
-         fse3vw(:,:,jk) = e3w_0(jk)
+            gdept(:,:,jk) = gdept_0(jk)
+            gdepw(:,:,jk) = gdepw_0(jk)
+            gdep3w(:,:,jk) = gdepw_0(jk)
+            e3t (:,:,jk) = e3t_0(jk)
+            e3u (:,:,jk) = e3t_0(jk)
+            e3v (:,:,jk) = e3t_0(jk)
+            e3f (:,:,jk) = e3t_0(jk)
+            e3w (:,:,jk) = e3w_0(jk)
+            e3uw(:,:,jk) = e3w_0(jk)
+            e3vw(:,:,jk) = e3w_0(jk)
       END DO
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('zgr_zco')
       !
    END SUBROUTINE zgr_zco
 
@@ -846,8 +851,6 @@ CONTAINS
       !!      
       !!  Reference :   Pacanowsky & Gnanadesikan 1997, Mon. Wea. Rev., 126, 3248-3270.
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zprt => wrk_3d_1
       !!
       INTEGER  ::   ji, jj, jk       ! dummy loop indices
       INTEGER  ::   ik, it           ! temporary integers
@@ -857,12 +860,13 @@ CONTAINS
       REAL(wp) ::   zmax             ! Maximum depth
       REAL(wp) ::   zdiff            ! temporary scalar
       REAL(wp) ::   zrefdep          ! temporary scalar
+      REAL(wp), POINTER, DIMENSION(:,:,:) ::  zprt
       !!---------------------------------------------------------------------
-      ! 
-      IF( wrk_in_use(3, 1) ) THEN
-         CALL ctl_stop('zgr_zps: requested workspace unavailable.')   ;   RETURN
-      ENDIF
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('zgr_zps')
+      !
+      CALL wrk_alloc( jpi, jpj, jpk, zprt )
+      !
       IF(lwp) WRITE(numout,*)
       IF(lwp) WRITE(numout,*) '    zgr_zps : z-coordinate with partial steps'
       IF(lwp) WRITE(numout,*) '    ~~~~~~~ '
@@ -1041,18 +1045,20 @@ CONTAINS
          WRITE(numout,*)
          WRITE(numout,*) 'domzgr e3t(mbathy)'      ;   CALL prihre(zprt(:,:,1),jpi,jpj,1,jpi,1,1,jpj,1,1.e-3,numout)
          WRITE(numout,*)
-         WRITE(numout,*) 'domzgr e3w(mbathy)'      ;   CALL prihre(zprt(:,:,1),jpi,jpj,1,jpi,1,1,jpj,1,1.e-3,numout)
+         WRITE(numout,*) 'domzgr e3w(mbathy)'      ;   CALL prihre(zprt(:,:,2),jpi,jpj,1,jpi,1,1,jpj,1,1.e-3,numout)
          WRITE(numout,*)
-         WRITE(numout,*) 'domzgr e3u(mbathy)'      ;   CALL prihre(zprt(:,:,1),jpi,jpj,1,jpi,1,1,jpj,1,1.e-3,numout)
+         WRITE(numout,*) 'domzgr e3u(mbathy)'      ;   CALL prihre(zprt(:,:,3),jpi,jpj,1,jpi,1,1,jpj,1,1.e-3,numout)
          WRITE(numout,*)
-         WRITE(numout,*) 'domzgr e3v(mbathy)'      ;   CALL prihre(zprt(:,:,1),jpi,jpj,1,jpi,1,1,jpj,1,1.e-3,numout)
+         WRITE(numout,*) 'domzgr e3v(mbathy)'      ;   CALL prihre(zprt(:,:,4),jpi,jpj,1,jpi,1,1,jpj,1,1.e-3,numout)
          WRITE(numout,*)
-         WRITE(numout,*) 'domzgr e3f(mbathy)'      ;   CALL prihre(zprt(:,:,1),jpi,jpj,1,jpi,1,1,jpj,1,1.e-3,numout)
+         WRITE(numout,*) 'domzgr e3f(mbathy)'      ;   CALL prihre(zprt(:,:,5),jpi,jpj,1,jpi,1,1,jpj,1,1.e-3,numout)
          WRITE(numout,*)
-         WRITE(numout,*) 'domzgr gdep3w(mbathy)'   ;   CALL prihre(zprt(:,:,1),jpi,jpj,1,jpi,1,1,jpj,1,1.e-3,numout)
+         WRITE(numout,*) 'domzgr gdep3w(mbathy)'   ;   CALL prihre(zprt(:,:,6),jpi,jpj,1,jpi,1,1,jpj,1,1.e-3,numout)
       ENDIF  
       !
-      IF( wrk_not_released(3, 1) )   CALL ctl_stop('zgr_zps: failed to release workspace')
+      CALL wrk_dealloc( jpi, jpj, jpk, zprt )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('zgr_zps')
       !
    END SUBROUTINE zgr_zps
 
@@ -1140,32 +1146,24 @@ CONTAINS
       !!
       !! Reference : Madec, Lott, Delecluse and Crepon, 1996. JPO, 26, 1393-1408.
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zenv => wrk_2d_1 , ztmp => wrk_2d_2 , zmsk  => wrk_2d_3
-      USE wrk_nemo, ONLY:   zri  => wrk_2d_4 , zrj  => wrk_2d_5 , zhbat => wrk_2d_6
-      USE wrk_nemo, ONLY:   gsigw3  => wrk_3d_1
-      USE wrk_nemo, ONLY:   gsigt3  => wrk_3d_2
-      USE wrk_nemo, ONLY:   gsi3w3  => wrk_3d_3
-      USE wrk_nemo, ONLY:   esigt3  => wrk_3d_4
-      USE wrk_nemo, ONLY:   esigw3  => wrk_3d_5
-      USE wrk_nemo, ONLY:   esigtu3 => wrk_3d_6
-      USE wrk_nemo, ONLY:   esigtv3 => wrk_3d_7
-      USE wrk_nemo, ONLY:   esigtf3 => wrk_3d_8
-      USE wrk_nemo, ONLY:   esigwu3 => wrk_3d_9
-      USE wrk_nemo, ONLY:   esigwv3 => wrk_3d_10
       !
       INTEGER  ::   ji, jj, jk, jl           ! dummy loop argument
       INTEGER  ::   iip1, ijp1, iim1, ijm1   ! temporary integers
       REAL(wp) ::   zcoeft, zcoefw, zrmax, ztaper   ! temporary scalars
       !
+      REAL(wp), POINTER, DIMENSION(:,:  ) :: zenv, ztmp, zmsk, zri, zrj, zhbat
+      REAL(wp), POINTER, DIMENSION(:,:,:) :: gsigw3, gsigt3, gsi3w3
+      REAL(wp), POINTER, DIMENSION(:,:,:) :: esigt3, esigw3, esigtu3, esigtv3, esigtf3, esigwu3, esigwv3           
 
       NAMELIST/namzgr_sco/ rn_sbot_max, rn_sbot_min, rn_theta, rn_thetb, rn_rmax, ln_s_sigma, rn_bb, rn_hc
       !!----------------------------------------------------------------------
-
-      IF( wrk_in_use(2, 1,2,3,4,5,6) .OR. wrk_in_use(3, 1,2,3,4,5,6,7,8,9,10) ) THEN
-         CALL ctl_stop('zgr_sco: ERROR - requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('zgr_sco')
+      !
+      CALL wrk_alloc( jpi, jpj,      zenv, ztmp, zmsk, zri, zrj, zhbat                           )
+      CALL wrk_alloc( jpi, jpj, jpk, gsigw3, gsigt3, gsi3w3                                      )
+      CALL wrk_alloc( jpi, jpj, jpk, esigt3, esigw3, esigtu3, esigtv3, esigtf3, esigwu3, esigwv3 )
+      !
       REWIND( numnam )                       ! Read Namelist namzgr_sco : sigma-stretching parameters
       READ  ( numnam, namzgr_sco )
 
@@ -1275,7 +1273,7 @@ CONTAINS
             END DO
          END DO
          !
-         ! Apply lateral boundary condition   CAUTION: kept the value when the lbc field is zero
+         ! Apply lateral boundary condition   CAUTION: keep the value when the lbc field is zero
          ztmp(:,:) = zenv(:,:)   ;   CALL lbc_lnk( zenv, 'T', 1._wp )
          DO jj = 1, nlcj
             DO ji = 1, nlci
@@ -1286,7 +1284,16 @@ CONTAINS
       END DO                                                !     End loop     !
       !                                                     ! ================ !
       !
-      !                                        ! envelop bathymetry saved in hbatt
+      ! Fill ghost rows with appropriate values to avoid undefined e3 values with some mpp decompositions
+      DO ji = nlci+1, jpi 
+         zenv(ji,1:nlcj) = zenv(nlci,1:nlcj)
+      END DO
+      !
+      DO jj = nlcj+1, jpj
+         zenv(:,jj) = zenv(:,nlcj)
+      END DO
+      !
+      ! Envelope bathymetry saved in hbatt
       hbatt(:,:) = zenv(:,:) 
       IF( MINVAL( gphit(:,:) ) * MAXVAL( gphit(:,:) ) <= 0._wp ) THEN
          CALL ctl_warn( ' s-coordinates are tapered in vicinity of the Equator' )
@@ -1518,7 +1525,14 @@ CONTAINS
 
 
       !
-!!    H. Liu, POL. April 2009. Added for passing the scale check for the new released vvl code.
+      where (e3t   (:,:,:).eq.0.0)  e3t(:,:,:) = 1.0
+      where (e3u   (:,:,:).eq.0.0)  e3u(:,:,:) = 1.0
+      where (e3v   (:,:,:).eq.0.0)  e3v(:,:,:) = 1.0
+      where (e3f   (:,:,:).eq.0.0)  e3f(:,:,:) = 1.0
+      where (e3w   (:,:,:).eq.0.0)  e3w(:,:,:) = 1.0
+      where (e3uw  (:,:,:).eq.0.0)  e3uw(:,:,:) = 1.0
+      where (e3vw  (:,:,:).eq.0.0)  e3vw(:,:,:) = 1.0
+
 
       fsdept(:,:,:) = gdept (:,:,:)
       fsdepw(:,:,:) = gdepw (:,:,:)
@@ -1614,8 +1628,11 @@ CONTAINS
       END DO
 !!gm bug    #endif
       !
-      IF( wrk_not_released(2, 1,2,3,4,5,6) .OR. wrk_not_released(3, 1,2,3,4,5,6,7,8,9,10) )  &
-        &  CALL ctl_stop('dom:zgr_sco: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi, jpj,      zenv, ztmp, zmsk, zri, zrj, zhbat                           )
+      CALL wrk_dealloc( jpi, jpj, jpk, gsigw3, gsigt3, gsi3w3                                      )
+      CALL wrk_dealloc( jpi, jpj, jpk, esigt3, esigw3, esigtu3, esigtv3, esigtf3, esigwu3, esigwv3 )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('zgr_sco')
       !
    END SUBROUTINE zgr_sco
 

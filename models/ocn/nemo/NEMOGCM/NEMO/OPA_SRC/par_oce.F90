@@ -75,11 +75,21 @@ MODULE par_oce
    !!   'key_gyre'      :                        mid-latitude basin : GYRE
    !!---------------------------------------------------------------------
 #             include "par_GYRE.h90"
+#elif defined key_seabass
+   !!---------------------------------------------------------------------
+   !!   'key_seabass'      :                  mid-latitude basin : SEABASS
+   !!---------------------------------------------------------------------
+#             include "par_SEABASS.h90"
 #elif defined key_pomme_r025
    !!---------------------------------------------------------------------
    !!   'key_pomme_r025':                        regional basin : POMME025
    !!---------------------------------------------------------------------
 #             include "par_POMME_R025.h90"
+#elif defined key_amm_12km
+   !!---------------------------------------------------------------------
+   !!   'key_amm_12km':                    Atlantic Margin Model : AMM12km 
+   !!---------------------------------------------------------------------
+#             include "par_AMM_12km.h90"
 #else
    !!---------------------------------------------------------------------
    !!   default option  :                               small closed basin
@@ -95,7 +105,7 @@ MODULE par_oce
    ! global or zoom domain size                      !!! * computational domain *
    INTEGER, PUBLIC, PARAMETER ::   jpiglo  = jpidta   !: 1st dimension of global domain --> i
    INTEGER, PUBLIC, PARAMETER ::   jpjglo  = jpjdta   !: 2nd    -                  -    --> j
-   INTEGER, PUBLIC            ::   jpk     = jpkdta   !: number of vertical levels
+
    ! zoom starting position 
    INTEGER, PUBLIC, PARAMETER ::   jpizoom =   1      !: left bottom (i,j) indices of the zoom
    INTEGER, PUBLIC, PARAMETER ::   jpjzoom =   1      !: in data domain indices
@@ -170,7 +180,7 @@ MODULE par_oce
 #endif
    INTEGER, PUBLIC  ::   jpi   ! = ( jpiglo-2*jpreci + (jpni-1) ) / jpni + 2*jpreci   !: first  dimension
    INTEGER, PUBLIC  ::   jpj   ! = ( jpjglo-2*jprecj + (jpnj-1) ) / jpnj + 2*jprecj   !: second dimension
-   INTEGER, PUBLIC  ::   jpk   ! = jpkdta                                             !: third dimension
+   INTEGER, PUBLIC  ::   jpk   ! = jpkdta
    INTEGER, PUBLIC  ::   jpim1 ! = jpi-1                                            !: inner domain indices
    INTEGER, PUBLIC  ::   jpjm1 ! = jpj-1                                            !:   -     -      -
    INTEGER, PUBLIC  ::   jpkm1 ! = jpk-1                                            !:   -     -      -
@@ -193,7 +203,7 @@ MODULE par_oce
 
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: par_oce.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence (NEMOGCM/NEMO_CeCILL.txt)
    !!======================================================================
 END MODULE par_oce

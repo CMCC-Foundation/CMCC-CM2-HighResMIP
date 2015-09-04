@@ -22,19 +22,19 @@ MODULE step
    !!             -   !  2009-06  (S. Masson, G. Madec)  TKE restart compatible with key_cpl
    !!            3.3  !  2010-05  (K. Mogensen, A. Weaver, M. Martin, D. Lea) Assimilation interface
    !!             -   !  2010-10  (C. Ethe, G. Madec) reorganisation of initialisation phase + merge TRC-TRA
+   !!            3.4  !  2011-04  (G. Madec, C. Ethe) Merge of dtatem and dtasal
    !!----------------------------------------------------------------------
 
    !!----------------------------------------------------------------------
    !!   stp             : OPA system time-stepping
    !!----------------------------------------------------------------------
-   USE step_oce         ! time stepping definition modules 
+   USE step_oce         ! time stepping definition modules
 #if defined key_top
    USE trcstp           ! passive tracer time-stepping      (trc_stp routine)
 #endif
 #if defined key_agrif
    USE agrif_opa_sponge ! Momemtum and tracers sponges
 #endif
-   USE asminc           ! assimilation increments    (tra_asm_inc, dyn_asm_inc routines)
 
    IMPLICIT NONE
    PRIVATE
@@ -46,7 +46,7 @@ MODULE step
 #  include "zdfddm_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: step.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -60,15 +60,15 @@ CONTAINS
 #endif
       !!----------------------------------------------------------------------
       !!                     ***  ROUTINE stp  ***
-      !!                      
+      !!
       !! ** Purpose : - Time stepping of OPA (momentum and active tracer eqs.)
       !!              - Time stepping of LIM (dynamic and thermodynamic eqs.)
       !!              - Tme stepping  of TRC (passive tracer eqs.)
-      !! 
-      !! ** Method  : -1- Update forcings and data  
-      !!              -2- Update ocean physics 
-      !!              -3- Compute the t and s trends 
-      !!              -4- Update t and s 
+      !!
+      !! ** Method  : -1- Update forcings and data
+      !!              -2- Update ocean physics
+      !!              -3- Compute the t and s trends
+      !!              -4- Update t and s
       !!              -5- Compute the momentum trends
       !!              -6- Update the horizontal velocity
       !!              -7- Compute the diagnostics variables (rd,N2, div,cur,w)
@@ -84,8 +84,8 @@ CONTAINS
 !      IF (lwp) Write(*,*) 'Grid Number',Agrif_Fixed(),' time step ',kstp
 # if defined key_iomput
       IF( Agrif_Nbstepint() == 0 )   CALL iom_swap
-# endif   
-#endif   
+# endif
+#endif
                              indic = 0                ! reset to no error condition
       IF( kstp /= nit000 )   CALL day( kstp )         ! Calendar (day was already called at nit000 in day_init)
                              CALL iom_setkt( kstp )   ! say to iom that we are at time step kstp
@@ -93,12 +93,11 @@ CONTAINS
       !>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
       ! Update data, open boundaries, surface boundary condition (including sea-ice)
       !<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-      IF( lk_dtatem .AND. lk_tradmp )   CALL dta_tem( kstp )         ! update 3D temperature data
-      IF( lk_dtasal .AND. lk_tradmp )   CALL dta_sal( kstp )         ! update 3D salinity data
                          CALL sbc    ( kstp )         ! Sea Boundary Condition (including sea-ice)
+      IF( lk_tide    )   CALL sbc_tide( kstp )
       IF( lk_obc     )   CALL obc_dta( kstp )         ! update dynamic and tracer data at open boundaries
       IF( lk_obc     )   CALL obc_rad( kstp )         ! compute phase velocities at open boundaries
-      IF( lk_bdy     )   CALL bdy_dta_frs( kstp )     ! update dynamic and tracer data for FRS conditions (BDY)
+      IF( lk_bdy     )   CALL bdy_dta( kstp, time_offset=+1 ) ! update dynamic and tracer data at open boundaries
 
       !>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
       !  Ocean dynamics : ssh, wn, hdiv, rot                                 !
@@ -106,14 +105,14 @@ CONTAINS
                          CALL ssh_wzv( kstp )         ! after ssh & vertical velocity
 
       !>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-      ! Ocean physics update                (ua, va, ta, sa used as workspace)
+      ! Ocean physics update                (ua, va, tsa used as workspace)
       !<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
                          CALL bn2( tsb, rn2b )        ! before Brunt-Vaisala frequency
                          CALL bn2( tsn, rn2  )        ! now    Brunt-Vaisala frequency
       !
-      !  VERTICAL PHYSICS   
+      !  VERTICAL PHYSICS
                          CALL zdf_bfr( kstp )         ! bottom friction
-                         
+
       !                                               ! Vertical eddy viscosity and diffusivity coefficients
       IF( lk_zdfric  )   CALL zdf_ric( kstp )            ! Richardson number dependent Kz
       IF( lk_zdftke  )   CALL zdf_tke( kstp )            ! TKE closure scheme for Kz
@@ -133,14 +132,14 @@ CONTAINS
 
       IF( lk_zdfddm .AND. .NOT. lk_zdfkpp )   &
          &               CALL zdf_ddm( kstp )         ! double diffusive mixing
-         
+
                          CALL zdf_mxl( kstp )         ! mixed layer depth
 
                                                       ! write TKE or GLS information in the restart file
       IF( lrst_oce .AND. lk_zdftke )   CALL tke_rst( kstp, 'WRITE' )
       IF( lrst_oce .AND. lk_zdfgls )   CALL gls_rst( kstp, 'WRITE' )
       !
-      !  LATERAL  PHYSICS 
+      !  LATERAL  PHYSICS
       !
       IF( lk_ldfslp ) THEN                            ! slope of lateral mixing
                          CALL eos( tsb, rhd )                ! before in situ density
@@ -157,13 +156,15 @@ CONTAINS
 #endif
 
       !>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-      ! diagnostics and outputs             (ua, va, ta, sa used as workspace)
+      ! diagnostics and outputs             (ua, va, tsa used as workspace)
       !<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
       IF( lk_floats  )   CALL flo_stp( kstp )         ! drifting Floats
       IF( lk_diahth  )   CALL dia_hth( kstp )         ! Thermocline depth (20 degres isotherm depth)
       IF( lk_diafwb  )   CALL dia_fwb( kstp )         ! Fresh water budget diagnostics
       IF( ln_diaptr  )   CALL dia_ptr( kstp )         ! Poleward TRansports diagnostics
+      IF( lk_diadct  )   CALL dia_dct( kstp )         ! Transports
       IF( lk_diaar5  )   CALL dia_ar5( kstp )         ! ar5 diag
+      IF( lk_diaharm )   CALL dia_harm( kstp )        ! Tidal harmonic analysis
                          CALL dia_wri( kstp )         ! ocean model: outputs
 
 #if defined key_top
@@ -177,6 +178,9 @@ CONTAINS
       ! Active tracers                              (ua, va used as workspace)
       !<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
                              tsa(:,:,:,:) = 0.e0            ! set tracer trends to zero
+      ! Saving non-linear trajectory at restart state
+      ! May not be exact for sbc and zdf parameters
+      IF( ( ln_trjhand ) .AND. ( kstp == nit000 ) ) CALL tam_trj_wri( kstp - 1 )
 
       IF(  ln_asmiau .AND. &
          & ln_trainc     )   CALL tra_asm_inc( kstp )       ! apply tracer assimilation increment
@@ -184,14 +188,12 @@ CONTAINS
       IF( ln_traqsr      )   CALL tra_qsr    ( kstp )       ! penetrative solar radiation qsr
       IF( ln_trabbc      )   CALL tra_bbc    ( kstp )       ! bottom heat flux
       IF( lk_trabbl      )   CALL tra_bbl    ( kstp )       ! advective (and/or diffusive) bottom boundary layer scheme
-      IF( lk_tradmp      )   CALL tra_dmp    ( kstp )       ! internal damping trends
+      IF( ln_tradmp      )   CALL tra_dmp    ( kstp )       ! internal damping trends
                              CALL tra_adv    ( kstp )       ! horizontal & vertical advection
       IF( lk_zdfkpp      )   CALL tra_kpp    ( kstp )       ! KPP non-local tracer fluxes
                              CALL tra_ldf    ( kstp )       ! lateral mixing
 #if defined key_agrif
-                             CALL tra_unswap
       IF(.NOT. Agrif_Root()) CALL Agrif_Sponge_tra          ! tracers sponge
-                             CALL tra_swap
 #endif
                              CALL tra_zdf    ( kstp )       ! vertical mixing and after tracer fields
 
@@ -205,32 +207,34 @@ CONTAINS
                              CALL eos    ( tsa, rhd, rhop )      ! Time-filtered in situ density for hpg computation
          IF( ln_zps      )   CALL zps_hde( kstp, jpts, tsa, gtsu, gtsv,  &    ! zps: time filtered hor. derivative
             &                                          rhd, gru , grv  )      ! of t, s, rd at the last ocean level
-         
+
       ELSE                                                  ! centered hpg  (eos then time stepping)
                              CALL eos    ( tsn, rhd, rhop )      ! now in situ density for hpg computation
          IF( ln_zps      )   CALL zps_hde( kstp, jpts, tsn, gtsu, gtsv,  &    ! zps: now hor. derivative
             &                                          rhd, gru , grv  )      ! of t, s, rd at the last ocean level
          IF( ln_zdfnpc   )   CALL tra_npc( kstp )                ! update after fields by non-penetrative convection
                              CALL tra_nxt( kstp )                ! tracer fields at next time step
-      ENDIF 
-                             CALL tra_unswap                ! udate T & S 3D arrays  (to be suppressed)
+      ENDIF
 
       !>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-      ! Dynamics                                    (ta, sa used as workspace)
+      ! Dynamics                                    (tsa used as workspace)
       !<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
                                ua(:,:,:) = 0.e0             ! set dynamics trends to zero
                                va(:,:,:) = 0.e0
 
       IF(  ln_asmiau .AND. &
          & ln_dyninc       )   CALL dyn_asm_inc( kstp )     ! apply dynamics assimilation increment
+      IF( ln_bkgwri )          CALL asm_bkg_wri( kstp )     ! output background fields
+      IF( ln_neptsimp )        CALL dyn_nept_cor( kstp )    ! subtract Neptune velocities (simplified)
                                CALL dyn_adv( kstp )         ! advection (vector or flux form)
                                CALL dyn_vor( kstp )         ! vorticity term including Coriolis
                                CALL dyn_ldf( kstp )         ! lateral mixing
+      IF( ln_neptsimp )        CALL dyn_nept_cor( kstp )    ! add Neptune velocities (simplified)
 #if defined key_agrif
       IF(.NOT. Agrif_Root())   CALL Agrif_Sponge_dyn        ! momemtum sponge
 #endif
                                CALL dyn_hpg( kstp )         ! horizontal gradient of Hydrostatic pressure
-                               CALL dyn_bfr( kstp )         ! bottom friction   
+                               CALL dyn_bfr( kstp )         ! bottom friction
                                CALL dyn_zdf( kstp )         ! vertical diffusion
                                CALL dyn_spg( kstp, indic )  ! surface pressure gradient
                                CALL dyn_nxt( kstp )         ! lateral velocity at next time step
@@ -238,9 +242,10 @@ CONTAINS
                                CALL ssh_nxt( kstp )         ! sea surface height at next time step
 
       IF( ln_diahsb        )   CALL dia_hsb( kstp )         ! - ML - global conservation diagnostics
-      IF( lk_diaobs        )   CALL dia_obs( kstp )         ! obs-minus-model (assimilation) diagnostics (call after dynamics update)
-
+      IF( lk_diaobs  )         CALL dia_obs( kstp )         ! obs-minus-model (assimilation) diagnostics (call after dynamics update)
+#if defined CCSMCOUPLED
       IF( lrst_oce .AND. ln_diahsb )   CALL dia_hsb_rst( kstp, 'WRITE' )
+#endif
       !>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
       ! Control and restarts
       !<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -254,14 +259,20 @@ CONTAINS
       IF( lk_obc           )   CALL obc_rst_write( kstp )   ! write open boundary restart file
 
       !>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-      ! Trends                              (ua, va, ta, sa used as workspace)
+      ! Trends                              (ua, va, tsa used as workspace)
       !<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-      IF( nstop == 0 ) THEN                         
-         IF( lk_trddyn     )   CALL trd_dwr( kstp )         ! trends: dynamics 
+      IF( nstop == 0 ) THEN
+         IF( lk_trddyn     )   CALL trd_dwr( kstp )         ! trends: dynamics
          IF( lk_trdtra     )   CALL trd_twr( kstp )         ! trends: active tracers
-         IF( lk_trdmld     )   CALL trd_mld( kstp )         ! trends: Mixed-layer 
+         IF( lk_trdmld     )   CALL trd_mld( kstp )         ! trends: Mixed-layer
          IF( lk_trdvor     )   CALL trd_vor( kstp )         ! trends: vorticity budget
       ENDIF
+
+      !>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+      ! Trajectory for TAM
+      !<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+      IF( ln_trjhand ) CALL tam_trj_wri( kstp )          ! Output trajectory fields
 
       !>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
       ! Coupled mode
@@ -271,6 +282,7 @@ CONTAINS
       IF( lk_cesm          )   CALL ice_flx_to_coupler( kstp )
 #endif
       !
+      IF( nn_timing == 1 .AND.  kstp == nit000  )   CALL timing_reset
       !
    END SUBROUTINE stp
 

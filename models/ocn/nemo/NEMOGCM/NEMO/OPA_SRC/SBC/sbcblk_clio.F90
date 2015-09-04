@@ -26,10 +26,13 @@ MODULE sbcblk_clio
    USE iom             ! I/O manager library
    USE in_out_manager  ! I/O manager
    USE lib_mpp         ! distribued memory computing library
+   USE wrk_nemo        ! work arrays
+   USE timing          ! Timing
    USE lbclnk          ! ocean lateral boundary conditions (or mpp link)
 
    USE albedo
    USE prtctl          ! Print control
+   USE lib_fortran     ! Fortran utilities (allows no signed zero when 'key_nosignedzero' defined)
 #if defined key_lim3
    USE ice
    USE sbc_ice         ! Surface boundary condition: ice fields
@@ -82,7 +85,7 @@ MODULE sbcblk_clio
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 4.0 , NEMO Consortium (2011)
-   !! $Id: sbcblk_clio.F90 2777 2011-06-07 09:55:02Z smasson $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -206,11 +209,6 @@ CONTAINS
       !!               - emp, emps   evaporation minus precipitation
       !!  ** Nota    :   sf has to be a dummy argument for AGRIF on NEC
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY: wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY: zqlw => wrk_2d_1  ! long-wave heat flux over ocean
-      USE wrk_nemo, ONLY: zqla => wrk_2d_2  ! latent heat flux over ocean
-      USE wrk_nemo, ONLY: zqsb => wrk_2d_3  ! sensible heat flux over ocean
-      !!
       TYPE(fld), INTENT(in), DIMENSION(:)       ::   sf    ! input data
       REAL(wp) , INTENT(in), DIMENSION(jpi,jpj) ::   pst   ! surface temperature                      [Celcius]
       !!
@@ -226,11 +224,14 @@ CONTAINS
       REAL(wp) ::   zsst, ztatm, zcco1, zpatm, zcmax, zrmax     !    -         -
       REAL(wp) ::   zrhoa, zev, zes, zeso, zqatm, zevsqr        !    -         -
       REAL(wp) ::   ztx2, zty2                                  !    -         -
+      REAL(wp), POINTER, DIMENSION(:,:) ::   zqlw        ! long-wave heat flux over ocean
+      REAL(wp), POINTER, DIMENSION(:,:) ::   zqla        ! latent heat flux over ocean
+      REAL(wp), POINTER, DIMENSION(:,:) ::   zqsb        ! sensible heat flux over ocean
       !!---------------------------------------------------------------------
-
-      IF( wrk_in_use(3, 1,2,3) ) THEN
-         CALL ctl_stop('blk_oce_clio: requested workspace arrays are unavailable')   ;   RETURN
-      ENDIF
+      !
+      IF( nn_timing == 1 )  CALL timing_start('blk_oce_clio')
+      !
+      CALL wrk_alloc( jpi,jpj, zqlw, zqla, zqsb )
 
       zpatm = 101000._wp      ! atmospheric pressure  (assumed constant here)
 
@@ -381,7 +382,9 @@ CONTAINS
             &         tab2d_2=vtau , clinfo2=' vtau : ', mask2=vmask )
       ENDIF
 
-      IF( wrk_not_released(3, 1,2,3) )   CALL ctl_stop('blk_oce_clio: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi,jpj, zqlw, zqla, zqsb )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('blk_oce_clio')
       !
    END SUBROUTINE blk_oce_clio
 
@@ -413,13 +416,6 @@ CONTAINS
       !!          computation of latent heat flux sensitivity over ice (dQla/dT)
       !!
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   ztatm  => wrk_2d_1   ! Tair in Kelvin
-      USE wrk_nemo, ONLY:   zqatm  => wrk_2d_2   ! specific humidity
-      USE wrk_nemo, ONLY:   zevsqr => wrk_2d_3   ! vapour pressure square-root
-      USE wrk_nemo, ONLY:   zrhoa  => wrk_2d_4   ! air density
-      USE wrk_nemo, ONLY:   wrk_3d_1 , wrk_3d_2
-      !!
       REAL(wp), INTENT(in   ), DIMENSION(:,:,:)   ::   pst      ! ice surface temperature                   [Kelvin]
       REAL(wp), INTENT(in   ), DIMENSION(:,:,:)   ::   palb_cs  ! ice albedo (clear    sky) (alb_ice_cs)         [%]
       REAL(wp), INTENT(in   ), DIMENSION(:,:,:)   ::   palb_os  ! ice albedo (overcast sky) (alb_ice_os)         [%]
@@ -447,17 +443,17 @@ CONTAINS
       REAL(wp) ::   zcshi, zclei, zrhovaclei, zrhovacshi        !    -         -
       REAL(wp) ::   ztice3, zticemb, zticemb2, zdqlw, zdqsb     !    -         -
       !!
+      REAL(wp), DIMENSION(:,:)  , POINTER ::   ztatm   ! Tair in Kelvin
+      REAL(wp), DIMENSION(:,:)  , POINTER ::   zqatm   ! specific humidity
+      REAL(wp), DIMENSION(:,:)  , POINTER ::   zevsqr  ! vapour pressure square-root
+      REAL(wp), DIMENSION(:,:)  , POINTER ::   zrhoa   ! air density
       REAL(wp), DIMENSION(:,:,:), POINTER ::   z_qlw, z_qsb
       !!---------------------------------------------------------------------
-
-      IF(  wrk_in_use(2, 1,2,3,4)  .OR.  wrk_in_use(3, 1,2)  ) THEN
-         CALL ctl_stop('blk_ice_clio: requested workspace arrays are unavailable')   ;   RETURN
-      ELSE IF(pdim > jpk)THEN
-         CALL ctl_stop('blk_ice_clio: too many ice levels to use wrk_nemo 3D workspaces.')
-         RETURN
-      END IF
-      z_qlw => wrk_3d_1(:,:,1:pdim)
-      z_qsb => wrk_3d_2(:,:,1:pdim)
+      !
+      IF( nn_timing == 1 )  CALL timing_start('blk_ice_clio')
+      !
+      CALL wrk_alloc( jpi,jpj, ztatm, zqatm, zevsqr, zrhoa )
+      CALL wrk_alloc( jpi,jpj,pdim, z_qlw, z_qsb )
 
       ijpl  = pdim                           ! number of ice categories
       zpatm = 101000.                        ! atmospheric pressure  (assumed constant  here)
@@ -633,8 +629,10 @@ CONTAINS
          CALL prt_ctl(tab2d_1=p_taui , clinfo1=' blk_ice_clio: p_taui : ', tab2d_2=p_tauj , clinfo2=' p_tauj : ')
       ENDIF
 
-      IF( wrk_not_released(2, 1,2,3,4)  .OR.   &
-          wrk_not_released(3, 1,2)      )   CALL ctl_stop('blk_ice_clio: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi,jpj, ztatm, zqatm, zevsqr, zrhoa )
+      CALL wrk_dealloc( jpi,jpj,pdim, z_qlw, z_qsb )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('blk_ice_clio')
       !
    END SUBROUTINE blk_ice_clio
 
@@ -649,11 +647,6 @@ CONTAINS
       !!  ** Method  : - computed qsr from the cloud cover for both ice and ocean 
       !!               - also initialise sbudyko and stauc once for all 
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zev   => wrk_2d_1                  ! vapour pressure
-      USE wrk_nemo, ONLY:   zdlha => wrk_2d_2 , zlsrise => wrk_2d_3 , zlsset => wrk_2d_4 
-      USE wrk_nemo, ONLY:   zps   => wrk_2d_5 , zpc     => wrk_2d_6   ! sin/cos of latitude per sin/cos of solar declination 
-      !!
       REAL(wp), INTENT(  out), DIMENSION(jpi,jpj)     ::   pqsr_oce    ! shortwave radiation  over the ocean
       !!
       INTEGER, PARAMETER  ::   jp24 = 24   ! sampling of the daylight period (sunrise to sunset) into 24 equal parts
@@ -672,11 +665,15 @@ CONTAINS
       REAL(wp) ::   zlmunoon, zcldcor, zdaycor       !   
       REAL(wp) ::   zxday, zdist, zcoef, zcoef1      !
       REAL(wp) ::   zes
+      
+      REAL(wp), DIMENSION(:,:), POINTER ::   zev          ! vapour pressure
+      REAL(wp), DIMENSION(:,:), POINTER ::   zdlha, zlsrise, zlsset     ! 2D workspace
+      REAL(wp), DIMENSION(:,:), POINTER ::   zps, zpc   ! sine (cosine) of latitude per sine (cosine) of solar declination 
       !!---------------------------------------------------------------------
-
-      IF( wrk_in_use(2, 1,2,3,4,5,6) ) THEN
-         CALL ctl_stop('blk_clio_qsr_oce: requested workspace arrays unavailable')   ;   RETURN
-      END IF
+      !
+      IF( nn_timing == 1 )  CALL timing_start('blk_clio_qsr_oce')
+      !
+      CALL wrk_alloc( jpi,jpj, zev, zdlha, zlsrise, zlsset, zps, zpc )
 
       IF( lbulk_init ) THEN             !   Initilization at first time step only
          rdtbs2 = nn_fsbc * rdt * 0.5
@@ -790,7 +787,9 @@ CONTAINS
          END DO
       END DO
 
-      IF( wrk_not_released(2, 1,2,3,4,5,6) )   CALL ctl_stop('blk_clio_qsr_oce: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi,jpj, zev, zdlha, zlsrise, zlsset, zps, zpc )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('blk_clio_qsr_oce')
       !
    END SUBROUTINE blk_clio_qsr_oce
 
@@ -805,13 +804,6 @@ CONTAINS
       !!  ** Method  : - computed qsr from the cloud cover for both ice and ocean 
       !!               - also initialise sbudyko and stauc once for all 
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zev     => wrk_2d_1     ! vapour pressure
-      USE wrk_nemo, ONLY:   zdlha   => wrk_2d_2     ! 2D workspace
-      USE wrk_nemo, ONLY:   zlsrise => wrk_2d_3     ! 2D workspace
-      USE wrk_nemo, ONLY:   zlsset  => wrk_2d_4     ! 2D workspace
-      USE wrk_nemo, ONLY:   zps     => wrk_2d_5 , zpc => wrk_2d_6   ! sin/cos of latitude per sin/cos of solar declination 
-      !!
       REAL(wp), INTENT(in   ), DIMENSION(:,:,:) ::   pa_ice_cs   ! albedo of ice under clear sky
       REAL(wp), INTENT(in   ), DIMENSION(:,:,:) ::   pa_ice_os   ! albedo of ice under overcast sky
       REAL(wp), INTENT(  out), DIMENSION(:,:,:) ::   pqsr_ice    ! shortwave radiation over the ice/snow
@@ -829,11 +821,15 @@ CONTAINS
       REAL(wp) ::   zlha, zdaycor, zes            !    -         -
       REAL(wp) ::   zxday, zdist, zcoef, zcoef1   !    -         -
       REAL(wp) ::   zqsr_ice_cs, zqsr_ice_os      !    -         -
-      !!---------------------------------------------------------------------
 
-      IF( wrk_in_use(2, 1,2,3,4,5,6) ) THEN
-         CALL ctl_stop('blk_clio_qsr_ice: requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
+      REAL(wp), DIMENSION(:,:), POINTER ::   zev                      ! vapour pressure
+      REAL(wp), DIMENSION(:,:), POINTER ::   zdlha, zlsrise, zlsset   ! 2D workspace
+      REAL(wp), DIMENSION(:,:), POINTER ::   zps, zpc   ! sine (cosine) of latitude per sine (cosine) of solar declination 
+      !!---------------------------------------------------------------------
+      !
+      IF( nn_timing == 1 )  CALL timing_start('blk_clio_qsr_ice')
+      !
+      CALL wrk_alloc( jpi,jpj, zev, zdlha, zlsrise, zlsset, zps, zpc )
 
       ijpl = SIZE(pqsr_ice, 3 )      ! number of ice categories
       
@@ -936,7 +932,9 @@ CONTAINS
          CALL lbc_lnk( pqsr_ice(:,:,jl) , 'T', 1. )
       END DO
       !
-      IF( wrk_not_released(2, 1,2,3,4,5,6) )   CALL ctl_stop('blk_clio_qsr_ice: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi,jpj, zev, zdlha, zlsrise, zlsset, zps, zpc )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('blk_clio_qsr_ice')
       !
    END SUBROUTINE blk_clio_qsr_ice
 

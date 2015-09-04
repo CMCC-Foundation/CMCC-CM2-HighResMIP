@@ -38,6 +38,8 @@ MODULE sshwzv
 #if defined key_asminc   
    USE asminc          ! Assimilation increment
 #endif
+   USE wrk_nemo        ! Memory Allocation
+   USE timing          ! Timing
 
    IMPLICIT NONE
    PRIVATE
@@ -50,7 +52,7 @@ MODULE sshwzv
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: sshwzv.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -74,20 +76,18 @@ CONTAINS
       !!
       !! Reference  : Leclair, M., and G. Madec, 2009, Ocean Modelling.
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE oce     , ONLY:   z3d   => ta                           ! ta used as 3D workspace
-      USE wrk_nemo, ONLY:   zhdiv => wrk_2d_1 , z2d => wrk_2d_2   ! 2D workspace
-      !
       INTEGER, INTENT(in) ::   kt   ! time step
       !
       INTEGER  ::   ji, jj, jk   ! dummy loop indices
       REAL(wp) ::   zcoefu, zcoefv, zcoeff, z2dt, z1_2dt, z1_rau0   ! local scalars
+      REAL(wp), POINTER, DIMENSION(:,:  ) ::  z2d, zhdiv
+      REAL(wp), POINTER, DIMENSION(:,:,:) ::  z3d
       !!----------------------------------------------------------------------
-
-      IF( wrk_in_use(2, 1,2) ) THEN
-         CALL ctl_stop('ssh_wzv: requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('ssh_wzv')
+      !
+      CALL wrk_alloc( jpi, jpj, z2d, zhdiv ) 
+      !
       IF( kt == nit000 ) THEN
          !
          IF(lwp) WRITE(numout,*)
@@ -167,7 +167,7 @@ CONTAINS
       !                                                ! Sea surface elevation time stepping
       ! In forward Euler time stepping case, the same formulation as in the leap-frog case can be used
       ! because emp_b field is initialized with the vlaues of emp field. Hence, 0.5 * ( emp + emp_b ) = emp
-      z1_rau0 = 0.5_wp / rau0
+      z1_rau0 = 0.5 / rau0
       ssha(:,:) = (  sshb(:,:) - z2dt * ( z1_rau0 * ( emp_b(:,:) + emp(:,:) ) + zhdiv(:,:) )  ) * tmask(:,:,1)
 
 #if defined key_agrif
@@ -181,9 +181,15 @@ CONTAINS
 #endif
 #if defined key_bdy
       ssha(:,:) = ssha(:,:) * bdytmask(:,:)
-      CALL lbc_lnk( ssha, 'T', 1. ) 
+      CALL lbc_lnk( ssha, 'T', 1. )                    ! absolutly compulsory !! (jmm)
 #endif
-
+#if defined key_asminc
+      !                                                ! Include the IAU weighted SSH increment
+      IF( lk_asminc .AND. ln_sshinc .AND. ln_asmiau ) THEN
+         CALL ssh_asm_inc( kt )
+         ssha(:,:) = ssha(:,:) + z2dt * ssh_iau(:,:)
+      ENDIF
+#endif
       !                                                ! Sea Surface Height at u-,v- and f-points (vvl case only)
       IF( lk_vvl ) THEN                                ! (required only in key_vvl case)
          DO jj = 1, jpjm1
@@ -198,14 +204,6 @@ CONTAINS
          END DO
          CALL lbc_lnk( sshu_a, 'U', 1. )   ;   CALL lbc_lnk( sshv_a, 'V', 1. )      ! Boundaries conditions
       ENDIF
-      
-#if defined key_asminc
-      !                                                ! Include the IAU weighted SSH increment
-      IF( lk_asminc .AND. ln_sshinc .AND. ln_asmiau ) THEN
-         CALL ssh_asm_inc( kt )
-         ssha(:,:) = ssha(:,:) + z2dt * ssh_iau(:,:)
-      ENDIF
-#endif
 
       !                                           !------------------------------!
       !                                           !     Now Vertical Velocity    !
@@ -229,17 +227,21 @@ CONTAINS
       CALL iom_put( "ssh2", sshn(:,:) * sshn(:,:) )   ! square of sea surface height
       IF( lk_diaar5 ) THEN                            ! vertical mass transport & its square value
          ! Caution: in the VVL case, it only correponds to the baroclinic mass transport.
+         CALL wrk_alloc( jpi,jpj,jpk, z3d )
          z2d(:,:) = rau0 * e1t(:,:) * e2t(:,:)
          DO jk = 1, jpk
             z3d(:,:,jk) = wn(:,:,jk) * z2d(:,:)
          END DO
          CALL iom_put( "w_masstr" , z3d                     )  
          CALL iom_put( "w_masstr2", z3d(:,:,:) * z3d(:,:,:) )
+         CALL wrk_dealloc( jpi,jpj,jpk, z3d )
       ENDIF
       !
       IF(ln_ctl)   CALL prt_ctl( tab2d_1=ssha, clinfo1=' ssha  - : ', mask1=tmask, ovlap=1 )
       !
-      IF( wrk_not_released(2, 1,2) )   CALL ctl_stop('ssh_wzv: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi, jpj, z2d, zhdiv ) 
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('ssh_wzv')
       !
    END SUBROUTINE ssh_wzv
 
@@ -268,7 +270,9 @@ CONTAINS
       INTEGER  ::   ji, jj   ! dummy loop indices
       REAL(wp) ::   zec      ! temporary scalar
       !!----------------------------------------------------------------------
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('ssh_nxt')
+      !
       IF( kt == nit000 ) THEN
          IF(lwp) WRITE(numout,*)
          IF(lwp) WRITE(numout,*) 'ssh_nxt : next sea surface height (Asselin time filter + swap)'
@@ -352,6 +356,8 @@ CONTAINS
 #endif
       !
       IF(ln_ctl)   CALL prt_ctl( tab2d_1=sshb, clinfo1=' sshb  - : ', mask1=tmask, ovlap=1 )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('ssh_nxt')
       !
    END SUBROUTINE ssh_nxt
 

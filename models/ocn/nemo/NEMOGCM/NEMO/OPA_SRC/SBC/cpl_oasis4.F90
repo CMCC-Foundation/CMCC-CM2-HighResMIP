@@ -31,6 +31,7 @@ MODULE cpl_oasis4
    USE in_out_manager   ! I/O manager
    USE lbclnk           ! ocean lateral boundary conditions (or mpp link)
    USE lib_mpp          ! MPP library
+   USE wrk_nemo         ! work arrays
 
    IMPLICIT NONE
    PRIVATE
@@ -67,7 +68,7 @@ MODULE cpl_oasis4
 
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: cpl_oasis4.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -110,10 +111,6 @@ CONTAINS
       !!
       !! ** Method  :   OASIS4 MPI communication 
       !!--------------------------------------------------------------------
-      USE wrk_nemo, ONLY: wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY: zclo => wrk_3d_1, zcla => wrk_3d_2
-      USE wrk_nemo, ONLY: zlon => wrk_2d_1, zlat => wrk_2d_2
-      !
       INTEGER, INTENT(in) :: krcv, ksnd     ! Number of received and sent coupling fields
       !
       INTEGER, DIMENSION(4)      :: igrid     ! ids returned by prism_def_grid
@@ -144,11 +141,12 @@ CONTAINS
 
       TYPE(PRISM_Time_struct)    :: tmpdate
       INTEGER                    :: idate_incr      ! date increment
+      REAL(wp), POINTER, DIMENSION(:,:)   ::   zlon, zlat
+      REAL(wp), POINTER, DIMENSION(:,:,:) ::   zclo, zcla
       !!--------------------------------------------------------------------
-
-      IF( wrk_in_use(3, 1,2) .OR. wrk_in_use(2, 1,2) )THEN
-         CALL ctl_stop('cpl_prism_define: ERROR: requested workspace arrays are unavailable.')   ;   RETURN
-      ENDIF
+      
+      CALL wrk_alloc( jpi,jpj, zlon, zlat )
+      CALL wrk_alloc( jpi,jpj,jpk, zclo, zcla )
 
       IF(lwp) WRITE(numout,*)
       IF(lwp) WRITE(numout,*) 'cpl_prism_define : initialization in coupled ocean/atmosphere case'
@@ -321,8 +319,8 @@ CONTAINS
       CALL prism_enddef( nerror )
       IF ( nerror /= PRISM_Success )   CALL prism_abort ( ncomp_id, 'cpl_prism_define', 'Failure in prism_enddef')
       
-      IF( wrk_not_released(3, 1,2) .OR.   &
-          wrk_not_released(2, 1,2)   )   CALL ctl_stop('cpl_prism_define: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi,jpj, zlon, zlat )
+      CALL wrk_dealloc( jpi,jpj,jpk, zclo, zcla )
       !
    END SUBROUTINE cpl_prism_define
    

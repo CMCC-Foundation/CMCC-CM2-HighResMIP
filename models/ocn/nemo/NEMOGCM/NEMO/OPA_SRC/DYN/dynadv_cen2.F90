@@ -19,6 +19,8 @@ MODULE dynadv_cen2
    USE in_out_manager ! I/O manager
    USE lib_mpp        ! MPP library
    USE prtctl         ! Print control
+   USE wrk_nemo        ! Memory Allocation
+   USE timing          ! Timing
 
    IMPLICIT NONE
    PRIVATE
@@ -30,7 +32,7 @@ MODULE dynadv_cen2
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 4.0 , NEMO Consortium (2011)
-   !! $Id: dynadv_cen2.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -46,29 +48,24 @@ CONTAINS
       !!
       !! ** Action  :   (ua,va) updated with the now vorticity term trend
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE oce     , ONLY:   zfu   => ta       , zfv   => sa       ! (ta,sa) used as 3D workspace
-      USE wrk_nemo, ONLY:   zfu_t => wrk_3d_1 , zfv_t => wrk_3d_4 , zfu_uw =>wrk_3d_6   ! 3D workspaces
-      USE wrk_nemo, ONLY:   zfu_f => wrk_3d_2 , zfv_f => wrk_3d_5 , zfv_vw =>wrk_3d_7
-      USE wrk_nemo, ONLY:   zfw   => wrk_3d_3 
-      !
       INTEGER, INTENT( in ) ::   kt   ! ocean time-step index
       !
       INTEGER  ::   ji, jj, jk   ! dummy loop indices
       REAL(wp) ::   zbu, zbv     ! local scalars
+      REAL(wp), POINTER, DIMENSION(:,:,:) ::  zfu_t, zfv_t, zfu_f, zfv_f, zfu_uw, zfv_vw, zfw
+      REAL(wp), POINTER, DIMENSION(:,:,:) ::  zfu, zfv
       !!----------------------------------------------------------------------
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('dyn_adv_cen2')
+      !
+      CALL wrk_alloc( jpi, jpj, jpk, zfu_t, zfv_t, zfu_f, zfv_f, zfu_uw, zfv_vw, zfu, zfv, zfw )
+      !
       IF( kt == nit000 .AND. lwp ) THEN
          WRITE(numout,*)
          WRITE(numout,*) 'dyn_adv_cen2 : 2nd order flux form momentum advection'
          WRITE(numout,*) '~~~~~~~~~~~~'
       ENDIF
-
-      ! Check that global workspace arrays aren't already in use
-      IF( wrk_in_use(3, 1,2,3,4,5,6,7) ) THEN
-         CALL ctl_stop('dyn_adv_cen2 : requested workspace array unavailable')   ;   RETURN
-      ENDIF
-
+      !
       IF( l_trddyn ) THEN           ! Save ua and va trends
          zfu_uw(:,:,:) = ua(:,:,:)
          zfv_vw(:,:,:) = va(:,:,:)
@@ -161,7 +158,9 @@ CONTAINS
       IF(ln_ctl)   CALL prt_ctl( tab3d_1=ua, clinfo1=' cen2 adv - Ua: ', mask1=umask,   &
          &                       tab3d_2=va, clinfo2=           ' Va: ', mask2=vmask, clinfo3='dyn' )
       !
-      IF( wrk_not_released(3, 1,2,3,4,5,6,7) )   CALL ctl_stop('dyn_adv_cen2: failed to release workspace array')
+      CALL wrk_dealloc( jpi, jpj, jpk, zfu_t, zfv_t, zfu_f, zfv_f, zfu_uw, zfv_vw, zfu, zfv, zfw )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('dyn_adv_cen2')
       !
    END SUBROUTINE dyn_adv_cen2
 

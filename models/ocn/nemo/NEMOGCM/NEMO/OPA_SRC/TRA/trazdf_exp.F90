@@ -30,6 +30,8 @@ MODULE trazdf_exp
    USE trc_oce         ! share passive tracers/Ocean variables
    USE in_out_manager  ! I/O manager
    USE lib_mpp         ! MPP library
+   USE wrk_nemo        ! Memory Allocation
+   USE timing          ! Timing
 
    IMPLICIT NONE
    PRIVATE
@@ -42,12 +44,12 @@ MODULE trazdf_exp
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: trazdf_exp.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
 
-   SUBROUTINE tra_zdf_exp( kt, cdtype, p2dt, kn_zdfexp,   &
+   SUBROUTINE tra_zdf_exp( kt, kit000, cdtype, p2dt, kn_zdfexp,   &
       &                                ptb , pta      , kjpt )
       !!----------------------------------------------------------------------
       !!                  ***  ROUTINE tra_zdf_exp  ***
@@ -72,10 +74,9 @@ CONTAINS
       !!
       !! ** Action : - after tracer fields pta
       !!---------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zwx => wrk_3d_6, zwy => wrk_3d_7     ! 3D workspace
       !
       INTEGER                              , INTENT(in   ) ::   kt          ! ocean time-step index
+      INTEGER                              , INTENT(in   ) ::   kit000      ! first time step index
       CHARACTER(len=3)                     , INTENT(in   ) ::   cdtype      ! =TRA or TRC (tracer indicator)
       INTEGER                              , INTENT(in   ) ::   kjpt        ! number of tracers
       INTEGER                              , INTENT(in   ) ::   kn_zdfexp   ! number of sub-time step
@@ -86,13 +87,15 @@ CONTAINS
       INTEGER  ::  ji, jj, jk, jn, jl        ! dummy loop indices
       REAL(wp) ::  zlavmr, zave3r, ze3tr     ! local scalars
       REAL(wp) ::  ztra, ze3tb               !   -      -
+      REAL(wp), POINTER, DIMENSION(:,:,:) ::  zwx, zwy
       !!---------------------------------------------------------------------
+      !
+      IF( nn_timing == 1 )  CALL timing_start('tra_zdf_exp')
+      !
+      CALL wrk_alloc( jpi, jpj, jpk, zwx, zwy ) 
+      !
 
-      IF( wrk_in_use(3, 6,7) ) THEN
-         CALL ctl_stop('tra_zdf_exp: requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
-
-      IF( kt == nit000 )  THEN
+      IF( kt == kit000 )  THEN
          IF(lwp) WRITE(numout,*)
          IF(lwp) WRITE(numout,*) 'tra_zdf_exp : explicit vertical mixing on ', cdtype
          IF(lwp) WRITE(numout,*) '~~~~~~~~~~~'
@@ -163,7 +166,9 @@ CONTAINS
          !
       END DO
       !
-      IF( wrk_not_released(3, 6,7) )   CALL ctl_stop('tra_zdf_exp: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi, jpj, jpk, zwx, zwy ) 
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('tra_zdf_exp')
       !
    END SUBROUTINE tra_zdf_exp
 

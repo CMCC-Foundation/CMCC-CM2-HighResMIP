@@ -10,7 +10,10 @@ MODULE domngb
    !!   dom_ngb       : find the closest grid point from a given lon/lat position
    !!----------------------------------------------------------------------
    USE dom_oce        ! ocean space and time domain
+   USE in_out_manager ! I/O manager
    USE lib_mpp        ! for mppsum
+   USE wrk_nemo       ! Memory allocation
+   USE timing         ! Timing
 
    IMPLICIT NONE
    PRIVATE
@@ -19,7 +22,7 @@ MODULE domngb
 
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: domngb.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -33,8 +36,6 @@ CONTAINS
       !! ** Method  :   look for minimum distance in cylindrical projection 
       !!                -> not good if located at too high latitude...
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zglam => wrk_2d_2 , zgphi => wrk_2d_3 , zmask => wrk_2d_4 , zdist => wrk_2d_5
       !
       REAL(wp)        , INTENT(in   ) ::   plon, plat   ! longitude,latitude of the point
       INTEGER         , INTENT(  out) ::   kii, kjj     ! i-,j-index of the closes grid point
@@ -42,9 +43,12 @@ CONTAINS
       !
       INTEGER , DIMENSION(2) ::   iloc
       REAL(wp)               ::   zlon, zmini
+      REAL(wp), POINTER, DIMENSION(:,:) ::  zglam, zgphi, zmask, zdist
       !!--------------------------------------------------------------------
       !
-      IF( wrk_in_use(2, 2,3,4,5) )   CALL ctl_stop('dom_ngb: Requested workspaces already in use')
+      IF( nn_timing == 1 )  CALL timing_start('dom_ngb')
+      !
+      CALL wrk_alloc( jpi, jpj, zglam, zgphi, zmask, zdist )
       !
       zmask(:,:) = 0._wp
       SELECT CASE( cdgrid )
@@ -71,7 +75,9 @@ CONTAINS
          kjj = iloc(2) + njmpp - 1
       ENDIF
       !
-      IF( wrk_not_released(2, 2,3,4,5) )   CALL ctl_stop('dom_ngb: error releasing workspaces')
+      CALL wrk_dealloc( jpi, jpj, zglam, zgphi, zmask, zdist )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('dom_ngb')
       !
    END SUBROUTINE dom_ngb
 

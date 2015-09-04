@@ -34,7 +34,7 @@ MODULE ldftra
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: ldftra.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -66,6 +66,7 @@ CONTAINS
       NAMELIST/namtra_ldf/ ln_traldf_lap  , ln_traldf_bilap,                  &
          &                 ln_traldf_level, ln_traldf_hor  , ln_traldf_iso,   &
          &                 ln_traldf_grif , ln_traldf_gdia,                   &
+         &                 ln_triad_iso   , ln_botmix_grif,                   &
          &                 rn_aht_0       , rn_ahtb_0      , rn_aeiv_0,       &
          &                 rn_slpmax
       !!----------------------------------------------------------------------
@@ -92,9 +93,8 @@ CONTAINS
          WRITE(numout,*) '      background hor. diffusivity   rn_ahtb_0       = ', rn_ahtb_0
          WRITE(numout,*) '      eddy induced velocity coef.   rn_aeiv_0       = ', rn_aeiv_0
          WRITE(numout,*) '      maximum isoppycnal slope      rn_slpmax       = ', rn_slpmax
-         WRITE(numout,*) '   + griffies operator internal controls not set via the namelist (experimental): '
-         WRITE(numout,*) '      calculate triads twice        l_triad_iso     = ', l_triad_iso
-         WRITE(numout,*) '      no Shapiro filter             l_no_smooth     = ', l_no_smooth
+         WRITE(numout,*) '      pure lateral mixing in ML     ln_triad_iso    = ', ln_triad_iso
+         WRITE(numout,*) '      lateral mixing on bottom      ln_botmix_grif  = ', ln_botmix_grif
          WRITE(numout,*)
       ENDIF
 

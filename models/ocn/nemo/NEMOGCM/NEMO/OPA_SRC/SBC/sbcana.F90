@@ -25,6 +25,7 @@ MODULE sbcana
 
    PUBLIC   sbc_ana    ! routine called in sbcmod module
    PUBLIC   sbc_gyre   ! routine called in sbcmod module
+   PUBLIC   sbc_seabass   ! routine called in sbcmod module
 
    !                                !!* Namelist namsbc_ana *
    INTEGER  ::   nn_tau000 = 1       ! nb of time-step during which the surface stress
@@ -40,7 +41,7 @@ MODULE sbcana
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: sbcana.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -88,25 +89,40 @@ CONTAINS
          !
          nn_tau000 = MAX( nn_tau000, 1 )     ! must be >= 1
          !
+         utau(:,:) = rn_utau0
+         vtau(:,:) = rn_vtau0
+         taum(:,:) = SQRT ( rn_utau0 * rn_utau0 + rn_vtau0 * rn_vtau0 )
+         wndm(:,:) = SQRT ( taum(1,1) /  ( zrhoa * zcdrag ) )
+         !
+         qns (:,:) = rn_qns0
+         qsr (:,:) = rn_qsr0
+         emp (:,:) = rn_emp0
+         emps(:,:) = rn_emp0
+         !
       ENDIF
 
-      qns (:,:) = rn_qns0
-      qsr (:,:) = rn_qsr0
-      emp (:,:) = rn_emp0
-      emps(:,:) = rn_emp0
-   
-      ! Increase the surface stress to its nominal value during the first nn_tau000 time-steps
-      IF( kt <= nn_tau000 ) THEN
-         zfacto = 0.5 * (  1. - COS( rpi * FLOAT( kt ) / FLOAT( nn_tau000 ) )  )
-         zcoef = 1. / ( zrhoa * zcdrag ) 
-         ztx = zfacto * rn_utau0
-         zty = zfacto * rn_vtau0
-         zmod = SQRT( ztx * ztx + zty * zty )
-         utau(:,:) = ztx
-         vtau(:,:) = zty
-         taum(:,:) = zmod
-         zmod = SQRT( zmod * zcoef )
-         wndm(:,:) = zmod
+      IF( MOD( kt - 1, nn_fsbc ) == 0 ) THEN 
+         !
+         ! Increase the surface stress to its nominal value during the first nn_tau000 time-steps
+         IF( kt <= nn_tau000 ) THEN
+            zfacto = 0.5 * (  1. - COS( rpi * FLOAT( kt ) / FLOAT( nn_tau000 ) )  )
+            zcoef = 1. / ( zrhoa * zcdrag ) 
+            ztx = zfacto * rn_utau0
+            zty = zfacto * rn_vtau0
+            zmod = SQRT( ztx * ztx + zty * zty )
+            utau(:,:) = ztx
+            vtau(:,:) = zty
+            taum(:,:) = zmod
+            zmod = SQRT( zmod * zcoef )
+            wndm(:,:) = zmod
+         ENDIF
+         !
+         ! retore heat and fresh water fluxes as they may have been changed by sbcssr module
+         qns (:,:) = rn_qns0
+         qsr (:,:) = rn_qsr0
+         emp (:,:) = rn_emp0
+         emps(:,:) = rn_emp0
+         !
       ENDIF
       !
    END SUBROUTINE sbc_ana
@@ -192,7 +208,7 @@ CONTAINS
                &                    / ( 53.5 * ( 1 + 11 / 53.5 * zcos_sais2 ) * 2.) )
             ! 23.5 deg : tropics
             qsr (ji,jj) =  230 * COS( 3.1415 * ( gphit(ji,jj) - 23.5 * zcos_sais1 ) / ( 0.9 * 180 ) )
-            qns (ji,jj) = ztrp * ( tb(ji,jj,1) - t_star ) - qsr(ji,jj)
+            qns (ji,jj) = ztrp * ( tsb(ji,jj,1,jp_tem) - t_star ) - qsr(ji,jj)
             IF( gphit(ji,jj) >= 14.845 .AND. 37.2 >= gphit(ji,jj) ) THEN    ! zero at 37.8 deg, max at 24.6 deg
                emp  (ji,jj) =   zemp_S * zconv   &
                   &         * SIN( rpi / 2 * (gphit(ji,jj) - 37.2) / (24.6 - 37.2) )  &
@@ -306,6 +322,93 @@ CONTAINS
       ENDIF
       !
    END SUBROUTINE sbc_gyre
+
+   SUBROUTINE sbc_seabass( kt )
+      !!---------------------------------------------------------------------
+      !!                    ***  ROUTINE sbc_seabass ***
+      !!
+      !! ** Purpose :   provide at each time-step the ocean surface boundary
+      !!      condition, i.e. the momentum, heat and freshwater fluxes.
+      !!
+      !! ** Method  :   Constant and uniform surface forcing specified from
+      !!      namsbc_ana namelist parameters. All the fluxes are time inde-
+      !!      pendant except the stresses which increase from zero during
+      !!      the first nn_tau000 time-step
+      !!      * C A U T I O N : never mask the surface stress field !
+      !!
+      !! ** Action  : - set the ocean surface boundary condition, i.e.
+      !!                   utau, vtau, qns, qsr, emp, emps
+      !!----------------------------------------------------------------------
+      INTEGER, INTENT(in) ::   kt       ! ocean time step
+      !!
+      INTEGER             ::   ji, jj          ! dummy loop indices
+      REAL(wp)            ::   zfacto          ! local scalar
+      REAL(wp) ::   zrhoa  = 1.22_wp      ! Air density kg/m3
+      REAL(wp) ::   zcdrag = 1.5e-3_wp    ! drag coefficient
+      REAL(wp)            ::   ztx, zty, ztau  ! local scalar
+      !!
+      NAMELIST/namsbc_ana/ nn_tau000, rn_utau0, rn_vtau0, rn_qns0, rn_qsr0, rn_emp0
+      !!---------------------------------------------------------------------
+      !
+      IF( kt == nit000 ) THEN
+         !
+         REWIND ( numnam )                   ! Read Namelist namsbc : surface fluxes
+         READ   ( numnam, namsbc_ana )
+         !
+         IF(lwp) WRITE(numout,*)' '
+         IF(lwp) WRITE(numout,*)' sbc_ana : Constant surface fluxes read in namsbc_ana namelist'
+         IF(lwp) WRITE(numout,*)' ~~~~~~~ '
+         IF(lwp) WRITE(numout,*)'              spin up of the stress  nn_tau000 = ', nn_tau000, ' time-steps'
+         IF(lwp) WRITE(numout,*)'              constant i-stress      rn_utau0  = ', rn_utau0 , ' N/m2'
+         IF(lwp) WRITE(numout,*)'              constant j-stress      rn_vtau0  = ', rn_vtau0 , ' N/m2'
+         IF(lwp) WRITE(numout,*)'              non solar heat flux    rn_qns0   = ', rn_qns0  , ' W/m2'
+         IF(lwp) WRITE(numout,*)'              solar heat flux        rn_qsr0   = ', rn_qsr0  , ' W/m2'
+         IF(lwp) WRITE(numout,*)'              net heat flux          rn_emp0   = ', rn_emp0  , ' Kg/m2/s'
+         !
+         nn_tau000 = MAX( nn_tau000, 1 )   ! must be >= 1
+         qns   (:,:) = rn_qns0
+         qsr   (:,:) = 0._wp
+         emp   (:,:) = 0._wp
+         emps  (:,:) = 0._wp
+         !
+         IF (jphgr_msh .eq. 2 .or. jphgr_msh .eq. 3) THEN
+            DO jj = 1, jpj
+               DO ji = 1, jpi
+                  utau(ji,jj) = -rn_utau0 * COS(2.*rpi         &
+                  &             * (gphiu(ji,jj)+18.5533)/(2207.84+18.5533))
+                  vtau (ji,jj) =   0.
+               END DO
+            END DO
+         ELSE
+            DO jj = 1, jpj
+               DO ji = 1, jpi
+                  utau(ji,jj) = -rn_utau0 * COS(2.*rpi         &
+                  &             * (gphiu(ji,jj)-24.)/(44.-24.))
+                  vtau (ji,jj) =   0.
+               END DO
+            END DO
+         END IF
+
+
+         IF(lwp) WRITE(numout,*)' tau     : Constant surface wind stress read in namelist'
+
+      ENDIF
+
+      zfacto = 0.5 / ( zrhoa * zcdrag )
+!CDIR NOVERRCHK
+      DO jj = 2, jpjm1
+!CDIR NOVERRCHK
+         DO ji = fs_2, fs_jpim1   ! vect. opt.
+            ztx = utau(ji-1,jj  ) + utau(ji,jj)
+            zty = vtau(ji  ,jj-1) + vtau(ji,jj)
+            ztau = SQRT( ztx * ztx + zty * zty )
+            wndm(ji,jj) = SQRT ( ztau * zfacto ) * tmask(ji,jj,1)
+         END DO
+      END DO
+      CALL lbc_lnk( wndm(:,:) , 'T', 1. )
+      !
+
+   END SUBROUTINE sbc_seabass
 
    !!======================================================================
 END MODULE sbcana

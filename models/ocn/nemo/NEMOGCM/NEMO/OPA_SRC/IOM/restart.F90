@@ -23,7 +23,6 @@ MODULE restart
    USE eosbn2          ! equation of state            (eos bn2 routine)
    USE trdmld_oce      ! ocean active mixed layer tracers trends variables
    USE domvvl          ! variable volume
-   USE traswp          ! swap from 4D T-S to 3D T & S and vice versa
 
    IMPLICIT NONE
    PRIVATE
@@ -40,7 +39,7 @@ MODULE restart
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: restart.F90 2528 2010-12-27 17:33:53Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -116,8 +115,8 @@ CONTAINS
 
                      CALL iom_rstput( kt, nitrst, numrow, 'ub'     , ub        )     ! before fields
                      CALL iom_rstput( kt, nitrst, numrow, 'vb'     , vb        )
-                     CALL iom_rstput( kt, nitrst, numrow, 'tb'     , tb        )
-                     CALL iom_rstput( kt, nitrst, numrow, 'sb'     , sb        )
+                     CALL iom_rstput( kt, nitrst, numrow, 'tb'     , tsb(:,:,:,jp_tem) )
+                     CALL iom_rstput( kt, nitrst, numrow, 'sb'     , tsb(:,:,:,jp_sal) )
                      CALL iom_rstput( kt, nitrst, numrow, 'rotb'   , rotb      )
                      CALL iom_rstput( kt, nitrst, numrow, 'hdivb'  , hdivb     )
                      CALL iom_rstput( kt, nitrst, numrow, 'sshb'   , sshb      )
@@ -125,8 +124,8 @@ CONTAINS
                      !
                      CALL iom_rstput( kt, nitrst, numrow, 'un'     , un        )     ! now fields
                      CALL iom_rstput( kt, nitrst, numrow, 'vn'     , vn        )
-                     CALL iom_rstput( kt, nitrst, numrow, 'tn'     , tn        )
-                     CALL iom_rstput( kt, nitrst, numrow, 'sn'     , sn        )
+                     CALL iom_rstput( kt, nitrst, numrow, 'tn'     , tsn(:,:,:,jp_tem) )
+                     CALL iom_rstput( kt, nitrst, numrow, 'sn'     , tsn(:,:,:,jp_sal) )
                      CALL iom_rstput( kt, nitrst, numrow, 'rotn'   , rotn      )
                      CALL iom_rstput( kt, nitrst, numrow, 'hdivn'  , hdivn     )
                      CALL iom_rstput( kt, nitrst, numrow, 'sshn'   , sshn      )
@@ -185,8 +184,8 @@ CONTAINS
       ! 
                      CALL iom_get( numror, jpdom_autoglo, 'ub'     , ub      )   ! before fields
                      CALL iom_get( numror, jpdom_autoglo, 'vb'     , vb      )
-                     CALL iom_get( numror, jpdom_autoglo, 'tb'     , tb      )
-                     CALL iom_get( numror, jpdom_autoglo, 'sb'     , sb      )
+                     CALL iom_get( numror, jpdom_autoglo, 'tb'     , tsb(:,:,:,jp_tem) )
+                     CALL iom_get( numror, jpdom_autoglo, 'sb'     , tsb(:,:,:,jp_sal) )
                      CALL iom_get( numror, jpdom_autoglo, 'rotb'   , rotb    )
                      CALL iom_get( numror, jpdom_autoglo, 'hdivb'  , hdivb   )
                      CALL iom_get( numror, jpdom_autoglo, 'sshb'   , sshb    )
@@ -194,8 +193,8 @@ CONTAINS
                      !
                      CALL iom_get( numror, jpdom_autoglo, 'un'     , un      )   ! now    fields
                      CALL iom_get( numror, jpdom_autoglo, 'vn'     , vn      )
-                     CALL iom_get( numror, jpdom_autoglo, 'tn'     , tn      )
-                     CALL iom_get( numror, jpdom_autoglo, 'sn'     , sn      )
+                     CALL iom_get( numror, jpdom_autoglo, 'tn'     , tsn(:,:,:,jp_tem) )
+                     CALL iom_get( numror, jpdom_autoglo, 'sn'     , tsn(:,:,:,jp_sal) )
                      CALL iom_get( numror, jpdom_autoglo, 'rotn'   , rotn    )
                      CALL iom_get( numror, jpdom_autoglo, 'hdivn'  , hdivn   )
                      CALL iom_get( numror, jpdom_autoglo, 'sshn'   , sshn    )
@@ -204,19 +203,17 @@ CONTAINS
       IF( iom_varid( numror, 'rhd', ldstop = .FALSE. ) > 0 ) THEN
                      CALL iom_get( numror, jpdom_autoglo, 'rhd'    , rhd     )   ! now    in situ density anomaly
       ELSE
-                     CALL tra_swap
                      CALL eos( tsn, rhd )   ! compute rhd
       ENDIF
 #endif
       !
       IF( neuler == 0 ) THEN                                  ! Euler restart (neuler=0)
-         tb   (:,:,:) = tn   (:,:,:)                             ! all before fields set to now values
-         sb   (:,:,:) = sn   (:,:,:)
-         ub   (:,:,:) = un   (:,:,:)
-         vb   (:,:,:) = vn   (:,:,:)
-         rotb (:,:,:) = rotn (:,:,:)
-         hdivb(:,:,:) = hdivn(:,:,:)
-         sshb (:,:)   = sshn (:,:)
+         tsb  (:,:,:,:) = tsn  (:,:,:,:)                             ! all before fields set to now values
+         ub   (:,:,:)   = un   (:,:,:)
+         vb   (:,:,:)   = vn   (:,:,:)
+         rotb (:,:,:)   = rotn (:,:,:)
+         hdivb(:,:,:)   = hdivn(:,:,:)
+         sshb (:,:)     = sshn (:,:)
          IF( lk_vvl ) THEN
             DO jk = 1, jpk
                fse3t_b(:,:,jk) = fse3t_n(:,:,jk)

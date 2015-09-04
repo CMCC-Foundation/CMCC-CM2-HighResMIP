@@ -1,8 +1,7 @@
 MODULE in_out_manager   
    !!======================================================================
    !!                       ***  MODULE  in_out_manager  ***
-   !! Ocean physics:  vertical mixing coefficient compute from the tke 
-   !!                 turbulent closure parameterization
+   !! I/O manager utilities : Defines run parameters together with logical units
    !!=====================================================================
    !! History :   1.0  !  2002-06  (G. Madec)   original code
    !!             2.0  !  2006-07  (S. Masson)  iom, add ctl_stop, ctl_warn
@@ -86,6 +85,7 @@ MODULE in_out_manager
    !!                    output monitoring
    !!----------------------------------------------------------------------
    LOGICAL ::   ln_ctl     = .FALSE.   !: run control for debugging
+   INTEGER ::   nn_timing    =    0    !: run control for timing
    INTEGER ::   nn_print     =    0    !: level of print (0 no print)
    INTEGER ::   nn_ictls     =    0    !: Start i indice for the SUM control
    INTEGER ::   nn_ictle     =    0    !: End   i indice for the SUM control
@@ -104,12 +104,19 @@ MODULE in_out_manager
    !!----------------------------------------------------------------------
    !!                        logical units
    !!----------------------------------------------------------------------
-   INTEGER ::   numstp     =   -1      !: logical unit for time step
-   INTEGER ::   numout     =    6      !: logical unit for output print
-   INTEGER ::   numnam     =   -1      !: logical unit for namelist
-   INTEGER ::   numnam_ice =   -1      !: logical unit for ice namelist
-   INTEGER ::   numevo_ice =   -1      !: logical unit for ice variables (temp. evolution)
-   INTEGER ::   numsol     =   -1      !: logical unit for solver statistics
+   INTEGER ::   numstp      =   -1      !: logical unit for time step
+   INTEGER ::   numtime     =   -1      !: logical unit for timing
+   INTEGER ::   numout      =    6      !: logical unit for output print
+   INTEGER ::   numnam      =   -1      !: logical unit for namelist
+   INTEGER ::   numnam_ice  =   -1      !: logical unit for ice namelist
+   INTEGER ::   numevo_ice  =   -1      !: logical unit for ice variables (temp. evolution)
+   INTEGER ::   numsol      =   -1      !: logical unit for solver statistics
+   INTEGER ::   numdct_in   =   -1      !: logical unit for transports computing
+   INTEGER ::   numdct_vol  =   -1      !: logical unit for voulume transports output
+   INTEGER ::   numdct_heat =   -1      !: logical unit for heat    transports output
+   INTEGER ::   numdct_salt =   -1      !: logical unit for salt    transports output
+   INTEGER ::   numfl      =   -1      !: logical unit for floats ascii output
+   INTEGER ::   numflo     =   -1      !: logical unit for floats ascii output
 
    !!----------------------------------------------------------------------
    !!                          Run control  
@@ -127,7 +134,7 @@ MODULE in_out_manager
 
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: in_out_manager.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!=====================================================================
 END MODULE in_out_manager

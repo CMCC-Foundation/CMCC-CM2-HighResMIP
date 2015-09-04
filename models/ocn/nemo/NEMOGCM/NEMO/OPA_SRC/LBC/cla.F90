@@ -58,7 +58,7 @@ MODULE cla
 #  include "domzgr_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: cla.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -386,31 +386,31 @@ CONTAINS
          DO jj = mj0(88), mj1(88)              !** (161,88)   (Gulf of Aden side, north point)
             DO ji = mi0(161), mi1(161) 
                DO jk = 1, jpkm1                         ! surf inflow + reciculation (from Gulf of Aden)
-                  ta(ji,jj,jk) = ta(ji,jj,jk) - hdiv_161_88_kt(jk) * tn(ji,jj,jk)
-                  sa(ji,jj,jk) = sa(ji,jj,jk) - hdiv_161_88_kt(jk) * sn(ji,jj,jk)
+                  tsa(ji,jj,jk,jp_tem) = tsa(ji,jj,jk,jp_tem) - hdiv_161_88_kt(jk) * tsn(ji,jj,jk,jp_tem)
+                  tsa(ji,jj,jk,jp_sal) = tsa(ji,jj,jk,jp_sal) - hdiv_161_88_kt(jk) * tsn(ji,jj,jk,jp_sal)
                END DO
             END DO
          END DO
          DO jj = mj0(87), mj1(87)              !** (161,87)   (Gulf of Aden side, south point)
             DO ji = mi0(161), mi1(161) 
                jk =  21                                 ! deep outflow + recirulation (combined flux)
-               ta(ji,jj,jk) = ta(ji,jj,jk) + hdiv_161_88(20) * tn(ji  ,jj+1,20)   &  ! upper recirculation from Gulf of Aden
-                  &                        + hdiv_161_88(21) * tn(ji  ,jj+1,21)   &  ! deep  recirculation from Gulf of Aden
-                  &                        + hdiv_160_89(16) * tn(ji-1,jj+2,16)      ! deep inflow from Red sea
-               sa(ji,jj,jk) = sa(ji,jj,jk) + hdiv_161_88(20) * sn(ji  ,jj+1,20)   &
-                  &                        + hdiv_161_88(21) * sn(ji  ,jj+1,21)   &
-                  &                        + hdiv_160_89(16) * sn(ji-1,jj+2,16)   
+               tsa(ji,jj,jk,jp_tem) = tsa(ji,jj,jk,jp_tem) + hdiv_161_88(20) * tsn(ji  ,jj+1,20,jp_tem)   &  ! upper recirculation from Gulf of Aden
+                  &                        + hdiv_161_88(21) * tsn(ji  ,jj+1,21,jp_tem)   &  ! deep  recirculation from Gulf of Aden
+                  &                        + hdiv_160_89(16) * tsn(ji-1,jj+2,16,jp_tem)      ! deep inflow from Red sea
+               tsa(ji,jj,jk,jp_sal) = tsa(ji,jj,jk,jp_sal) + hdiv_161_88(20) * tsn(ji  ,jj+1,20,jp_sal)   &
+                  &                        + hdiv_161_88(21) * tsn(ji  ,jj+1,21,jp_sal)   &
+                  &                        + hdiv_160_89(16) * tsn(ji-1,jj+2,16,jp_sal)   
             END DO
          END DO
          DO jj = mj0(89), mj1(89)              !** (161,88)   (Red sea side)
             DO ji = mi0(160), mi1(160)
                DO jk = 1, 14                            ! surface inflow (from Gulf of Aden)
-                  ta(ji,jj,jk) = ta(ji,jj,jk) - hdiv_160_89_kt(jk) * tn(ji+1,jj-1,jk)
-                  sa(ji,jj,jk) = sa(ji,jj,jk) - hdiv_160_89_kt(jk) * sn(ji+1,jj-1,jk)
+                  tsa(ji,jj,jk,jp_tem) = tsa(ji,jj,jk,jp_tem) - hdiv_160_89_kt(jk) * tsn(ji+1,jj-1,jk,jp_tem)
+                  tsa(ji,jj,jk,jp_sal) = tsa(ji,jj,jk,jp_sal) - hdiv_160_89_kt(jk) * tsn(ji+1,jj-1,jk,jp_sal)
                END DO
-               !                                        ! deep    outflow (from Red sea)
-               ta(ji,jj,16) = ta(ji,jj,16) - hdiv_160_89(jk) * tn(ji,jj,jk)
-               sa(ji,jj,16) = sa(ji,jj,16) - hdiv_160_89(jk) * sn(ji,jj,jk)
+               !                                  ! deep    outflow (from Red sea)
+               tsa(ji,jj,16,jp_tem) = tsa(ji,jj,16,jp_tem) - hdiv_160_89(16) * tsn(ji,jj,16,jp_tem)
+               tsa(ji,jj,16,jp_sal) = tsa(ji,jj,16,jp_sal) - hdiv_160_89(16) * tsn(ji,jj,16,jp_sal)
             END DO
          END DO
          !
@@ -576,8 +576,8 @@ CONTAINS
          DO jj = mj0(101), mj1(101)            !** 139,101 (Atlantic side, south point)   (div >0)
             DO ji = mi0(139), mi1(139) 
                DO jk = 1, jpkm1                         ! surf inflow + mid. & bottom reciculation (from Atlantic)	
-                  ta(ji,jj,jk) = ta(ji,jj,jk) - hdiv_139_101_kt(jk) * tn(ji,jj,jk)
-                  sa(ji,jj,jk) = sa(ji,jj,jk) - hdiv_139_101_kt(jk) * sn(ji,jj,jk)
+                  tsa(ji,jj,jk,jp_tem) = tsa(ji,jj,jk,jp_tem) - hdiv_139_101_kt(jk) * tsn(ji,jj,jk,jp_tem)
+                  tsa(ji,jj,jk,jp_sal) = tsa(ji,jj,jk,jp_sal) - hdiv_139_101_kt(jk) * tsn(ji,jj,jk,jp_sal)
                END DO
             END DO
          END DO
@@ -585,28 +585,28 @@ CONTAINS
          DO jj = mj0(102), mj1(102)            !** 139,102 (Atlantic side, north point)   (div <0)
             DO ji = mi0(139), mi1(139) 
                DO jk = 15, 20                            ! middle  reciculation (Atl 101 -> Atl 102)   (div <0)
-                  ta(ji,jj,jk) = ta(ji,jj,jk) - hdiv_139_102(jk) * tn(ji,jj-1,jk)  ! middle Atlantic recirculation
-                  sa(ji,jj,jk) = sa(ji,jj,jk) - hdiv_139_102(jk) * sn(ji,jj-1,jk)
+                  tsa(ji,jj,jk,jp_tem) = tsa(ji,jj,jk,jp_tem) - hdiv_139_102(jk) * tsn(ji,jj-1,jk,jp_tem)  ! middle Atlantic recirculation
+                  tsa(ji,jj,jk,jp_sal) = tsa(ji,jj,jk,jp_sal) - hdiv_139_102(jk) * tsn(ji,jj-1,jk,jp_sal)
                END DO
                !                                         ! upper & bottom Atl. reciculation (Atl 101 -> Atl 102) - (div <0)
                !                                         ! deep Med flow                    (Med 102 -> Atl 102) - (div <0)
-               ta(ji,jj,22) = ta(ji,jj,22) + hdiv_141_102(21) * tn(ji+2,jj  ,21)   &  ! deep Med flow  
-                  &                        + hdiv_139_101(21) * tn(ji  ,jj-1,21)   &  ! upper  Atlantic recirculation  
-                  &                        + hdiv_139_101(22) * tn(ji  ,jj-1,22)      ! bottom Atlantic recirculation  
-               sa(ji,jj,22) = sa(ji,jj,22) + hdiv_141_102(21) * sn(ji+2,jj  ,21)   &
-                  &                        + hdiv_139_101(21) * sn(ji  ,jj-1,21)   &
-                  &                        + hdiv_139_101(22) * sn(ji  ,jj-1,22) 
+               tsa(ji,jj,22,jp_tem) = tsa(ji,jj,22,jp_tem) + hdiv_141_102(21) * tsn(ji+2,jj,21,jp_tem)   &  ! deep Med flow  
+                  &                        + hdiv_139_101(21) * tsn(ji,jj-1,21,jp_tem)   &  ! upper  Atlantic recirculation  
+                  &                        + hdiv_139_101(22) * tsn(ji,jj-1,22,jp_tem)      ! bottom Atlantic recirculation  
+               tsa(ji,jj,22,jp_sal) = tsa(ji,jj,22,jp_sal) + hdiv_141_102(21) * tsn(ji+2,jj,21,jp_sal)   &
+                  &                        + hdiv_139_101(21) * tsn(ji,jj-1,21,jp_sal)   &
+                  &                        + hdiv_139_101(22) * tsn(ji,jj-1,22,jp_sal) 
             END DO
          END DO
          DO jj = mj0(102), mj1(102)                 !* 141,102 (Med side)   (div <0)
             DO ji = mi0(141), mi1(141) 
                DO jk = 1, 14                             ! surface flow from Atlantic to Med sea
-                  ta(ji,jj,jk) = ta(ji,jj,jk) - hdiv_141_102_kt(jk) * tn(ji-2,jj-1,jk)
-                  sa(ji,jj,jk) = sa(ji,jj,jk) - hdiv_141_102_kt(jk) * sn(ji-2,jj-1,jk)
+                  tsa(ji,jj,jk,jp_tem) = tsa(ji,jj,jk,jp_tem) - hdiv_141_102_kt(jk) * tsn(ji-2,jj-1,jk,jp_tem)
+                  tsa(ji,jj,jk,jp_sal) = tsa(ji,jj,jk,jp_sal) - hdiv_141_102_kt(jk) * tsn(ji-2,jj-1,jk,jp_sal)
                END DO
                !                                         ! deeper flow from Med sea to Atlantic
-               ta(ji,jj,21) = ta(ji,jj,21) - hdiv_141_102(21) * tn(ji,jj,21)
-               sa(ji,jj,21) = sa(ji,jj,21) - hdiv_141_102(21) * sn(ji,jj,21)
+               tsa(ji,jj,21,jp_tem) = tsa(ji,jj,21,jp_tem) - hdiv_141_102(21) * tsn(ji,jj,21,jp_tem)
+               tsa(ji,jj,21,jp_sal) = tsa(ji,jj,21,jp_sal) - hdiv_141_102(21) * tsn(ji,jj,21,jp_sal)
             END DO
          END DO
          !                  ! ---------------- !
@@ -706,12 +706,12 @@ CONTAINS
          DO jj = mj0(94), mj1(94)              !** 172,94 (Indian ocean side)
             DO ji = mi0(172), mi1(172) 
                DO jk = 1, 8                          ! surface inflow   (Indian ocean to Persian Gulf) (div<0)
-                  ta(ji,jj,jk) = ta(ji,jj,jk) - hdiv_172_94(jk) * tn(ji,jj,jk) 
-                  sa(ji,jj,jk) = sa(ji,jj,jk) - hdiv_172_94(jk) * sn(ji,jj,jk) 
+                  tsa(ji,jj,jk,jp_tem) = tsa(ji,jj,jk,jp_tem) - hdiv_172_94(jk) * tsn(ji,jj,jk,jp_tem) 
+                  tsa(ji,jj,jk,jp_sal) = tsa(ji,jj,jk,jp_sal) - hdiv_172_94(jk) * tsn(ji,jj,jk,jp_sal) 
                END DO
                DO jk = 16, 18                        ! deep outflow     (Persian Gulf to Indian ocean) (div>0)
-                  ta(ji,jj,jk) = ta(ji,jj,jk) - hdiv_172_94(jk) * t_171_94_hor(jk)
-                  sa(ji,jj,jk) = sa(ji,jj,jk) - hdiv_172_94(jk) * s_171_94_hor(jk)
+                  tsa(ji,jj,jk,jp_tem) = tsa(ji,jj,jk,jp_tem) - hdiv_172_94(jk) * t_171_94_hor(jk)
+                  tsa(ji,jj,jk,jp_sal) = tsa(ji,jj,jk,jp_sal) - hdiv_172_94(jk) * s_171_94_hor(jk)
                END DO
             END DO
          END DO

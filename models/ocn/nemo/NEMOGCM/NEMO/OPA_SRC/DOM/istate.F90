@@ -9,9 +9,10 @@ MODULE istate
    !!            8.0  !  2001-09  (M. Levy, M. Ben Jelloul)  istate_eel
    !!            8.0  !  2001-09  (M. Levy, M. Ben Jelloul)  istate_uvg
    !!   NEMO     1.0  !  2003-08  (G. Madec, C. Talandier)  F90: Free form, modules + EEL R5
-   !!             -   !  2004-05  (A. Koch-Larrouy)  istate_gyre 
+   !!             -   !  2004-05  (A. Koch-Larrouy)  istate_gyre
    !!            2.0  !  2006-07  (S. Masson)  distributed restart using iom
    !!            3.3  !  2010-10  (C. Ethe) merge TRC-TRA
+   !!            3.4  !  2011-04  (G. Madec) Merge of dtatem and dtasal & suppression of tb,tn/sb,sn
    !!----------------------------------------------------------------------
 
    !!----------------------------------------------------------------------
@@ -22,15 +23,14 @@ MODULE istate
    !!   istate_gyre   : initial state setting of GYRE configuration
    !!   istate_uvg    : initial velocity in geostropic balance
    !!----------------------------------------------------------------------
-   USE oce             ! ocean dynamics and active tracers 
-   USE dom_oce         ! ocean space and time domain 
+   USE oce             ! ocean dynamics and active tracers
+   USE dom_oce         ! ocean space and time domain
    USE daymod          ! calendar
    USE eosbn2          ! eq. of state, Brunt Vaisala frequency (eos     routine)
    USE ldftra_oce      ! ocean active tracers: lateral physics
    USE zdf_oce         ! ocean vertical physics
    USE phycst          ! physical constants
-   USE dtatem          ! temperature data                 (dta_tem routine)
-   USE dtasal          ! salinity data                    (dta_sal routine)
+   USE dtatsd          ! data temperature and salinity   (dta_tsd routine)
    USE restart         ! ocean restart                   (rst_read routine)
    USE in_out_manager  ! I/O manager
    USE iom             ! I/O library
@@ -41,8 +41,11 @@ MODULE istate
    USE dynspg_flt      ! pressure gradient schemes
    USE dynspg_exp      ! pressure gradient schemes
    USE dynspg_ts       ! pressure gradient schemes
-   USE traswp          ! Swap arrays                      (tra_swp routine)
+   USE sol_oce         ! ocean solver variables
    USE lib_mpp         ! MPP library
+   USE wrk_nemo        ! Memory allocation
+   USE timing          ! Timing
+   USE asminc
 
    IMPLICIT NONE
    PRIVATE
@@ -54,7 +57,7 @@ MODULE istate
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: istate.F90 2777 2011-06-07 09:55:02Z smasson $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -62,27 +65,34 @@ CONTAINS
    SUBROUTINE istate_init
       !!----------------------------------------------------------------------
       !!                   ***  ROUTINE istate_init  ***
-      !! 
+      !!
       !! ** Purpose :   Initialization of the dynamics and tracer fields.
       !!----------------------------------------------------------------------
       ! - ML - needed for initialization of e3t_b
       INTEGER  ::  jk     ! dummy loop indice
+      !!----------------------------------------------------------------------
+      !
+      IF( nn_timing == 1 )  CALL timing_start('istate_init')
+      !
 
       IF(lwp) WRITE(numout,*)
       IF(lwp) WRITE(numout,*) 'istate_ini : Initialization of the dynamics and tracers'
       IF(lwp) WRITE(numout,*) '~~~~~~~~~~'
 
-      rhd  (:,:,:) = 0.e0
-      rhop (:,:,:) = 0.e0
-      rn2  (:,:,:) = 0.e0 
-      ta   (:,:,:) = 0.e0    
-      sa   (:,:,:) = 0.e0
+      CALL dta_tsd_init                       ! Initialisation of T & S input data
+
+      rhd  (:,:,:  ) = 0.e0
+      rhop (:,:,:  ) = 0.e0
+      rn2  (:,:,:  ) = 0.e0
+      tsa  (:,:,:,:) = 0.e0
+      rn2b (:,:,:  ) = 0.e0
 
       IF( ln_rstart ) THEN                    ! Restart from a file
          !                                    ! -------------------
          neuler = 1                              ! Set time-step indicator at nit000 (leap-frog)
          CALL rst_read                           ! Read the restart file
-         CALL tra_swap                           ! swap 3D arrays (t,s)  in a 4D array (ts)
+         !                                       ! define e3u_b, e3v_b from e3t_b read in restart file
+         CALL dom_vvl_2( nit000, fse3u_b(:,:,:), fse3v_b(:,:,:) )
          CALL day_init                           ! model calendar (using both namelist and restart infos)
       ELSE
          !                                    ! Start from rest
@@ -91,128 +101,97 @@ CONTAINS
          neuler = 0                              ! Set time-step indicator at nit000 (euler forward)
          CALL day_init                           ! model calendar (using both namelist and restart infos)
          !                                       ! Initialization of ocean to zero
-         !   before fields     !       now fields     
-         sshb (:,:)   = 0.e0   ;   sshn (:,:)   = 0.e0
-         ub   (:,:,:) = 0.e0   ;   un   (:,:,:) = 0.e0
-         vb   (:,:,:) = 0.e0   ;   vn   (:,:,:) = 0.e0  
-         rotb (:,:,:) = 0.e0   ;   rotn (:,:,:) = 0.e0
-         hdivb(:,:,:) = 0.e0   ;   hdivn(:,:,:) = 0.e0
+         !   before fields      !       now fields
+         sshb (:,:)   = 0._wp   ;   sshn (:,:)   = 0._wp
+         ub   (:,:,:) = 0._wp   ;   un   (:,:,:) = 0._wp
+         vb   (:,:,:) = 0._wp   ;   vn   (:,:,:) = 0._wp
+         rotb (:,:,:) = 0._wp   ;   rotn (:,:,:) = 0._wp
+         hdivb(:,:,:) = 0._wp   ;   hdivn(:,:,:) = 0._wp
          !
          IF( cp_cfg == 'eel' ) THEN
             CALL istate_eel                      ! EEL   configuration : start from pre-defined U,V T-S fields
-         ELSEIF( cp_cfg == 'gyre' ) THEN         
+         ELSEIF( cp_cfg == 'gyre' ) THEN
             CALL istate_gyre                     ! GYRE  configuration : start from pre-defined T-S fields
-         ELSE
-            !                                    ! Other configurations: Initial T-S fields
-#if defined key_dtatem
-            CALL dta_tem( nit000 )                  ! read 3D temperature data
-            tb(:,:,:) = t_dta(:,:,:)   ;   tn(:,:,:) = t_dta(:,:,:)
-            
-#else
-            IF(lwp) WRITE(numout,*)                 ! analytical temperature profile
-            IF(lwp) WRITE(numout,*)'             Temperature initialization using an analytic profile'
-            CALL istate_tem
-#endif
-#if defined key_dtasal
-            CALL dta_sal( nit000 )                  ! read 3D salinity data
-            sb(:,:,:) = s_dta(:,:,:)   ;   sn(:,:,:) = s_dta(:,:,:)
-#else
-            ! No salinity data
-            IF(lwp)WRITE(numout,*)                  ! analytical salinity profile
-            IF(lwp)WRITE(numout,*)'             Salinity initialisation using a constant value'
-            CALL istate_sal
-#endif
+         ELSEIF( cp_cfg == 'seabass' ) THEN
+            CALL istate_seabass
+         ELSEIF( ln_tsd_init      ) THEN         ! Initial T-S fields read in files
+            CALL dta_tsd( nit000, tsb )                  ! read 3D T and S data at nit000
+            tsn(:,:,:,:) = tsb(:,:,:,:)
+            !
+         ELSE                                    ! Initial T-S fields defined analytically
+            CALL istate_t_s
          ENDIF
          !
-         CALL tra_swap                     ! swap 3D arrays (tb,sb,tn,sn)  in a 4D array
          CALL eos( tsb, rhd, rhop )        ! before potential and in situ densities
 #if ! defined key_c1d
          IF( ln_zps )   CALL zps_hde( nit000, jpts, tsb, gtsu, gtsv,  & ! zps: before hor. gradient
             &                                       rhd, gru , grv  )   ! of t,s,rd at ocean bottom
 #endif
-         !   
+         !
          ! - ML - sshn could be modified by istate_eel, so that initialization of fse3t_b is done here
          IF( lk_vvl ) THEN
             DO jk = 1, jpk
                fse3t_b(:,:,jk) = fse3t_n(:,:,jk)
             ENDDO
          ENDIF
-         ! 
+         !                                       ! define e3u_b, e3v_b from e3t_b initialized in domzgr
+         CALL dom_vvl_2( nit000, fse3u_b(:,:,:), fse3v_b(:,:,:) )
+         !
       ENDIF
       !
       IF( lk_agrif ) THEN                  ! read free surface arrays in restart file
          IF( ln_rstart ) THEN
-            IF( lk_dynspg_flt )   CALL flt_rst( nit000, 'READ' )      ! read or initialize the following fields
-            !                                                         ! gcx, gcxb for agrif_opa_init
-         ENDIF                                                        ! explicit case not coded yet with AGRIF
+            IF( lk_dynspg_flt )  THEN      ! read or initialize the following fields
+               !                           ! gcx, gcxb for agrif_opa_init
+               IF( sol_oce_alloc()  > 0 )   CALL ctl_stop('agrif sol_oce_alloc: allocation of arrays failed')
+               CALL flt_rst( nit000, 'READ' )
+            ENDIF
+         ENDIF                             ! explicit case not coded yet with AGRIF
       ENDIF
+      !
+      IF ( lk_asminc .AND. ln_asmdin ) THEN
+         neuler = 0            ! restart with an euler from the corrected background
+      ENDIF
+
+      IF( nn_timing == 1 )  CALL timing_stop('istate_init')
       !
    END SUBROUTINE istate_init
 
-
-   SUBROUTINE istate_tem
+   SUBROUTINE istate_t_s
       !!---------------------------------------------------------------------
-      !!                  ***  ROUTINE istate_tem  ***
-      !!   
-      !! ** Purpose :   Intialization of the temperature field with an 
+      !!                  ***  ROUTINE istate_t_s  ***
+      !!
+      !! ** Purpose :   Intialization of the temperature field with an
       !!      analytical profile or a file (i.e. in EEL configuration)
       !!
-      !! ** Method  :   Use Philander analytic profile of temperature
+      !! ** Method  : - temperature: use Philander analytic profile
+      !!              - salinity   : use to a constant value 35.5
       !!
       !! References :  Philander ???
       !!----------------------------------------------------------------------
-      INTEGER :: ji, jj, jk
+      INTEGER  :: ji, jj, jk
+      REAL(wp) ::   zsal = 35.50
       !!----------------------------------------------------------------------
       !
       IF(lwp) WRITE(numout,*)
-      IF(lwp) WRITE(numout,*) 'istate_tem : initial temperature profile'
-      IF(lwp) WRITE(numout,*) '~~~~~~~~~~'
+      IF(lwp) WRITE(numout,*) 'istate_t_s : Philander s initial temperature profile'
+      IF(lwp) WRITE(numout,*) '~~~~~~~~~~   and constant salinity (',zsal,' psu)'
       !
       DO jk = 1, jpk
-         DO jj = 1, jpj
-            DO ji = 1, jpi
-               tn(ji,jj,jk) = (  ( ( 7.5 - 0.*ABS(gphit(ji,jj))/30. )   &
-                  &               *( 1.-TANH((fsdept(ji,jj,jk)-80.)/30.) )   &
-                  &            + 10.*(5000.-fsdept(ji,jj,jk))/5000.)  ) * tmask(ji,jj,jk)
-               tb(ji,jj,jk) = tn(ji,jj,jk)
-          END DO
-        END DO
+         tsn(:,:,jk,jp_tem) = (  ( ( 7.5 - 0. * ABS( gphit(:,:) )/30. ) * ( 1.-TANH((fsdept(:,:,jk)-80.)/30.) )   &
+            &                + 10. * ( 5000. - fsdept(:,:,jk) ) /5000.)  ) * tmask(:,:,jk)
+         tsb(:,:,jk,jp_tem) = tsn(:,:,jk,jp_tem)
       END DO
+      tsn(:,:,:,jp_sal) = zsal * tmask(:,:,:)
+      tsb(:,:,:,jp_sal) = tsn(:,:,:,jp_sal)
       !
-      IF(lwp) CALL prizre( tn    , jpi   , jpj   , jpk   , jpj/2 ,   &
-         &                 1     , jpi   , 5     , 1     , jpk   ,   &
-         &                 1     , 1.    , numout                  )
-      !
-   END SUBROUTINE istate_tem
-
-
-   SUBROUTINE istate_sal
-      !!---------------------------------------------------------------------
-      !!                  ***  ROUTINE istate_sal  ***
-      !!
-      !! ** Purpose :   Intialize the salinity field with an analytic profile
-      !!
-      !! ** Method  :   Use to a constant value 35.5
-      !!              
-      !! ** Action  :   Initialize sn and sb
-      !!----------------------------------------------------------------------
-      REAL(wp) ::   zsal = 35.50_wp
-      !!----------------------------------------------------------------------
-      !
-      IF(lwp) WRITE(numout,*)
-      IF(lwp) WRITE(numout,*) 'istate_sal : initial salinity : ', zsal
-      IF(lwp) WRITE(numout,*) '~~~~~~~~~~'
-      !
-      sn(:,:,:) = zsal * tmask(:,:,:)
-      sb(:,:,:) = sn(:,:,:)
-      !
-   END SUBROUTINE istate_sal
+   END SUBROUTINE istate_t_s
 
 
    SUBROUTINE istate_eel
       !!----------------------------------------------------------------------
       !!                   ***  ROUTINE istate_eel  ***
-      !! 
+      !!
       !! ** Purpose :   Initialization of the dynamics and tracers for EEL R5
       !!      configuration (channel with or without a topographic bump)
       !!
@@ -223,7 +202,7 @@ CONTAINS
       !!----------------------------------------------------------------------
       USE divcur     ! hor. divergence & rel. vorticity      (div_cur routine)
       USE iom
- 
+
       INTEGER  ::   inum              ! temporary logical unit
       INTEGER  ::   ji, jj, jk        ! dummy loop indices
       INTEGER  ::   ijloc
@@ -235,7 +214,7 @@ CONTAINS
       REAL(wp), DIMENSION(jpiglo,jpjglo) ::   zssh  ! initial ssh over the global domain
       !!----------------------------------------------------------------------
 
-      SELECT CASE ( jp_cfg ) 
+      SELECT CASE ( jp_cfg )
          !                                              ! ====================
          CASE ( 5 )                                     ! EEL R5 configuration
             !                                           ! ====================
@@ -253,13 +232,13 @@ CONTAINS
             zcst   = ( zt1 * ( zh1 - zh2) - ( zt1 - zt2 ) * zh1 ) / ( zh1 - zh2 )
             !
             DO jk = 1, jpk
-               tn(:,:,jk) = ( zt2 + zt1 * exp( - fsdept(:,:,jk) / 1000 ) ) * tmask(:,:,jk)
-               tb(:,:,jk) = tn(:,:,jk)
+               tsn(:,:,jk,jp_tem) = ( zt2 + zt1 * exp( - fsdept(:,:,jk) / 1000 ) ) * tmask(:,:,jk)
+               tsb(:,:,jk,jp_tem) = tsn(:,:,jk,jp_tem)
             END DO
             !
-            IF(lwp) CALL prizre( tn    , jpi   , jpj   , jpk   , jpj/2 ,   &
-               &                 1     , jpi   , 5     , 1     , jpk   ,   &
-               &                 1     , 1.    , numout                  )
+            IF(lwp) CALL prizre( tsn(:,:,:,jp_tem), jpi   , jpj   , jpk   , jpj/2 ,   &
+               &                             1     , jpi   , 5     , 1     , jpk   ,   &
+               &                             1     , 1.    , numout                  )
             !
             ! set salinity field to a constant value
             ! --------------------------------------
@@ -267,22 +246,22 @@ CONTAINS
             IF(lwp) WRITE(numout,*) 'istate_eel : EEL R5: constant salinity field, S = ', zsal
             IF(lwp) WRITE(numout,*) '~~~~~~~~~~'
             !
-            sn(:,:,:) = zsal * tmask(:,:,:)
-            sb(:,:,:) = sn(:,:,:)
+            tsn(:,:,:,jp_sal) = zsal * tmask(:,:,:)
+            tsb(:,:,:,jp_sal) = tsn(:,:,:,jp_sal)
             !
             ! set the dynamics: U,V, hdiv, rot (and ssh if necessary)
             ! ----------------
-            ! Start EEL5 configuration with barotropic geostrophic velocities 
+            ! Start EEL5 configuration with barotropic geostrophic velocities
             ! according the sshb and sshn SSH imposed.
             ! we assume a uniform grid (hence the use of e1t(1,1) for delta_y)
-            ! we use the Coriolis frequency at mid-channel.   
+            ! we use the Coriolis frequency at mid-channel.
             ub(:,:,:) = zueel * umask(:,:,:)
             un(:,:,:) = ub(:,:,:)
             ijloc = mj0(INT(jpjglo-1)/2)
             zfcor = ff(1,ijloc)
             !
             DO jj = 1, jpjglo
-               zssh(:,jj) = - (FLOAT(jj)- FLOAT(jpjglo-1)/2.)*zueel*e1t(1,1)*zfcor/grav 
+               zssh(:,jj) = - (FLOAT(jj)- FLOAT(jpjglo-1)/2.)*zueel*e1t(1,1)*zfcor/grav
             END DO
             !
             IF(lwp) THEN
@@ -301,8 +280,8 @@ CONTAINS
             !
             sshn(:,:) = sshb(:,:)                   ! set now ssh to the before value
             !
-            IF( nn_rstssh /= 0 ) THEN  
-               nn_rstssh = 0                        ! hand-made initilization of ssh 
+            IF( nn_rstssh /= 0 ) THEN
+               nn_rstssh = 0                        ! hand-made initilization of ssh
                CALL ctl_warn( 'istate_eel: force nn_rstssh = 0' )
             ENDIF
             !
@@ -322,14 +301,14 @@ CONTAINS
             IF(lwp) WRITE(numout,*) '~~~~~~~~~~'
             !
             CALL iom_open ( 'eel.initemp', inum )
-            CALL iom_get ( inum, jpdom_data, 'initemp', tb ) ! read before temprature (tb)
+            CALL iom_get ( inum, jpdom_data, 'initemp', tsb(:,:,:,jp_tem) ) ! read before temprature (tb)
             CALL iom_close( inum )
             !
-            tn(:,:,:) = tb(:,:,:)                            ! set nox temperature to tb
+            tsn(:,:,:,jp_tem) = tsb(:,:,:,jp_tem)                            ! set nox temperature to tb
             !
-            IF(lwp) CALL prizre( tn    , jpi   , jpj   , jpk   , jpj/2 ,   &
-               &                 1     , jpi   , 5     , 1     , jpk   ,   &
-               &                 1     , 1.    , numout                  )
+            IF(lwp) CALL prizre( tsn(:,:,:,jp_tem), jpi   , jpj   , jpk   , jpj/2 ,   &
+               &                            1     , jpi   , 5     , 1     , jpk   ,   &
+               &                            1     , 1.    , numout                  )
             !
             ! set salinity field to a constant value
             ! --------------------------------------
@@ -337,8 +316,8 @@ CONTAINS
             IF(lwp) WRITE(numout,*) 'istate_eel : EEL R5: constant salinity field, S = ', zsal
             IF(lwp) WRITE(numout,*) '~~~~~~~~~~'
             !
-            sn(:,:,:) = zsal * tmask(:,:,:)
-            sb(:,:,:) = sn(:,:,:)
+            tsn(:,:,:,jp_sal) = zsal * tmask(:,:,:)
+            tsb(:,:,:,jp_sal) = tsn(:,:,:,jp_sal)
             !
             !                                    ! ===========================
          CASE DEFAULT                            ! NONE existing configuration
@@ -354,7 +333,7 @@ CONTAINS
    SUBROUTINE istate_gyre
       !!----------------------------------------------------------------------
       !!                   ***  ROUTINE istate_gyre  ***
-      !! 
+      !!
       !! ** Purpose :   Initialization of the dynamics and tracers for GYRE
       !!      configuration (double gyre with rotated domain)
       !!
@@ -376,24 +355,24 @@ CONTAINS
          DO jk = 1, jpk
             DO jj = 1, jpj
                DO ji = 1, jpi
-                  tn(ji,jj,jk) = (  16. - 12. * TANH( (fsdept(ji,jj,jk) - 400) / 700 )         )   &
+                  tsn(ji,jj,jk,jp_tem) = (  16. - 12. * TANH( (fsdept(ji,jj,jk) - 400) / 700 )         )   &
                        &           * (-TANH( (500-fsdept(ji,jj,jk)) / 150 ) + 1) / 2               &
                        &       + (      15. * ( 1. - TANH( (fsdept(ji,jj,jk)-50.) / 1500.) )       &
-                       &                - 1.4 * TANH((fsdept(ji,jj,jk)-100.) / 100.)               &    
-                       &                + 7.  * (1500. - fsdept(ji,jj,jk)) / 1500.             )   & 
+                       &                - 1.4 * TANH((fsdept(ji,jj,jk)-100.) / 100.)               &
+                       &                + 7.  * (1500. - fsdept(ji,jj,jk)) / 1500.             )   &
                        &           * (-TANH( (fsdept(ji,jj,jk) - 500) / 150) + 1) / 2
-                  tn(ji,jj,jk) = tn(ji,jj,jk) * tmask(ji,jj,jk)
-                  tb(ji,jj,jk) = tn(ji,jj,jk)
+                  tsn(ji,jj,jk,jp_tem) = tsn(ji,jj,jk,jp_tem) * tmask(ji,jj,jk)
+                  tsb(ji,jj,jk,jp_tem) = tsn(ji,jj,jk,jp_tem)
 
-                  sn(ji,jj,jk) =  (  36.25 - 1.13 * TANH( (fsdept(ji,jj,jk) - 305) / 460 )  )  &
+                  tsn(ji,jj,jk,jp_sal) =  (  36.25 - 1.13 * TANH( (fsdept(ji,jj,jk) - 305) / 460 )  )  &
                      &              * (-TANH((500 - fsdept(ji,jj,jk)) / 150) + 1) / 2          &
                      &          + (  35.55 + 1.25 * (5000. - fsdept(ji,jj,jk)) / 5000.         &
                      &                - 1.62 * TANH( (fsdept(ji,jj,jk) - 60.  ) / 650. )       &
                      &                + 0.2  * TANH( (fsdept(ji,jj,jk) - 35.  ) / 100. )       &
                      &                + 0.2  * TANH( (fsdept(ji,jj,jk) - 1000.) / 5000.)    )  &
-                     &              * (-TANH((fsdept(ji,jj,jk) - 500) / 150) + 1) / 2 
-                  sn(ji,jj,jk) = sn(ji,jj,jk) * tmask(ji,jj,jk)
-                  sb(ji,jj,jk) = sn(ji,jj,jk)
+                     &              * (-TANH((fsdept(ji,jj,jk) - 500) / 150) + 1) / 2
+                  tsn(ji,jj,jk,jp_sal) = tsn(ji,jj,jk,jp_sal) * tmask(ji,jj,jk)
+                  tsb(ji,jj,jk,jp_sal) = tsn(ji,jj,jk,jp_sal)
                END DO
             END DO
          END DO
@@ -407,20 +386,20 @@ CONTAINS
          ! Read temperature field
          ! ----------------------
          CALL iom_open ( 'data_tem', inum )
-         CALL iom_get ( inum, jpdom_data, 'votemper', tn ) 
+         CALL iom_get ( inum, jpdom_data, 'votemper', tsn(:,:,:,jp_tem) )
          CALL iom_close( inum )
 
-         tn(:,:,:) = tn(:,:,:) * tmask(:,:,:) 
-         tb(:,:,:) = tn(:,:,:)
+         tsn(:,:,:,jp_tem) = tsn(:,:,:,jp_tem) * tmask(:,:,:)
+         tsb(:,:,:,jp_tem) = tsn(:,:,:,jp_tem)
 
          ! Read salinity field
          ! -------------------
          CALL iom_open ( 'data_sal', inum )
-         CALL iom_get ( inum, jpdom_data, 'vosaline', sn ) 
+         CALL iom_get ( inum, jpdom_data, 'vosaline', tsn(:,:,:,jp_sal) )
          CALL iom_close( inum )
 
-         sn(:,:,:)  = sn(:,:,:) * tmask(:,:,:) 
-         sb(:,:,:)  = sn(:,:,:)
+         tsn(:,:,:,jp_sal) = tsn(:,:,:,jp_sal) * tmask(:,:,:)
+         tsb(:,:,:,jp_sal) = tsn(:,:,:,jp_sal)
 
       END SELECT
 
@@ -428,10 +407,58 @@ CONTAINS
          WRITE(numout,*)
          WRITE(numout,*) '              Initial temperature and salinity profiles:'
          WRITE(numout, "(9x,' level   gdept_0   temperature   salinity   ')" )
-         WRITE(numout, "(10x, i4, 3f10.2)" ) ( jk, gdept_0(jk), tn(2,2,jk), sn(2,2,jk), jk = 1, jpk )
+         WRITE(numout, "(10x, i4, 3f10.2)" ) ( jk, gdept_0(jk), tsn(2,2,jk,jp_tem), tsn(2,2,jk,jp_sal), jk = 1, jpk )
       ENDIF
 
    END SUBROUTINE istate_gyre
+
+
+
+   SUBROUTINE istate_seabass
+      !!----------------------------------------------------------------------
+      !!                   ***  ROUTINE istate_seabass  ***
+      !!
+      !! ** Purpose :   Initialization of the dynamics and tracers for seabass
+      !!      configuration (double gyre)
+      !!
+      !! ** Method  : - set temperature field following Chassignet and Gent, JPO
+      !!                    21, pp1290-1299, 1991, and the law
+      !!                    rho/rho0=1-2.e-4(T-T0)
+      !!              - set salinity field constant
+      !!
+      !!----------------------------------------------------------------------
+      !! * Local variables
+      INTEGER :: ji, jj, jk     ! dummy loop indices
+      REAL(wp) ::   zsal = 35.5
+      !!----------------------------------------------------------------------
+
+      IF(lwp) WRITE(numout,*)
+      IF(lwp) WRITE(numout,*) 'istate_seabass : initial analytical T and constant S profiles '
+      IF(lwp) WRITE(numout,*) '~~~~~~~~~~~'
+
+      DO jk = 1, jpk
+         DO jj = 1, jpj
+            DO ji = 1, jpi
+               tsn(ji,jj,jk,jp_tem) = ( 25.+5.9e-5*800./9.81/2.e-4*   &
+               &    (exp(-gdept_0(jk)/800.)-1.))  * tmask(ji,jj,jk)
+               tsb(ji,jj,jk,jp_tem) = tsn(ji,jj,jk, jp_tem)
+          END DO
+        END DO
+      END DO
+
+      tsn(:,:,:,jp_sal) = zsal  * tmask(:,:,:)
+      tsb(:,:,:,jp_sal) = tsn(:,:,:,jp_sal)
+
+      IF(lwp) THEN
+         WRITE(numout,*)
+         WRITE(numout,*) '              Initial temperature and salinity profiles:'
+         WRITE(numout, "(9x,' level   gdept   temperature   salinity   ')" )
+         WRITE(numout, "(10x, i4, 3f10.2)" ) ( jk, gdept_0(jk), tsn(2,2,jk,jp_tem), tsn(2,2,jk,jp_sal), jk = 1, jpk )
+      ENDIF
+
+
+   END SUBROUTINE istate_seabass
+
 
 
    SUBROUTINE istate_uvg
@@ -440,14 +467,11 @@ CONTAINS
       !!
       !! ** Purpose :   Compute the geostrophic velocities from (tn,sn) fields
       !!
-      !! ** Method  :   Using the hydrostatic hypothesis the now hydrostatic 
+      !! ** Method  :   Using the hydrostatic hypothesis the now hydrostatic
       !!      pressure is computed by integrating the in-situ density from the
       !!      surface to the bottom.
       !!                 p=integral [ rau*g dz ]
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zprn => wrk_3d_1    ! 3D workspace
-
       USE dynspg          ! surface pressure gradient             (dyn_spg routine)
       USE divcur          ! hor. divergence & rel. vorticity      (div_cur routine)
       USE lbclnk          ! ocean lateral boundary condition (or mpp link)
@@ -455,13 +479,12 @@ CONTAINS
       INTEGER ::   ji, jj, jk        ! dummy loop indices
       INTEGER ::   indic             ! ???
       REAL(wp) ::   zmsv, zphv, zmsu, zphu, zalfg     ! temporary scalars
+      REAL(wp), POINTER, DIMENSION(:,:,:) :: zprn
       !!----------------------------------------------------------------------
-
-      IF(wrk_in_use(3, 1) ) THEN
-         CALL ctl_stop('istate_uvg: requested workspace array unavailable')   ;   RETURN
-      ENDIF
-
-      IF(lwp) WRITE(numout,*) 
+      !
+      CALL wrk_alloc( jpi, jpj, jpk, zprn)
+      !
+      IF(lwp) WRITE(numout,*)
       IF(lwp) WRITE(numout,*) 'istate_uvg : Start from Geostrophy'
       IF(lwp) WRITE(numout,*) '~~~~~~~~~~'
 
@@ -469,13 +492,13 @@ CONTAINS
       ! ------------------------------------
 
       zalfg = 0.5 * grav * rau0
-      
+
       zprn(:,:,1) = zalfg * fse3w(:,:,1) * ( 1 + rhd(:,:,1) )       ! Surface value
 
       DO jk = 2, jpkm1                                              ! Vertical integration from the surface
          zprn(:,:,jk) = zprn(:,:,jk-1)   &
             &         + zalfg * fse3w(:,:,jk) * ( 2. + rhd(:,:,jk) + rhd(:,:,jk-1) )
-      END DO  
+      END DO
 
       ! Compute geostrophic balance
       ! ---------------------------
@@ -517,10 +540,10 @@ CONTAINS
 
       CALL lbc_lnk( un, 'U', -1. )
       CALL lbc_lnk( vn, 'V', -1. )
-      
+
       ub(:,:,:) = un(:,:,:)
       vb(:,:,:) = vn(:,:,:)
-      
+
       ! WARNING !!!!!
       ! after initializing u and v, we need to calculate the initial streamfunction bsf.
       ! Otherwise, only the trend will be computed and the model will blow up (inconsistency).
@@ -548,7 +571,7 @@ CONTAINS
       va(:,:,:) = 0.e0
       un(:,:,:) = ub(:,:,:)
       vn(:,:,:) = vb(:,:,:)
-       
+
       ! Compute the divergence and curl
 
       CALL div_cur( nit000 )            ! now horizontal divergence and curl
@@ -556,9 +579,7 @@ CONTAINS
       hdivb(:,:,:) = hdivn(:,:,:)       ! set the before to the now value
       rotb (:,:,:) = rotn (:,:,:)       ! set the before to the now value
       !
-      IF( wrk_not_released(3, 1) ) THEN
-         CALL ctl_stop('istate_uvg: failed to release workspace array')
-      ENDIF
+      CALL wrk_dealloc( jpi, jpj, jpk, zprn)
       !
    END SUBROUTINE istate_uvg
 

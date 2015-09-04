@@ -19,10 +19,13 @@ MODULE fldread
    USE iom             ! I/O manager library
    USE geo2ocean       ! for vector rotation on to model grid
    USE lib_mpp         ! MPP library
+   USE wrk_nemo        ! work arrays
    USE ioipsl, ONLY :   ymds2ju, ju2ymds   ! for calendar
 
    IMPLICIT NONE
    PRIVATE   
+ 
+   PUBLIC   fld_map    ! routine called by tides_init
 
    TYPE, PUBLIC ::   FLD_N      !: Namelist field informations
       CHARACTER(len = 256) ::   clname      ! generic name of the NetCDF flux file
@@ -55,6 +58,10 @@ MODULE fldread
       CHARACTER(len = 34)             ::   vcomp        ! symbolic name for a vector component that needs rotation
       LOGICAL                         ::   rotn         ! flag to indicate whether field has been rotated
    END TYPE FLD
+
+   TYPE, PUBLIC ::   MAP_POINTER      !: Array of integer pointers to 1D arrays
+      INTEGER, POINTER   ::  ptr(:)
+   END TYPE MAP_POINTER
 
 !$AGRIF_DO_NOT_TREAT
 
@@ -92,12 +99,12 @@ MODULE fldread
 
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: fldread.F90 2777 2011-06-07 09:55:02Z smasson $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
 
-   SUBROUTINE fld_read( kt, kn_fsbc, sd )
+   SUBROUTINE fld_read( kt, kn_fsbc, sd, map, jit, time_offset )
       !!---------------------------------------------------------------------
       !!                    ***  ROUTINE fld_read  ***
       !!                   
@@ -112,27 +119,56 @@ CONTAINS
       INTEGER  , INTENT(in   )               ::   kt        ! ocean time step
       INTEGER  , INTENT(in   )               ::   kn_fsbc   ! sbc computation period (in time step) 
       TYPE(FLD), INTENT(inout), DIMENSION(:) ::   sd        ! input field related variables
+      TYPE(MAP_POINTER),INTENT(in), OPTIONAL, DIMENSION(:) ::   map   ! global-to-local mapping index
+      INTEGER  , INTENT(in   ), OPTIONAL     ::   jit       ! subcycle timestep for timesplitting option
+      INTEGER  , INTENT(in   ), OPTIONAL     ::   time_offset ! provide fields at time other than "now"
+                                                              ! time_offset = -1 => fields at "before" time level
+                                                              ! time_offset = +1 => fields at "after" time levels
+                                                              ! etc.
       !!
       INTEGER  ::   imf        ! size of the structure sd
       INTEGER  ::   jf         ! dummy indices
       INTEGER  ::   ireclast   ! last record to be read in the current year file
       INTEGER  ::   isecend    ! number of second since Jan. 1st 00h of nit000 year at nitend
       INTEGER  ::   isecsbc    ! number of seconds between Jan. 1st 00h of nit000 year and the middle of sbc time step
+      INTEGER  ::   itime_add  ! local time offset variable
       LOGICAL  ::   llnxtyr    ! open next year  file?
       LOGICAL  ::   llnxtmth   ! open next month file?
       LOGICAL  ::   llstop     ! stop is the file does not exist
+      LOGICAL  ::   ll_firstcall ! true if this is the first call to fld_read for this set of fields
       REAL(wp) ::   ztinta     ! ratio applied to after  records when doing time interpolation
       REAL(wp) ::   ztintb     ! ratio applied to before records when doing time interpolation
       CHARACTER(LEN=1000) ::   clfmt   ! write format
       !!---------------------------------------------------------------------
+      ll_firstcall = .false.
+      IF( PRESENT(jit) ) THEN
+         IF(kt == nit000 .and. jit == 1) ll_firstcall = .true.
+      ELSE
+         IF(kt == nit000) ll_firstcall = .true.
+      ENDIF
+
+      itime_add = 0
+      IF( PRESENT(time_offset) ) itime_add = time_offset
+         
       ! Note that shifting time to be centrered in the middle of sbc time step impacts only nsec_* variables of the calendar 
-      isecsbc = nsec_year + nsec1jan000 + NINT(0.5 * REAL(kn_fsbc - 1,wp) * rdttra(1))   ! middle of sbc time step
+      IF( present(jit) ) THEN 
+         ! ignore kn_fsbc in this case
+         isecsbc = nsec_year + nsec1jan000 + (jit+itime_add)*rdt/REAL(nn_baro,wp) 
+      ELSE
+         isecsbc = nsec_year + nsec1jan000 + NINT(0.5 * REAL(kn_fsbc - 1,wp) * rdttra(1)) + itime_add * rdttra(1)  ! middle of sbc time step
+      ENDIF
       imf = SIZE( sd )
       !
-      IF( kt == nit000 ) THEN                      ! initialization
-         DO jf = 1, imf 
-            CALL fld_init( kn_fsbc, sd(jf) )       ! read each before field (put them in after as they will be swapped)
-         END DO
+      IF( ll_firstcall ) THEN                      ! initialization
+         IF( PRESENT(map) ) THEN
+            DO jf = 1, imf 
+               CALL fld_init( kn_fsbc, sd(jf), map(jf)%ptr )  ! read each before field (put them in after as they will be swapped)
+            END DO
+         ELSE
+            DO jf = 1, imf 
+               CALL fld_init( kn_fsbc, sd(jf) )       ! read each before field (put them in after as they will be swapped)
+            END DO
+         ENDIF
          IF( lwp ) CALL wgt_print()                ! control print
          CALL fld_rot( kt, sd )                    ! rotate vector fiels if needed
       ENDIF
@@ -142,7 +178,7 @@ CONTAINS
          !
          DO jf = 1, imf                            ! ---   loop over field   --- !
             
-            IF( isecsbc > sd(jf)%nrec_a(2) .OR. kt == nit000 ) THEN  ! read/update the after data?
+            IF( isecsbc > sd(jf)%nrec_a(2) .OR. ll_firstcall ) THEN  ! read/update the after data?
 
                IF( sd(jf)%ln_tint ) THEN                             ! swap before record field and informations
                   sd(jf)%nrec_b(:) = sd(jf)%nrec_a(:)
@@ -150,7 +186,11 @@ CONTAINS
                   sd(jf)%fdta(:,:,:,1) = sd(jf)%fdta(:,:,:,2)
                ENDIF
 
-               CALL fld_rec( kn_fsbc, sd(jf) )                       ! update record informations
+               IF( PRESENT(jit) ) THEN
+                  CALL fld_rec( kn_fsbc, sd(jf), time_offset=itime_add, jit=jit )              ! update record informations
+               ELSE
+                  CALL fld_rec( kn_fsbc, sd(jf), time_offset=itime_add )                       ! update record informations
+               ENDIF
 
                ! do we have to change the year/month/week/day of the forcing field?? 
                IF( sd(jf)%ln_tint ) THEN
@@ -211,7 +251,11 @@ CONTAINS
                ENDIF
 
                ! read after data
-               CALL fld_get( sd(jf) )
+               IF( PRESENT(map) ) THEN
+                  CALL fld_get( sd(jf), map(jf)%ptr )
+               ELSE
+                  CALL fld_get( sd(jf) )
+               ENDIF
 
             ENDIF
          END DO                                    ! --- end loop over field --- !
@@ -224,8 +268,9 @@ CONTAINS
                IF(lwp .AND. kt - nit000 <= 100 ) THEN 
                   clfmt = "('fld_read: var ', a, ' kt = ', i8, ' (', f7.2,' days), Y/M/D = ', i4.4,'/', i2.2,'/', i2.2," //   &
                      &    "', records b/a: ', i4.4, '/', i4.4, ' (days ', f7.2,'/', f7.2, ')')"
-                  WRITE(numout, clfmt)  TRIM( sd(jf)%clvar ), kt, REAL(isecsbc,wp)/rday, nyear, nmonth, nday,   &
+                  WRITE(numout, clfmt)  TRIM( sd(jf)%clvar ), kt, REAL(isecsbc,wp)/rday, nyear, nmonth, nday,   &            
                      & sd(jf)%nrec_b(1), sd(jf)%nrec_a(1), REAL(sd(jf)%nrec_b(2),wp)/rday, REAL(sd(jf)%nrec_a(2),wp)/rday
+                  WRITE(numout, *) 'itime_add is : ',itime_add
                ENDIF
                ! temporal interpolation weights
                ztinta =  REAL( isecsbc - sd(jf)%nrec_b(2), wp ) / REAL( sd(jf)%nrec_a(2) - sd(jf)%nrec_b(2), wp )
@@ -252,7 +297,7 @@ CONTAINS
    END SUBROUTINE fld_read
 
 
-   SUBROUTINE fld_init( kn_fsbc, sdjf )
+   SUBROUTINE fld_init( kn_fsbc, sdjf, map )
       !!---------------------------------------------------------------------
       !!                    ***  ROUTINE fld_init  ***
       !!
@@ -261,6 +306,7 @@ CONTAINS
       !!----------------------------------------------------------------------
       INTEGER  , INTENT(in   ) ::   kn_fsbc   ! sbc computation period (in time step) 
       TYPE(FLD), INTENT(inout) ::   sdjf      ! input field related variables
+      INTEGER  , INTENT(in), OPTIONAL, DIMENSION(:) :: map ! global-to-local mapping indices
       !!
       LOGICAL :: llprevyr              ! are we reading previous year  file?
       LOGICAL :: llprevmth             ! are we reading previous month file?
@@ -363,7 +409,11 @@ CONTAINS
          ENDIF
 
          ! read before data 
-         CALL fld_get( sdjf )  ! read before values in after arrays(as we will swap it later)
+         IF( PRESENT(map) ) THEN
+            CALL fld_get( sdjf, map )  ! read before values in after arrays(as we will swap it later)
+         ELSE
+            CALL fld_get( sdjf )  ! read before values in after arrays(as we will swap it later)
+         ENDIF
 
          clfmt = "('fld_init : time-interpolation for ', a, ' read previous record = ', i4, ' at time = ', f7.2, ' days')"
          IF(lwp) WRITE(numout, clfmt) TRIM(sdjf%clvar), sdjf%nrec_a(1), REAL(sdjf%nrec_a(2),wp)/rday
@@ -395,7 +445,7 @@ CONTAINS
    END SUBROUTINE fld_init
 
 
-   SUBROUTINE fld_rec( kn_fsbc, sdjf, ldbefore )
+   SUBROUTINE fld_rec( kn_fsbc, sdjf, ldbefore, jit, time_offset )
       !!---------------------------------------------------------------------
       !!                    ***  ROUTINE fld_rec  ***
       !!
@@ -409,13 +459,17 @@ CONTAINS
       INTEGER  , INTENT(in   )           ::   kn_fsbc   ! sbc computation period (in time step) 
       TYPE(FLD), INTENT(inout)           ::   sdjf      ! input field related variables
       LOGICAL  , INTENT(in   ), OPTIONAL ::   ldbefore  ! sent back before record values (default = .FALSE.)
+      INTEGER  , INTENT(in   ), OPTIONAL ::   jit       ! index of barotropic subcycle
                                                         ! used only if sdjf%ln_tint = .TRUE.
+      INTEGER  , INTENT(in   ), OPTIONAL ::   time_offset  ! Offset of required time level compared to "now"
+                                                           ! time level in units of time steps.
       !!
       LOGICAL  ::   llbefore    ! local definition of ldbefore
       INTEGER  ::   iendrec     ! end of this record (in seconds)
       INTEGER  ::   imth        ! month number
       INTEGER  ::   ifreq_sec   ! frequency mean (in seconds)
       INTEGER  ::   isec_week   ! number of seconds since the start of the weekly file
+      INTEGER  ::   itime_add   ! local time offset variable
       REAL(wp) ::   ztmp        ! temporary variable
       !!----------------------------------------------------------------------
       !
@@ -424,6 +478,9 @@ CONTAINS
       IF( PRESENT(ldbefore) ) THEN   ;   llbefore = ldbefore .AND. sdjf%ln_tint   ! needed only if sdjf%ln_tint = .TRUE.
       ELSE                           ;   llbefore = .FALSE.
       ENDIF
+      !
+      itime_add = 0
+      IF( PRESENT(time_offset) ) itime_add = time_offset
       !
       !                                      ! =========== !
       IF    ( sdjf%nfreqh == -12 ) THEN      ! yearly mean
@@ -441,11 +498,18 @@ CONTAINS
             !                           |   
             !       forcing record :    1 
             !                            
-            ztmp = REAL( nday, wp ) / REAL( nyear_len(1), wp ) + 0.5
+            ztmp = REAL( nsec_year, wp ) / ( REAL( nyear_len(1), wp ) * rday ) + 0.5
+            IF( PRESENT(jit) ) THEN 
+               ztmp = ztmp + (jit+itime_add)*rdt/REAL(nn_baro,wp) / ( REAL( nyear_len(1), wp ) * rday )
+            ELSE
+               ztmp = ztmp + itime_add*rdttra(1) / ( REAL( nyear_len(1), wp ) * rday )
+            ENDIF
             sdjf%nrec_a(1) = 1 + INT( ztmp ) - COUNT((/llbefore/))
             ! swap at the middle of the year
-            IF( llbefore ) THEN   ;   sdjf%nrec_a(2) = nsec1jan000 - NINT(0.5 * rday) * nyear_len(0)
-            ELSE                  ;   sdjf%nrec_a(2) = nsec1jan000 + NINT(0.5 * rday) * nyear_len(1)   
+            IF( llbefore ) THEN   ;   sdjf%nrec_a(2) = nsec1jan000 - (1 - INT(ztmp)) * NINT(0.5 * rday) * nyear_len(0) + &
+                                    & INT(ztmp) * NINT( 0.5 * rday) * nyear_len(1) 
+            ELSE                  ;   sdjf%nrec_a(2) = nsec1jan000 + (1 - INT(ztmp)) * NINT(0.5 * rday) * nyear_len(1) + &
+                                    & INT(ztmp) * INT(rday) * nyear_len(1) + INT(ztmp) * NINT( 0.5 * rday) * nyear_len(2) 
             ENDIF
          ELSE                                    ! no time interpolation
             sdjf%nrec_a(1) = 1
@@ -469,7 +533,12 @@ CONTAINS
             !                           |   
             !       forcing record :  nmonth 
             !                            
-            ztmp = REAL( nday, wp ) / REAL( nmonth_len(nmonth), wp ) + 0.5
+            ztmp = REAL( nsec_month, wp ) / ( REAL( nmonth_len(nmonth), wp ) * rday ) + 0.5
+            IF( PRESENT(jit) ) THEN
+               ztmp = ztmp + (jit+itime_add)*rdt/REAL(nn_baro,wp)  / ( REAL( nmonth_len(nmonth), wp ) * rday )
+            ELSE
+               ztmp = ztmp + itime_add*rdttra(1) / ( REAL( nmonth_len(nmonth), wp ) * rday )
+            ENDIF
             imth = nmonth + INT( ztmp ) - COUNT((/llbefore/))
             IF( sdjf%cltype == 'monthly' ) THEN   ;   sdjf%nrec_a(1) = 1 + INT( ztmp ) - COUNT((/llbefore/))
             ELSE                                  ;   sdjf%nrec_a(1) = imth
@@ -497,6 +566,11 @@ CONTAINS
          ENDIF
          ztmp = ztmp + 0.5 * REAL(kn_fsbc - 1, wp) * rdttra(1)   ! shift time to be centrered in the middle of sbc time step
          ztmp = ztmp + 0.01 * rdttra(1)                          ! add 0.01 time step to avoid truncation error 
+         IF( PRESENT(jit) ) THEN 
+            ztmp = ztmp + (jit+itime_add)*rdt/REAL(nn_baro,wp)
+         ELSE
+            ztmp = ztmp + itime_add*rdttra(1)
+         ENDIF
          IF( sdjf%ln_tint ) THEN                ! time interpolation, shift by 1/2 record
             !
             !                  INT( ztmp )
@@ -545,20 +619,26 @@ CONTAINS
    END SUBROUTINE fld_rec
 
 
-   SUBROUTINE fld_get( sdjf )
+   SUBROUTINE fld_get( sdjf, map )
       !!---------------------------------------------------------------------
-      !!                    ***  ROUTINE fld_clopn  ***
+      !!                    ***  ROUTINE fld_get  ***
       !!
       !! ** Purpose :   read the data
       !!----------------------------------------------------------------------
       TYPE(FLD), INTENT(inout) ::   sdjf   ! input field related variables
+      INTEGER  , INTENT(in), OPTIONAL, DIMENSION(:) :: map ! global-to-local mapping indices
       !!
       INTEGER                  ::   ipk    ! number of vertical levels of sdjf%fdta ( 2D: ipk=1 ; 3D: ipk=jpk )
       INTEGER                  ::   iw     ! index into wgts array
       !!---------------------------------------------------------------------
             
       ipk = SIZE( sdjf%fnow, 3 )
-      IF( LEN(TRIM(sdjf%wgtname)) > 0 ) THEN
+
+      IF( PRESENT(map) ) THEN
+         IF( sdjf%ln_tint ) THEN   ;   CALL fld_map( sdjf%num, sdjf%clvar, sdjf%fdta(:,:,:,2), sdjf%nrec_a(1), map )
+         ELSE                      ;   CALL fld_map( sdjf%num, sdjf%clvar, sdjf%fnow(:,:,:  ), sdjf%nrec_a(1), map )
+         ENDIF
+      ELSE IF( LEN(TRIM(sdjf%wgtname)) > 0 ) THEN
          CALL wgt_list( sdjf, iw )
          IF( sdjf%ln_tint ) THEN   ;   CALL fld_interp( sdjf%num, sdjf%clvar, iw , ipk  , sdjf%fdta(:,:,:,2), sdjf%nrec_a(1) )
          ELSE                      ;   CALL fld_interp( sdjf%num, sdjf%clvar, iw , ipk  , sdjf%fnow(:,:,:  ), sdjf%nrec_a(1) )
@@ -580,29 +660,80 @@ CONTAINS
 
    END SUBROUTINE fld_get
 
+   SUBROUTINE fld_map( num, clvar, dta, nrec, map )
+      !!---------------------------------------------------------------------
+      !!                    ***  ROUTINE fld_get  ***
+      !!
+      !! ** Purpose :   read global data from file and map onto local data
+      !!                using a general mapping (for open boundaries)
+      !!----------------------------------------------------------------------
+#if defined key_bdy
+      USE bdy_oce, ONLY:  dta_global         ! workspace to read in global data arrays
+#endif 
+
+      INTEGER                   , INTENT(in ) ::   num     ! stream number
+      CHARACTER(LEN=*)          , INTENT(in ) ::   clvar   ! variable name
+      REAL(wp), DIMENSION(:,:,:), INTENT(out) ::   dta   ! output field on model grid (2 dimensional)
+      INTEGER                   , INTENT(in ) ::   nrec    ! record number to read (ie time slice)
+      INTEGER,  DIMENSION(:)    , INTENT(in ) ::   map     ! global-to-local mapping indices
+      !!
+      INTEGER                                 ::   ipi      ! length of boundary data on local process
+      INTEGER                                 ::   ipj      ! length of dummy dimension ( = 1 )
+      INTEGER                                 ::   ipk      ! number of vertical levels of dta ( 2D: ipk=1 ; 3D: ipk=jpk )
+      INTEGER                                 ::   ilendta  ! length of data in file
+      INTEGER                                 ::   idvar    ! variable ID
+      INTEGER                                 ::   ib, ik   ! loop counters
+      INTEGER                                 ::   ierr
+      REAL(wp), POINTER, DIMENSION(:,:,:)     ::   dta_read ! work space for global data
+      !!---------------------------------------------------------------------
+            
+#if defined key_bdy
+      dta_read => dta_global
+#endif
+
+      ipi = SIZE( dta, 1 )
+      ipj = 1
+      ipk = SIZE( dta, 3 )
+
+      idvar   = iom_varid( num, clvar )
+      ilendta = iom_file(num)%dimsz(1,idvar)
+      IF(lwp) WRITE(numout,*) 'Dim size for ',TRIM(clvar),' is ', ilendta
+      IF(lwp) WRITE(numout,*) 'Number of levels for ',TRIM(clvar),' is ', ipk
+
+      SELECT CASE( ipk )
+      CASE(1)   
+         CALL iom_get ( num, jpdom_unknown, clvar, dta_read(1:ilendta,1:ipj,1    ), nrec )
+      CASE DEFAULT
+         CALL iom_get ( num, jpdom_unknown, clvar, dta_read(1:ilendta,1:ipj,1:ipk), nrec )
+      END SELECT
+      !
+      DO ib = 1, ipi
+         DO ik = 1, ipk
+            dta(ib,1,ik) =  dta_read(map(ib),1,ik)
+         END DO
+      END DO
+
+   END SUBROUTINE fld_map
+
 
    SUBROUTINE fld_rot( kt, sd )
       !!---------------------------------------------------------------------
-      !!                    ***  ROUTINE fld_clopn  ***
+      !!                    ***  ROUTINE fld_rot  ***
       !!
       !! ** Purpose :   Vector fields may need to be rotated onto the local grid direction
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY: wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY: utmp => wrk_2d_4, vtmp => wrk_2d_5      ! 2D workspace
-      !!
       INTEGER  , INTENT(in   )               ::   kt        ! ocean time step
       TYPE(FLD), INTENT(inout), DIMENSION(:) ::   sd        ! input field related variables
       !!
-      INTEGER                      ::   ju, jv, jk   ! loop indices
-      INTEGER                      ::   imf          ! size of the structure sd
-      INTEGER                      ::   ill          ! character length
-      INTEGER                      ::   iv           ! indice of V component
-      CHARACTER (LEN=100)          ::   clcomp       ! dummy weight name
+      INTEGER                           ::   ju, jv, jk   ! loop indices
+      INTEGER                           ::   imf          ! size of the structure sd
+      INTEGER                           ::   ill          ! character length
+      INTEGER                           ::   iv           ! indice of V component
+      REAL(wp), POINTER, DIMENSION(:,:) ::   utmp, vtmp   ! temporary arrays for vector rotation
+      CHARACTER (LEN=100)               ::   clcomp       ! dummy weight name
       !!---------------------------------------------------------------------
 
-      IF(wrk_in_use(2, 4,5) ) THEN
-         CALL ctl_stop('fld_rot: ERROR: requested workspace arrays are unavailable.')   ;   RETURN
-      END IF
+      CALL wrk_alloc( jpi,jpj, utmp, vtmp )
 
       !! (sga: following code should be modified so that pairs arent searched for each time
       !
@@ -637,7 +768,7 @@ CONTAINS
           ENDIF
        END DO
       !
-      IF(wrk_not_released(2, 4,5) )    CALL ctl_stop('fld_rot: ERROR: failed to release workspace arrays.')
+      CALL wrk_dealloc( jpi,jpj, utmp, vtmp )
       !
    END SUBROUTINE fld_rot
 
@@ -671,7 +802,7 @@ CONTAINS
             &                            WRITE(sdjf%clname, '(a,"d" ,i2.2)' ) TRIM( sdjf%clname     ), kday     ! add day
       !
       CALL iom_open( sdjf%clname, sdjf%num, ldstop = ldstop, ldiof =  LEN(TRIM(sdjf%wgtname)) > 0 )
-      !
+     !
    END SUBROUTINE fld_clopn
 
 
@@ -701,6 +832,7 @@ CONTAINS
          sdf(jf)%wgtname = " "
          IF( LEN( TRIM(sdf_n(jf)%wname) ) > 0 )   sdf(jf)%wgtname = TRIM( cdir )//TRIM( sdf_n(jf)%wname )
          sdf(jf)%vcomp   = sdf_n(jf)%vcomp
+         sdf(jf)%rotn    = .TRUE.
       END DO
 
       IF(lwp) THEN      ! control print
@@ -804,25 +936,22 @@ CONTAINS
       !! ** Purpose :   create a new WGT structure and fill in data from  
       !!                file, restructuring as required
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released, iwrk_in_use, iwrk_not_released
-      USE wrk_nemo, ONLY:   data_tmp =>  wrk_2d_1     ! 2D real    workspace
-      USE wrk_nemo, ONLY:   data_src => iwrk_2d_1     ! 2D integer workspace
-      !!
       TYPE( FLD ), INTENT(in) ::   sd   ! field with name of weights file
       !!
-      INTEGER                ::   jn            ! dummy loop indices
-      INTEGER                ::   inum          ! temporary logical unit
-      INTEGER                ::   id            ! temporary variable id
-      INTEGER                ::   ipk           ! temporary vertical dimension
-      CHARACTER (len=5)      ::   aname
-      INTEGER , DIMENSION(3) ::   ddims
-      LOGICAL                ::   cyclical
-      INTEGER                ::   zwrap      ! local integer
+      INTEGER                           ::   jn            ! dummy loop indices
+      INTEGER                           ::   inum          ! temporary logical unit
+      INTEGER                           ::   id            ! temporary variable id
+      INTEGER                           ::   ipk           ! temporary vertical dimension
+      CHARACTER (len=5)                 ::   aname
+      INTEGER , DIMENSION(3)            ::   ddims
+      INTEGER , POINTER, DIMENSION(:,:) ::   data_src
+      REAL(wp), POINTER, DIMENSION(:,:) ::   data_tmp
+      LOGICAL                           ::   cyclical
+      INTEGER                           ::   zwrap      ! local integer
       !!----------------------------------------------------------------------
       !
-      IF(  wrk_in_use(2, 1)  .OR.  iwrk_in_use(2,1) ) THEN
-         CALL ctl_stop('fld_weight: requested workspace arrays are unavailable')   ;   RETURN
-      ENDIF
+      CALL wrk_alloc( jpi,jpj, data_src )   ! integer
+      CALL wrk_alloc( jpi,jpj, data_tmp )
       !
       IF( nxt_wgt > tot_wgts ) THEN
         CALL ctl_stop("fld_weight: weights array size exceeded, increase tot_wgts")
@@ -934,8 +1063,8 @@ CONTAINS
          CALL ctl_stop( '    fld_weight : unable to read the file ' )
       ENDIF
 
-      IF(  wrk_not_released(2, 1) .OR.    &
-          iwrk_not_released(2, 1)  )   CALL ctl_stop('fld_weight: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi,jpj, data_src )   ! integer
+      CALL wrk_dealloc( jpi,jpj, data_tmp )
       !
    END SUBROUTINE fld_weight
 

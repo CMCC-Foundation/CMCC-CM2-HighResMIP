@@ -37,7 +37,7 @@ MODULE zdfini
    
    !!----------------------------------------------------------------------
    !! NEMO/OPA 4.0 , NEMO Consortium (2011)
-   !! $Id: zdfini.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -114,6 +114,10 @@ CONTAINS
       !                               ! ... Convection
       IF(lwp) WRITE(numout,*)
       IF(lwp) WRITE(numout,*) '   convection :'
+      !
+      IF( ln_zdfnpc )   CALL ctl_stop( ' zdf_init: non penetrative convective scheme is not working',   &
+         &                                       ' set ln_zdfnpc to FALSE' )
+      !
       ioptio = 0
       IF( ln_zdfnpc ) THEN
          IF(lwp) WRITE(numout,*) '      use non penetrative convective scheme'

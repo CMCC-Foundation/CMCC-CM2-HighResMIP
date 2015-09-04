@@ -39,7 +39,7 @@ MODULE obcrad
 #  include "obc_vectopt_loop_substitute.h90"
    !!---------------------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: obcrad.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence (NEMOGCM/NEMO_CeCILL.txt)
    !!---------------------------------------------------------------------------------
 
@@ -214,10 +214,10 @@ CONTAINS
                   tebnd(jj,jk,nibm,nitm) = tebnd(jj,jk,nibm,nit)*temsk(jj,jk)
                   sebnd(jj,jk,nibm,nitm) = sebnd(jj,jk,nibm,nit)*temsk(jj,jk)
          ! ... fields nit <== now (kt+1)
-                  tebnd(jj,jk,nib  ,nit) = tn(ji  ,jj,jk)*temsk(jj,jk)
-                  tebnd(jj,jk,nibm ,nit) = tn(ji-1,jj,jk)*temsk(jj,jk)
-                  sebnd(jj,jk,nib  ,nit) = sn(ji  ,jj,jk)*temsk(jj,jk)
-                  sebnd(jj,jk,nibm ,nit) = sn(ji-1,jj,jk)*temsk(jj,jk)
+                  tebnd(jj,jk,nib  ,nit) = tsn(ji  ,jj,jk,jp_tem)*temsk(jj,jk)
+                  tebnd(jj,jk,nibm ,nit) = tsn(ji-1,jj,jk,jp_tem)*temsk(jj,jk)
+                  sebnd(jj,jk,nib  ,nit) = tsn(ji  ,jj,jk,jp_sal)*temsk(jj,jk)
+                  sebnd(jj,jk,nibm ,nit) = tsn(ji-1,jj,jk,jp_sal)*temsk(jj,jk)
                END DO
             END DO
          END DO
@@ -480,10 +480,10 @@ CONTAINS
                   twbnd(jj,jk,nibm ,nitm) = twbnd(jj,jk,nibm ,nit)*twmsk(jj,jk)
                   swbnd(jj,jk,nibm ,nitm) = swbnd(jj,jk,nibm ,nit)*twmsk(jj,jk)
          ! ... fields nit <== now (kt+1)
-                  twbnd(jj,jk,nib  ,nit) = tn(ji   ,jj,jk)*twmsk(jj,jk)
-                  twbnd(jj,jk,nibm ,nit) = tn(ji+1 ,jj,jk)*twmsk(jj,jk)
-                  swbnd(jj,jk,nib  ,nit) = sn(ji   ,jj,jk)*twmsk(jj,jk)
-                  swbnd(jj,jk,nibm ,nit) = sn(ji+1 ,jj,jk)*twmsk(jj,jk)
+                  twbnd(jj,jk,nib  ,nit) = tsn(ji   ,jj,jk,jp_tem)*twmsk(jj,jk)
+                  twbnd(jj,jk,nibm ,nit) = tsn(ji+1 ,jj,jk,jp_tem)*twmsk(jj,jk)
+                  swbnd(jj,jk,nib  ,nit) = tsn(ji   ,jj,jk,jp_sal)*twmsk(jj,jk)
+                  swbnd(jj,jk,nibm ,nit) = tsn(ji+1 ,jj,jk,jp_sal)*twmsk(jj,jk)
                END DO
             END DO
          END DO
@@ -749,10 +749,10 @@ CONTAINS
                   tnbnd(ji,jk,nibm ,nitm) = tnbnd(ji,jk,nibm ,nit)*tnmsk(ji,jk)
                   snbnd(ji,jk,nibm ,nitm) = snbnd(ji,jk,nibm ,nit)*tnmsk(ji,jk)
          ! ... fields nit <== now (kt+1)
-                  tnbnd(ji,jk,nib  ,nit) = tn(ji,jj,  jk)*tnmsk(ji,jk)
-                  tnbnd(ji,jk,nibm ,nit) = tn(ji,jj-1,jk)*tnmsk(ji,jk)
-                  snbnd(ji,jk,nib  ,nit) = sn(ji,jj,  jk)*tnmsk(ji,jk)
-                  snbnd(ji,jk,nibm ,nit) = sn(ji,jj-1,jk)*tnmsk(ji,jk)
+                  tnbnd(ji,jk,nib  ,nit) = tsn(ji,jj,  jk,jp_tem)*tnmsk(ji,jk)
+                  tnbnd(ji,jk,nibm ,nit) = tsn(ji,jj-1,jk,jp_tem)*tnmsk(ji,jk)
+                  snbnd(ji,jk,nib  ,nit) = tsn(ji,jj,  jk,jp_sal)*tnmsk(ji,jk)
+                  snbnd(ji,jk,nibm ,nit) = tsn(ji,jj-1,jk,jp_sal)*tnmsk(ji,jk)
                END DO
             END DO
          END DO
@@ -1021,10 +1021,10 @@ CONTAINS
                   tsbnd(ji,jk,nibm ,nitm) = tsbnd(ji,jk,nibm ,nit)*tsmsk(ji,jk)
                   ssbnd(ji,jk,nibm ,nitm) = ssbnd(ji,jk,nibm ,nit)*tsmsk(ji,jk)
          ! ... fields nit <== now (kt+1)
-                  tsbnd(ji,jk,nib  ,nit) = tn(ji,jj   ,jk)*tsmsk(ji,jk)
-                  tsbnd(ji,jk,nibm ,nit) = tn(ji,jj+1 ,jk)*tsmsk(ji,jk)
-                  ssbnd(ji,jk,nib  ,nit) = sn(ji,jj   ,jk)*tsmsk(ji,jk)
-                  ssbnd(ji,jk,nibm ,nit) = sn(ji,jj+1 ,jk)*tsmsk(ji,jk)
+                  tsbnd(ji,jk,nib  ,nit) = tsn(ji,jj   ,jk,jp_tem)*tsmsk(ji,jk)
+                  tsbnd(ji,jk,nibm ,nit) = tsn(ji,jj+1 ,jk,jp_tem)*tsmsk(ji,jk)
+                  ssbnd(ji,jk,nib  ,nit) = tsn(ji,jj   ,jk,jp_sal)*tsmsk(ji,jk)
+                  ssbnd(ji,jk,nibm ,nit) = tsn(ji,jj+1 ,jk,jp_sal)*tsmsk(ji,jk)
                END DO
             END DO
          END DO

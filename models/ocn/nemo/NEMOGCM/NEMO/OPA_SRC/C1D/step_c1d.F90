@@ -63,8 +63,6 @@ CONTAINS
       !>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
       ! Update data, open boundaries, surface boundary condition (including sea-ice)
       !<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-      IF( lk_dtatem  )   CALL dta_tem( kstp )         ! update 3D temperature data
-      IF( lk_dtasal  )   CALL dta_sal( kstp )         ! update 3D salinity data
                          CALL sbc    ( kstp )         ! Sea Boundary Condition (including sea-ice)
 
       !>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -126,7 +124,6 @@ CONTAINS
                              CALL tra_nxt    ( kstp )        ! tracer fields at next time step
       IF( ln_zdfnpc      )   CALL tra_npc    ( kstp )        ! applied non penetrative convective adjustment on (t,s)
                              CALL eos( tsb, rhd, rhop )      ! now (swap=before) in situ density for dynhpg module
-                             CALL tra_unswap                 ! udate T & S 3D arrays  (to be suppressed)
 
       !>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
       ! Dynamics                                    (ta, sa used as workspace)

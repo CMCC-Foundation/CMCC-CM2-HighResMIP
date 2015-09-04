@@ -20,6 +20,8 @@ MODULE dynzad
    USE in_out_manager ! I/O manager
    USE lib_mpp         ! MPP library
    USE prtctl         ! Print control
+   USE wrk_nemo        ! Memory Allocation
+   USE timing          ! Timing
 
    IMPLICIT NONE
    PRIVATE
@@ -31,7 +33,7 @@ MODULE dynzad
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: dynzad.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -51,28 +53,28 @@ CONTAINS
       !!
       !! ** Action  : - Update (ua,va) with the vert. momentum adv. trends
       !!              - Save the trends in (ztrdu,ztrdv) ('key_trddyn')
-     !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY: wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zww   => wrk_2d_1                        ! 2D workspace
-      USE oce     , ONLY:   zwuw  => ta       , zwvw  => sa          ! (ta,sa) used as 3D workspace
-      USE wrk_nemo, ONLY:   ztrdu => wrk_3d_1 , ztrdv => wrk_3d_2    ! 3D workspace
-      !
+      !!----------------------------------------------------------------------
       INTEGER, INTENT(in) ::   kt   ! ocean time-step inedx
       !
       INTEGER  ::   ji, jj, jk      ! dummy loop indices
       REAL(wp) ::   zua, zva        ! temporary scalars
+      REAL(wp), POINTER, DIMENSION(:,:,:) ::  zwuw , zwvw
+      REAL(wp), POINTER, DIMENSION(:,:  ) ::  zww
+      REAL(wp), POINTER, DIMENSION(:,:,:) ::  ztrdu, ztrdv
       !!----------------------------------------------------------------------
-      
-      IF( wrk_in_use(2, 1) .OR. wrk_in_use(3, 1,2) ) THEN
-         CALL ctl_stop('dyn_zad: requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('dyn_zad')
+      !
+      CALL wrk_alloc( jpi,jpj, zww ) 
+      CALL wrk_alloc( jpi,jpj,jpk, zwuw , zwvw ) 
+      !
       IF( kt == nit000 ) THEN
          IF(lwp)WRITE(numout,*)
          IF(lwp)WRITE(numout,*) 'dyn_zad : arakawa advection scheme'
       ENDIF
 
       IF( l_trddyn )   THEN         ! Save ua and va trends
+         CALL wrk_alloc( jpi, jpj, jpk, ztrdu, ztrdv ) 
          ztrdu(:,:,:) = ua(:,:,:) 
          ztrdv(:,:,:) = va(:,:,:) 
       ENDIF
@@ -116,13 +118,16 @@ CONTAINS
          ztrdu(:,:,:) = ua(:,:,:) - ztrdu(:,:,:)
          ztrdv(:,:,:) = va(:,:,:) - ztrdv(:,:,:)
          CALL trd_mod(ztrdu, ztrdv, jpdyn_trd_zad, 'DYN', kt)
+         CALL wrk_dealloc( jpi, jpj, jpk, ztrdu, ztrdv ) 
       ENDIF
       !                             ! Control print
       IF(ln_ctl)   CALL prt_ctl( tab3d_1=ua, clinfo1=' zad  - Ua: ', mask1=umask,   &
          &                       tab3d_2=va, clinfo2=       ' Va: ', mask2=vmask, clinfo3='dyn' )
       !
-      IF( wrk_not_released(2, 1)   .OR.   &
-          wrk_not_released(3, 1,2) )   CALL ctl_stop('dyn_zad: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi,jpj, zww ) 
+      CALL wrk_dealloc( jpi,jpj,jpk, zwuw , zwvw ) 
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('dyn_zad')
       !
    END SUBROUTINE dyn_zad
 

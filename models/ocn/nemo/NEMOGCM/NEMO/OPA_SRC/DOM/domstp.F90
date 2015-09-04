@@ -25,7 +25,7 @@ MODULE domstp
 #  include "domzgr_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: domstp.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -69,20 +69,20 @@ CONTAINS
       ! 0. Asselin Time filter
       ! ----------------------
       
-      atfp1 = 1._wp - 2._wp * atfp
+      atfp1 = 1. - 2. * atfp
 
       SELECT CASE ( nacc )
 
          CASE ( 0 )                ! Synchronous time stepping
             IF(lwp) WRITE(numout,*)'               synchronous time stepping'
-            IF(lwp) WRITE(numout,*)'               dynamics and tracer time step = ', rdt/3600._wp, ' hours'
+            IF(lwp) WRITE(numout,*)'               dynamics and tracer time step = ', rdt/3600., ' hours'
 
             rdttra(:) = rdt
 
          CASE ( 1 )                ! Accelerating the convergence
             IF(lwp) WRITE(numout,*) '              no tracer damping in the turbocline'
             IF(lwp) WRITE(numout,*)'               accelerating the convergence'
-            IF(lwp) WRITE(numout,*)'               dynamics time step = ', rdt/3600._wp, ' hours'
+            IF(lwp) WRITE(numout,*)'               dynamics time step = ', rdt/3600., ' hours'
             IF( ln_sco .AND. rdtmin /= rdtmax .AND. lk_vvl )   &
                  & CALL ctl_stop ( ' depth dependent acceleration of convergence not implemented in s-coordinates &
                  &                   nor in variable volume' )
@@ -95,7 +95,7 @@ CONTAINS
                                       * ( EXP( ( gdept_0(jk ) - rdth ) / rdth ) - 1. )   &
                                       / ( EXP( ( gdept_0(jpk) - rdth ) / rdth ) - 1. )
                ENDIF
-               IF(lwp) WRITE(numout,"(36x,f5.2,5x,i3)") rdttra(jk)/3600._wp, jk
+               IF(lwp) WRITE(numout,"(36x,f5.2,5x,i3)") rdttra(jk)/3600., jk
             END DO  
 
          CASE DEFAULT              ! E R R O R 

@@ -13,6 +13,7 @@ MODULE sbcblk_core
    !!             -   !  2006-12  (L. Brodeau) Original code for TURB_CORE_2Z
    !!            3.2  !  2009-04  (B. Lemaire)  Introduce iom_put
    !!            3.3  !  2010-10  (S. Masson)  add diurnal cycle
+   !!            3.4  !  2011-11  (C. Harris) Fill arrays required by CICE
    !!----------------------------------------------------------------------
 
    !!----------------------------------------------------------------------
@@ -31,9 +32,12 @@ MODULE sbcblk_core
    USE iom             ! I/O manager library
    USE in_out_manager  ! I/O manager
    USE lib_mpp         ! distribued memory computing library
+   USE wrk_nemo        ! work arrays
+   USE timing          ! Timing
    USE lbclnk          ! ocean lateral boundary conditions (or mpp link)
    USE prtctl          ! Print control
-#if defined key_lim3
+   USE sbcwave,ONLY :  cdn_wave !wave module 
+#if defined key_lim3 || defined key_cice
    USE sbc_ice         ! Surface boundary condition: ice fields
 #endif
 
@@ -42,7 +46,9 @@ MODULE sbcblk_core
 
    PUBLIC   sbc_blk_core         ! routine called in sbcmod module
    PUBLIC   blk_ice_core         ! routine called in sbc_ice_lim module
+   PUBLIC   turb_core_2z         ! routine calles in sbcblk_mfs module
 
+   INTEGER , PARAMETER ::   jpfld   = 9           ! maximum number of files to read 
    INTEGER , PARAMETER ::   jp_wndi = 1           ! index of 10m wind velocity (i-component) (m/s)    at T-point
    INTEGER , PARAMETER ::   jp_wndj = 2           ! index of 10m wind velocity (j-component) (m/s)    at T-point
    INTEGER , PARAMETER ::   jp_humi = 3           ! index of specific humidity               ( - )
@@ -52,14 +58,6 @@ MODULE sbcblk_core
    INTEGER , PARAMETER ::   jp_prec = 7           ! index of total precipitation (rain+snow) (Kg/m2/s)
    INTEGER , PARAMETER ::   jp_snow = 8           ! index of snow (solid prcipitation)       (kg/m2/s)
    INTEGER , PARAMETER ::   jp_tdif = 9           ! index of tau diff associated to HF tau   (N/m2)   at T-point
-#if defined key_orca_r025
-   INTEGER , PARAMETER ::   jp_swc  = 10          ! index of GEWEX correction for SW radiation  at T-point
-   INTEGER , PARAMETER ::   jp_lwc  = 11          ! index of GEWEX correction for LW radiation  at T-point
-   INTEGER , PARAMETER ::   jp_prc  = 12          ! index of PMWC correction forat T-point
-   INTEGER , PARAMETER ::   jpfld   = 12          ! maximum number of files to read
-#else
-   INTEGER , PARAMETER ::   jpfld   = 9           ! maximum number of files to read
-#endif
    
    TYPE(FLD), ALLOCATABLE, DIMENSION(:) ::   sf   ! structure of input fields (file informations, fields read)
          
@@ -76,27 +74,17 @@ MODULE sbcblk_core
    LOGICAL  ::   ln_2m     = .FALSE.   ! logical flag for height of air temp. and hum
    LOGICAL  ::   ln_taudif = .FALSE.   ! logical flag to use the "mean of stress module - module of mean stress" data
    REAL(wp) ::   rn_pfac   = 1.        ! multiplication factor for precipitation
-#if defined key_orca_r025
-   LOGICAL  ::   ln_printdia= .TRUE.     ! logical flag for height of air temp. and hum
-   LOGICAL  ::   ln_netsw   = .TRUE.     ! logical flag for height of air temp. and hum
-   LOGICAL  ::   ln_core_graceopt=.FALSE., ln_core_spinup=.FALSE.
-   LOGICAL  ::   ln_gwxc = .TRUE.
-   LOGICAL  ::   ln_corad_antar =.FALSE., ln_corad_arc =.FALSE. , ln_cotair_arc = .FALSE.
-   LOGICAL  ::   ln_coprecip =.FALSE.
-   REAL(wp) ::   rn_qns_bias = 0._wp     ! heat flux bias
-
-#endif
 
    !! * Substitutions
 #  include "domzgr_substitute.h90"
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO-consortium (2010) 
-   !! $Id: sbcblk_core.F90 2801 2011-07-13 17:45:53Z vichi $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
-   
+
    SUBROUTINE sbc_blk_core( kt )
       !!---------------------------------------------------------------------
       !!                    ***  ROUTINE sbc_blk_core  ***
@@ -128,47 +116,25 @@ CONTAINS
       !!              - qns, qsr    non-slor and solar heat flux
       !!              - emp, emps   evaporation minus precipitation
       !!----------------------------------------------------------------------
-#if defined key_orca_r025 && key_lim2
-      USE ice_2
-#endif
       INTEGER, INTENT(in) ::   kt   ! ocean time step
       !!
       INTEGER  ::   ierror   ! return error code
       INTEGER  ::   ifpr     ! dummy loop indice
       INTEGER  ::   jfld     ! dummy loop arguments
-      INTEGER  ::   ji, jj
       !!
       CHARACTER(len=100) ::  cn_dir   !   Root directory for location of core files
       TYPE(FLD_N), DIMENSION(jpfld) ::   slf_i     ! array of namelist informations on the fields to read
       TYPE(FLD_N) ::   sn_wndi, sn_wndj, sn_humi, sn_qsr       ! informations about the fields to be read
       TYPE(FLD_N) ::   sn_qlw , sn_tair, sn_prec, sn_snow      !   "                                 "
       TYPE(FLD_N) ::   sn_tdif                                 !   "                                 "
-#if defined key_orca_r025
-      TYPE(FLD_N) ::   sn_swc, sn_lwc                          !   "                                 "
-      TYPE(FLD_N) ::   sn_prc
-      INTEGER  ::   iter_shapiro = 250
-      REAL :: zzlat, zzlat1, zzlat2, zfrld, ztmp
-      REAL(wp), DIMENSION(jpi,jpj):: xyt,z_qsr,z_qlw,z_qsr1,z_qlw1,z_tair
-      REAL(wp), DIMENSION(jpi,jpj):: zqsr_lr, zqsr_hr, zqlw_lr, zqlw_hr, zprec_hr, zprec_lr
-      CHARACTER(len=20)  ::  c_kind='ORCA_GLOB'
-      NAMELIST/namsbc_core/ cn_dir , ln_2m  , ln_taudif, rn_pfac,           &
-         &                  sn_wndi, sn_wndj, sn_humi  , sn_qsr ,           &
-         &                  sn_qlw , sn_tair, sn_prec  , sn_snow, sn_tdif,  &
-         &                  sn_swc , sn_lwc , sn_prc   , ln_gwxc,           &
-         &                  ln_corad_antar, ln_corad_arc, ln_cotair_arc, ln_coprecip ,  &
-         &                  rn_qns_bias, ln_printdia, ln_netsw, ln_core_graceopt,ln_core_spinup
-      !!---------------------------------------------------------------------
-#else
       NAMELIST/namsbc_core/ cn_dir , ln_2m  , ln_taudif, rn_pfac,           &
          &                  sn_wndi, sn_wndj, sn_humi  , sn_qsr ,           &
          &                  sn_qlw , sn_tair, sn_prec  , sn_snow, sn_tdif
       !!---------------------------------------------------------------------
-#endif
 
       !                                         ! ====================== !
       IF( kt == nit000 ) THEN                   !  First call kt=nit000  !
          !                                      ! ====================== !
-
          ! set file information (default values)
          cn_dir = './'       ! directory in which the model is executed
          !
@@ -184,11 +150,6 @@ CONTAINS
          sn_prec = FLD_N( 'precip' ,    -1     , 'precip' ,  .true.    , .false. ,   'yearly'  , ''       , ''       )
          sn_snow = FLD_N( 'snow'   ,    -1     , 'snow'   ,  .true.    , .false. ,   'yearly'  , ''       , ''       )
          sn_tdif = FLD_N( 'taudif' ,    24     , 'taudif' ,  .true.    , .false. ,   'yearly'  , ''       , ''       )
-#if defined key_orca_r025
-         sn_swc  = FLD_N( 'swc'    ,    24     ,  'swc'   ,  .true.    , .false. ,   'yearly'  , ''       , ''       )
-         sn_lwc  = FLD_N( 'lwc'    ,    24     ,  'lwc'   ,  .true.    , .false. ,   'yearly'  , ''       , ''       )
-         sn_prc  = FLD_N( 'prc'    ,    24     ,  'prc'   ,  .true.    , .false. ,   'yearly'  , ''       , ''       )
-#endif
          !
          REWIND( numnam )                          ! read in namlist namsbc_core
          READ  ( numnam, namsbc_core )
@@ -207,15 +168,8 @@ CONTAINS
          slf_i(jp_prec) = sn_prec   ;   slf_i(jp_snow) = sn_snow
          slf_i(jp_tdif) = sn_tdif
          !                 
-         lhftau = ln_taudif                        ! do we use HF tau information?      
+         lhftau = ln_taudif                        ! do we use HF tau information?
          jfld = jpfld - COUNT( (/.NOT. lhftau/) )
-#if defined key_orca_r025
-         slf_i(jp_swc ) = sn_swc
-         slf_i(jp_lwc ) = sn_lwc
-         slf_i(jp_prc ) = sn_prc
-         IF( .NOT. ln_gwxc )     jfld = jfld - 2
-         IF( .NOT. ln_coprecip ) jfld = jfld - 1
-#endif
          !
          ALLOCATE( sf(jfld), STAT=ierror )         ! set sf structure
          IF( ierror > 0 )   CALL ctl_stop( 'STOP', 'sbc_blk_core: unable to allocate sf structure' )
@@ -230,117 +184,22 @@ CONTAINS
 
       CALL fld_read( kt, nn_fsbc, sf )        ! input fields provided at the current time-step
 
-      IF( MOD( kt - 1, nn_fsbc ) == 0 ) THEN
+      !                                                        ! surface ocean fluxes computed with CLIO bulk formulea
+      IF( MOD( kt - 1, nn_fsbc ) == 0 )   CALL blk_oce_core( sf, sst_m, ssu_m, ssv_m )
 
-#if defined key_orca_r025
-      ! Introduce ERA-Interim filtering and correction
-
-         IF( ln_gwxc ) THEN
-
-           call Shapiro_1D(sf(jp_qsr)%fnow(:,:,1),iter_shapiro, c_kind, zqsr_lr)
-           zqsr_hr(:,:)=sf(jp_qsr)%fnow(:,:,1)-zqsr_lr(:,:)          ! We get large scale and small scale
-
-           call Shapiro_1D(sf(jp_qlw)%fnow(:,:,1),iter_shapiro, c_kind, zqlw_lr)
-           zqlw_hr(:,:)=sf(jp_qlw)%fnow(:,:,1)-zqlw_lr(:,:)          ! We get large scale and small scale
-
-           z_qsr1(:,:)=zqsr_lr(:,:)*sf(jp_swc)%fnow(:,:,1) + zqsr_hr(:,:)
-           z_qlw1(:,:)=zqlw_lr(:,:)*sf(jp_lwc)%fnow(:,:,1) + zqlw_hr(:,:)
-
-           DO jj=1,jpj
-             DO ji=1,jpi
-               z_qsr1(ji,jj)=max(z_qsr1(ji,jj),0.0)
-               z_qlw1(ji,jj)=max(z_qlw1(ji,jj),0.0)
-             END DO
-           END DO
-
-         ENDIF
-
-         IF( ln_coprecip ) THEN
-
-           call Shapiro_1D(sf(jp_prec)%fnow(:,:,1),iter_shapiro,c_kind,zprec_lr)
-           zprec_hr(:,:)=sf(jp_prec)%fnow(:,:,1)-zprec_lr(:,:)       ! We get large scale and small scale
-
-           DO jj=1,jpj
-             DO ji=1,jpi
-               IF( zprec_lr(ji,jj) .GT. 0._wp ) THEN
-                  ztmp = LOG( ( 1000._wp + sf(jp_prc)%fnow(ji,jj,1) ) * EXP( zprec_lr(ji,jj) ) / 1000._wp )
-                  sf(jp_prec)%fnow(ji,jj,1) = max(ztmp+zprec_hr(ji,jj),0.0)
-               ENDIF
-             END DO
-           END DO
-
-         ENDIF
-
-         IF ( ln_corad_antar ) THEN           ! correction of SW and LW in the Southern Ocean
- 
-           z_qsr(:,:)=0.8*z_qsr1(:,:)
-           z_qlw(:,:)=1.1*z_qlw1(:,:)
-           xyt(:,:) = 0.e0
-           zzlat1 = -65.
-           zzlat2 = -60.
-           DO jj = 1, jpj
-             DO ji = 1, jpi
-               zzlat = gphit(ji,jj)
-               IF ( zzlat >= zzlat1 .AND. zzlat <= zzlat2 ) THEN
-                  xyt(ji,jj) = (zzlat2-zzlat)/(zzlat2-zzlat1)
-               ELSE IF ( zzlat < zzlat1 ) THEN
-                  xyt(ji,jj) = 1
-               ENDIF
-             END DO
-           END DO
-           z_qsr1(:,:)=z_qsr(:,:)*xyt(:,:)+(1.0-xyt(:,:))*z_qsr1(:,:)
-           z_qlw1(:,:)=z_qlw(:,:)*xyt(:,:)+(1.0-xyt(:,:))*z_qlw1(:,:)
-
-         ENDIF
-
-         IF ( ln_corad_arc ) THEN         ! correction of SW in the Arctic Ocean
-
-           z_qsr(:,:)=0.7*z_qsr1(:,:)
-           xyt(:,:) = 0.e0
-           zzlat1 = 78.
-           zzlat2 = 82.
-           DO jj = 1, jpj
-             DO ji = 1, jpi
-               zzlat = gphit(ji,jj)
-               IF ( zzlat >= zzlat1 .AND. zzlat <= zzlat2 ) THEN
-                  xyt(ji,jj) = (zzlat-zzlat1)/(zzlat2-zzlat1)
-               ELSE IF ( zzlat > zzlat2 ) THEN
-                  xyt(ji,jj) = 1
-               ENDIF
-             END DO
-           END DO
-           z_qsr1(:,:)=z_qsr(:,:)*xyt(:,:)+(1.0-xyt(:,:))*z_qsr1(:,:)
-
-         ENDIF
-
-         sf(jp_qsr)%fnow(:,:,1)=z_qsr1(:,:)
-         sf(jp_qlw)%fnow(:,:,1)=z_qlw1(:,:)
-
-#if defined key_lim2
-         IF ( ln_cotair_arc ) THEN           ! correction of Air Temperature in the Arctic Ocean
-
-           z_tair(:,:)=sf(jp_tair)%fnow(:,:,1) - 2.0
-           xyt(:,:) = 0.e0 ; zzlat1 = 78. ; zzlat2 = 82.
-           DO jj = 1, jpj
-             DO ji = 1, jpi
-               zzlat = gphit(ji,jj) ; zfrld=frld(ji,jj)
-               IF ( zzlat >= zzlat1 .AND. zzlat <= zzlat2 .AND. zfrld < 0.85 ) THEN
-                  xyt(ji,jj) = (zzlat-zzlat1)/(zzlat2-zzlat1)
-               ELSE IF ( zzlat > zzlat2 .AND. zfrld < 0.85 ) THEN
-                  xyt(ji,jj) = 1
-               ENDIF
-             END DO
-           END DO
-           sf(jp_tair)%fnow(:,:,1)=z_tair(:,:)*xyt(:,:)+(1.0-xyt(:,:))*sf(jp_tair)%fnow(:,:,1)
-
-         ENDIF
-#endif
-
-#endif
-         CALL blk_oce_core( sf, sst_m, ssu_m, ssv_m )   ! compute the surface ocean fluxes using CLIO bulk formulea
-
+#if defined key_cice
+      IF( MOD( kt - 1, nn_fsbc ) == 0 )   THEN
+         qlw_ice(:,:,1)   = sf(jp_qlw)%fnow(:,:,1) 
+         qsr_ice(:,:,1)   = sf(jp_qsr)%fnow(:,:,1)
+         tatm_ice(:,:)    = sf(jp_tair)%fnow(:,:,1)         
+         qatm_ice(:,:)    = sf(jp_humi)%fnow(:,:,1)
+         tprecip(:,:)     = sf(jp_prec)%fnow(:,:,1) * rn_pfac
+         sprecip(:,:)     = sf(jp_snow)%fnow(:,:,1) * rn_pfac
+         wndi_ice(:,:)    = sf(jp_wndi)%fnow(:,:,1)
+         wndj_ice(:,:)    = sf(jp_wndj)%fnow(:,:,1)
       ENDIF
-      !                                               ! using CORE bulk formulea
+#endif
+      !
    END SUBROUTINE sbc_blk_core
    
    
@@ -365,18 +224,6 @@ CONTAINS
       !!
       !!  ** Nota  :   sf has to be a dummy argument for AGRIF on NEC
       !!---------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zwnd_i => wrk_2d_1  , zwnd_j => wrk_2d_2      ! wind speed components at T-point
-      USE wrk_nemo, ONLY:   zqsatw => wrk_2d_3           ! specific humidity at pst
-      USE wrk_nemo, ONLY:   zqlw   => wrk_2d_4  , zqsb   => wrk_2d_5      ! long wave and sensible heat fluxes
-      USE wrk_nemo, ONLY:   zqla   => wrk_2d_6  , zevap  => wrk_2d_7      ! latent heat fluxes and evaporation
-      USE wrk_nemo, ONLY:   Cd     => wrk_2d_8           ! transfer coefficient for momentum      (tau)
-      USE wrk_nemo, ONLY:   Ch     => wrk_2d_9           ! transfer coefficient for sensible heat (Q_sens)
-      USE wrk_nemo, ONLY:   Ce     => wrk_2d_10          ! transfer coefficient for evaporation   (Q_lat)
-      USE wrk_nemo, ONLY:   zst    => wrk_2d_11          ! surface temperature in Kelvin
-      USE wrk_nemo, ONLY:   zt_zu  => wrk_2d_12          ! air temperature at wind speed height
-      USE wrk_nemo, ONLY:   zq_zu  => wrk_2d_13          ! air spec. hum.  at wind speed height
-      !
       TYPE(fld), INTENT(in), DIMENSION(:)   ::   sf    ! input data
       REAL(wp) , INTENT(in), DIMENSION(:,:) ::   pst   ! surface temperature                      [Celcius]
       REAL(wp) , INTENT(in), DIMENSION(:,:) ::   pu    ! surface current at U-point (i-component) [m/s]
@@ -384,11 +231,22 @@ CONTAINS
       !
       INTEGER  ::   ji, jj               ! dummy loop indices
       REAL(wp) ::   zcoef_qsatw, zztmp   ! local variable
+      REAL(wp), DIMENSION(:,:), POINTER ::   zwnd_i, zwnd_j    ! wind speed components at T-point
+      REAL(wp), DIMENSION(:,:), POINTER ::   zqsatw            ! specific humidity at pst
+      REAL(wp), DIMENSION(:,:), POINTER ::   zqlw, zqsb        ! long wave and sensible heat fluxes
+      REAL(wp), DIMENSION(:,:), POINTER ::   zqla, zevap       ! latent heat fluxes and evaporation
+      REAL(wp), DIMENSION(:,:), POINTER ::   Cd                ! transfer coefficient for momentum      (tau)
+      REAL(wp), DIMENSION(:,:), POINTER ::   Ch                ! transfer coefficient for sensible heat (Q_sens)
+      REAL(wp), DIMENSION(:,:), POINTER ::   Ce                ! tansfert coefficient for evaporation   (Q_lat)
+      REAL(wp), DIMENSION(:,:), POINTER ::   zst               ! surface temperature in Kelvin
+      REAL(wp), DIMENSION(:,:), POINTER ::   zt_zu             ! air temperature at wind speed height
+      REAL(wp), DIMENSION(:,:), POINTER ::   zq_zu             ! air spec. hum.  at wind speed height
       !!---------------------------------------------------------------------
-
-      IF( wrk_in_use(2, 1,2,3,4,5,6,7,8,9,10,11,12,13) ) THEN
-         CALL ctl_stop('blk_oce_core: requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
+      !
+      IF( nn_timing == 1 )  CALL timing_start('blk_oce_core')
+      !
+      CALL wrk_alloc( jpi,jpj, zwnd_i, zwnd_j, zqsatw, zqlw, zqsb, zqla, zevap )
+      CALL wrk_alloc( jpi,jpj, Cd, Ch, Ce, zst, zt_zu, zq_zu )
       !
       ! local scalars ( place there for vector optimisation purposes)
       zcoef_qsatw = 0.98 * 640380. / rhoa
@@ -473,11 +331,6 @@ CONTAINS
       ! ... add the HF tau contribution to the wind stress module?
       IF( lhftau ) THEN 
 !CDIR COLLAPSE
-#if defined key_orca_r025
-         ! Changed!!! Multiply by QSCAT correction
-         zwnd_i(:,:) = zwnd_i(:,:) * sf(jp_tdif)%fnow(:,:,1)
-         zwnd_j(:,:) = zwnd_j(:,:) * sf(jp_tdif)%fnow(:,:,1)
-#endif
          taum(:,:) = taum(:,:) + sf(jp_tdif)%fnow(:,:,1)
       ENDIF
       CALL iom_put( "taum_oce", taum )   ! output wind stress module
@@ -543,8 +396,10 @@ CONTAINS
             &         tab2d_2=vtau , clinfo2=              ' vtau  : ' , mask2=vmask )
       ENDIF
       !
-      IF( wrk_not_released(2, 1,2,3,4,5,6,7,8,9,10,11,12,13) )   &
-          CALL ctl_stop('blk_oce_core: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi,jpj, zwnd_i, zwnd_j, zqsatw, zqlw, zqsb, zqla, zevap )
+      CALL wrk_dealloc( jpi,jpj, Cd, Ch, Ce, zst, zt_zu, zq_zu )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('blk_oce_core')
       !
    END SUBROUTINE blk_oce_core
    
@@ -566,10 +421,6 @@ CONTAINS
       !! 
       !! caution : the net upward water flux has with mm/day unit
       !!---------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   z_wnds_t => wrk_2d_1                ! wind speed ( = | U10m - U_ice | ) at T-point
-      USE wrk_nemo, ONLY:   wrk_3d_4 , wrk_3d_5 , wrk_3d_6 , wrk_3d_7
-      !!
       REAL(wp), DIMENSION(:,:,:), INTENT(in   ) ::   pst      ! ice surface temperature (>0, =rt0 over land) [Kelvin]
       REAL(wp), DIMENSION(:,:)  , INTENT(in   ) ::   pui      ! ice surface velocity (i- and i- components      [m/s]
       REAL(wp), DIMENSION(:,:)  , INTENT(in   ) ::   pvi      !    at I-point (B-grid) or U & V-point (C-grid)
@@ -597,26 +448,19 @@ CONTAINS
       REAL(wp) ::   zwnorm_f, zwndi_f , zwndj_f                  ! relative wind module and components at F-point
       REAL(wp) ::             zwndi_t , zwndj_t                  ! relative wind components at T-point
       !!
+      REAL(wp), DIMENSION(:,:)  , POINTER ::   z_wnds_t          ! wind speed ( = | U10m - U_ice | ) at T-point
       REAL(wp), DIMENSION(:,:,:), POINTER ::   z_qlw             ! long wave heat flux over ice
       REAL(wp), DIMENSION(:,:,:), POINTER ::   z_qsb             ! sensible  heat flux over ice
       REAL(wp), DIMENSION(:,:,:), POINTER ::   z_dqlw            ! long wave heat sensitivity over ice
       REAL(wp), DIMENSION(:,:,:), POINTER ::   z_dqsb            ! sensible  heat sensitivity over ice
       !!---------------------------------------------------------------------
+      !
+      IF( nn_timing == 1 )  CALL timing_start('blk_ice_core')
+      !
+      CALL wrk_alloc( jpi,jpj, z_wnds_t )
+      CALL wrk_alloc( jpi,jpj,pdim, z_qlw, z_qsb, z_dqlw, z_dqsb ) 
 
       ijpl  = pdim                            ! number of ice categories
-
-      ! Set-up access to workspace arrays
-      IF( wrk_in_use(2, 1) .OR. wrk_in_use(3, 4,5,6,7) ) THEN
-         CALL ctl_stop('blk_ice_core: requested workspace arrays unavailable')   ;   RETURN
-      ELSE IF(ijpl > jpk) THEN
-         CALL ctl_stop('blk_ice_core: no. of ice categories > jpk so wrk_nemo 3D workspaces cannot be used.')
-         RETURN
-      END IF
-      ! Set-up pointers to sub-arrays of workspaces
-      z_qlw  => wrk_3d_4(:,:,1:ijpl)
-      z_qsb  => wrk_3d_5(:,:,1:ijpl)
-      z_dqlw => wrk_3d_6(:,:,1:ijpl)
-      z_dqsb => wrk_3d_7(:,:,1:ijpl)
 
       ! local scalars ( place there for vector optimisation purposes)
       zcoef_wnorm  = rhoa * Cice
@@ -769,8 +613,10 @@ CONTAINS
          CALL prt_ctl(tab2d_1=z_wnds_t, clinfo1=' blk_ice_core: z_wnds_t : ')
       ENDIF
 
-      IF( wrk_not_released(2, 1)       .OR.   &
-          wrk_not_released(3, 4,5,6,7) )   CALL ctl_stop('blk_ice_core: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi,jpj, z_wnds_t )
+      CALL wrk_dealloc( jpi,jpj,pdim, z_qlw, z_qsb, z_dqlw, z_dqsb ) 
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('blk_ice_core')
       !
    END SUBROUTINE blk_ice_core
   
@@ -791,26 +637,6 @@ CONTAINS
       !!
       !! References :   Large & Yeager, 2004 : ???
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY: wrk_in_use, wrk_not_released, iwrk_in_use, iwrk_not_released
-      USE wrk_nemo, ONLY: dU10 => wrk_2d_14        ! dU                             [m/s]
-      USE wrk_nemo, ONLY: dT => wrk_2d_15          ! air/sea temperature difference   [K]
-      USE wrk_nemo, ONLY: dq => wrk_2d_16          ! air/sea humidity difference      [K]
-      USE wrk_nemo, ONLY: Cd_n10 => wrk_2d_17      ! 10m neutral drag coefficient
-      USE wrk_nemo, ONLY: Ce_n10 => wrk_2d_18      ! 10m neutral latent coefficient
-      USE wrk_nemo, ONLY: Ch_n10 => wrk_2d_19      ! 10m neutral sensible coefficient
-      USE wrk_nemo, ONLY: sqrt_Cd_n10 => wrk_2d_20 ! root square of Cd_n10
-      USE wrk_nemo, ONLY: sqrt_Cd => wrk_2d_21     ! root square of Cd
-      USE wrk_nemo, ONLY: T_vpot => wrk_2d_22      ! virtual potential temperature    [K]
-      USE wrk_nemo, ONLY: T_star => wrk_2d_23      ! turbulent scale of tem. fluct.
-      USE wrk_nemo, ONLY: q_star => wrk_2d_24      ! turbulent humidity of temp. fluct.
-      USE wrk_nemo, ONLY: U_star => wrk_2d_25      ! turb. scale of velocity fluct.
-      USE wrk_nemo, ONLY: L => wrk_2d_26           ! Monin-Obukov length              [m]
-      USE wrk_nemo, ONLY: zeta => wrk_2d_27        ! stability parameter at height zu
-      USE wrk_nemo, ONLY: U_n10 => wrk_2d_28       ! neutral wind velocity at 10m     [m]
-      USE wrk_nemo, ONLY: xlogt  => wrk_2d_29,    xct => wrk_2d_30,   &
-                          zpsi_h => wrk_2d_31, zpsi_m => wrk_2d_32
-      USE wrk_nemo, ONLY: stab => iwrk_2d_1      ! 1st guess stability test integer
-      !
       REAL(wp)                , INTENT(in   ) ::   zu      ! altitude of wind measurement       [m]
       REAL(wp), DIMENSION(:,:), INTENT(in   ) ::   sst     ! sea surface temperature         [Kelvin]
       REAL(wp), DIMENSION(:,:), INTENT(in   ) ::   T_a     ! potential air temperature       [Kelvin]
@@ -825,14 +651,32 @@ CONTAINS
       INTEGER , PARAMETER ::   nb_itt = 3
       REAL(wp), PARAMETER ::   grav   = 9.8   ! gravity                       
       REAL(wp), PARAMETER ::   kappa  = 0.4   ! von Karman s constant
-      !!----------------------------------------------------------------------
 
-      IF(  wrk_in_use(2,             14,15,16,17,18,19,        &
-                         20,21,22,23,24,25,26,27,28,29,        &
-                         30,31,32)                      .OR.   &
-          iwrk_in_use(2, 1)                               ) THEN
-         CALL ctl_stop('TURB_CORE_1Z: requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
+      REAL(wp), DIMENSION(:,:), POINTER  ::   dU10          ! dU                                   [m/s]
+      REAL(wp), DIMENSION(:,:), POINTER  ::   dT            ! air/sea temperature differeence      [K]
+      REAL(wp), DIMENSION(:,:), POINTER  ::   dq            ! air/sea humidity difference          [K]
+      REAL(wp), DIMENSION(:,:), POINTER  ::   Cd_n10        ! 10m neutral drag coefficient
+      REAL(wp), DIMENSION(:,:), POINTER  ::   Ce_n10        ! 10m neutral latent coefficient
+      REAL(wp), DIMENSION(:,:), POINTER  ::   Ch_n10        ! 10m neutral sensible coefficient
+      REAL(wp), DIMENSION(:,:), POINTER  ::   sqrt_Cd_n10   ! root square of Cd_n10
+      REAL(wp), DIMENSION(:,:), POINTER  ::   sqrt_Cd       ! root square of Cd
+      REAL(wp), DIMENSION(:,:), POINTER  ::   T_vpot        ! virtual potential temperature        [K]
+      REAL(wp), DIMENSION(:,:), POINTER  ::   T_star        ! turbulent scale of tem. fluct.
+      REAL(wp), DIMENSION(:,:), POINTER  ::   q_star        ! turbulent humidity of temp. fluct.
+      REAL(wp), DIMENSION(:,:), POINTER  ::   U_star        ! turb. scale of velocity fluct.
+      REAL(wp), DIMENSION(:,:), POINTER  ::   L             ! Monin-Obukov length                  [m]
+      REAL(wp), DIMENSION(:,:), POINTER  ::   zeta          ! stability parameter at height zu
+      REAL(wp), DIMENSION(:,:), POINTER  ::   U_n10         ! neutral wind velocity at 10m         [m]   
+      REAL(wp), DIMENSION(:,:), POINTER  ::   xlogt, xct, zpsi_h, zpsi_m
+      
+      INTEGER , DIMENSION(:,:), POINTER  ::   stab          ! 1st guess stability test integer
+      !!----------------------------------------------------------------------
+      !
+      IF( nn_timing == 1 )  CALL timing_start('TURB_CORE_1Z')
+      !
+      CALL wrk_alloc( jpi,jpj, stab )   ! integer
+      CALL wrk_alloc( jpi,jpj, dU10, dT, dq, Cd_n10, Ce_n10, Ch_n10, sqrt_Cd_n10, sqrt_Cd, L )
+      CALL wrk_alloc( jpi,jpj, T_vpot, T_star, q_star, U_star, zeta, U_n10, xlogt, xct, zpsi_h, zpsi_m )
 
       !! * Start
       !! Air/sea differences
@@ -845,7 +689,12 @@ CONTAINS
       !!
       !! Neutral Drag Coefficient
       stab    = 0.5 + sign(0.5,dT)    ! stable : stab = 1 ; unstable : stab = 0 
-      Cd_n10  = 1E-3 * ( 2.7/dU10 + 0.142 + dU10/13.09 )    !   L & Y eq. (6a)
+      IF  ( ln_cdgw ) THEN
+        cdn_wave = cdn_wave - rsmall*(tmask(:,:,1)-1)
+        Cd_n10(:,:) =   cdn_wave
+      ELSE
+        Cd_n10  = 1E-3 * ( 2.7/dU10 + 0.142 + dU10/13.09 )    !   L & Y eq. (6a)
+      ENDIF
       sqrt_Cd_n10 = sqrt(Cd_n10)
       Ce_n10  = 1E-3 * ( 34.6 * sqrt_Cd_n10 )               !   L & Y eq. (6b)
       Ch_n10  = 1E-3*sqrt_Cd_n10*(18*stab + 32.7*(1-stab)) !   L & Y eq. (6c), (6d)
@@ -868,20 +717,27 @@ CONTAINS
          zpsi_h  = psi_h(zeta)
          zpsi_m  = psi_m(zeta)
 
-         !! Shifting the wind speed to 10m and neutral stability :
-         U_n10 = dU10*1./(1. + sqrt_Cd_n10/kappa*(log(zu/10.) - zpsi_m)) !  L & Y eq. (9a)
+         IF  ( ln_cdgw ) THEN
+           sqrt_Cd=kappa/((kappa/sqrt_Cd_n10) - zpsi_m) ; Cd=sqrt_Cd*sqrt_Cd;
+         ELSE
+           !! Shifting the wind speed to 10m and neutral stability : L & Y eq. (9a)
+           !   In very rare low-wind conditions, the old way of estimating the
+           !   neutral wind speed at 10m leads to a negative value that causes the code
+           !   to crash. To prevent this a threshold of 0.25m/s is now imposed.
+           U_n10 = MAX( 0.25 , dU10/(1. + sqrt_Cd_n10/kappa*(log(zu/10.) - zpsi_m)) )
 
-         !! Updating the neutral 10m transfer coefficients :
-         Cd_n10  = 1E-3 * (2.7/U_n10 + 0.142 + U_n10/13.09)              !  L & Y eq. (6a)
-         sqrt_Cd_n10 = sqrt(Cd_n10)
-         Ce_n10  = 1E-3 * (34.6 * sqrt_Cd_n10)                           !  L & Y eq. (6b)
-         stab    = 0.5 + sign(0.5,zeta)
-         Ch_n10  = 1E-3*sqrt_Cd_n10*(18.*stab + 32.7*(1-stab))           !  L & Y eq. (6c), (6d)
+           !! Updating the neutral 10m transfer coefficients :
+           Cd_n10  = 1E-3 * (2.7/U_n10 + 0.142 + U_n10/13.09)              !  L & Y eq. (6a)
+           sqrt_Cd_n10 = sqrt(Cd_n10)
+           Ce_n10  = 1E-3 * (34.6 * sqrt_Cd_n10)                           !  L & Y eq. (6b)
+           stab    = 0.5 + sign(0.5,zeta)
+           Ch_n10  = 1E-3*sqrt_Cd_n10*(18.*stab + 32.7*(1-stab))           !  L & Y eq. (6c), (6d)
 
-         !! Shifting the neutral  10m transfer coefficients to ( zu , zeta ) :
-         !!
-         xct = 1. + sqrt_Cd_n10/kappa*(log(zu/10) - zpsi_m)
-         Cd  = Cd_n10/(xct*xct) ;  sqrt_Cd = sqrt(Cd)
+           !! Shifting the neutral  10m transfer coefficients to ( zu , zeta ) :
+           !!
+           xct = 1. + sqrt_Cd_n10/kappa*(log(zu/10) - zpsi_m)
+           Cd  = Cd_n10/(xct*xct) ;  sqrt_Cd = sqrt(Cd)
+         ENDIF
          !!
          xlogt = log(zu/10.) - zpsi_h
          !!
@@ -893,11 +749,11 @@ CONTAINS
          !!
       END DO
       !!
-      IF( wrk_not_released(2,             14,15,16,17,18,19,          &
-         &                    20,21,22,23,24,25,26,27,28,29,          &
-         &                    30,31,32                      )   .OR.  &      
-         iwrk_not_released(2, 1)                                  )   &
-         CALL ctl_stop('TURB_CORE_1Z: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi,jpj, stab )   ! integer
+      CALL wrk_dealloc( jpi,jpj, dU10, dT, dq, Cd_n10, Ce_n10, Ch_n10, sqrt_Cd_n10, sqrt_Cd, L )
+      CALL wrk_dealloc( jpi,jpj, T_vpot, T_star, q_star, U_star, zeta, U_n10, xlogt, xct, zpsi_h, zpsi_m )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('TURB_CORE_1Z')
       !
     END SUBROUTINE TURB_CORE_1Z
 
@@ -917,56 +773,51 @@ CONTAINS
       !!
       !! References :   Large & Yeager, 2004 : ???
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY: wrk_in_use, wrk_not_released, iwrk_in_use, iwrk_not_released
-      USE wrk_nemo, ONLY: dU10 => wrk_2d_14        ! dU                             [m/s]
-      USE wrk_nemo, ONLY: dT => wrk_2d_15          ! air/sea temperature difference   [K]
-      USE wrk_nemo, ONLY: dq => wrk_2d_16          ! air/sea humidity difference      [K]
-      USE wrk_nemo, ONLY: Cd_n10 => wrk_2d_17      ! 10m neutral drag coefficient
-      USE wrk_nemo, ONLY: Ce_n10 => wrk_2d_18      ! 10m neutral latent coefficient
-      USE wrk_nemo, ONLY: Ch_n10 => wrk_2d_19      ! 10m neutral sensible coefficient
-      USE wrk_nemo, ONLY: sqrt_Cd_n10 => wrk_2d_20 ! root square of Cd_n10
-      USE wrk_nemo, ONLY: sqrt_Cd => wrk_2d_21     ! root square of Cd
-      USE wrk_nemo, ONLY: T_vpot => wrk_2d_22      ! virtual potential temperature    [K]
-      USE wrk_nemo, ONLY: T_star => wrk_2d_23     ! turbulent scale of tem. fluct.
-      USE wrk_nemo, ONLY: q_star => wrk_2d_24     ! turbulent humidity of temp. fluct.
-      USE wrk_nemo, ONLY: U_star => wrk_2d_25     ! turb. scale of velocity fluct.
-      USE wrk_nemo, ONLY: L => wrk_2d_26          ! Monin-Obukov length              [m]
-      USE wrk_nemo, ONLY: zeta_u => wrk_2d_27     ! stability parameter at height zu
-      USE wrk_nemo, ONLY: zeta_t => wrk_2d_28     ! stability parameter at height zt
-      USE wrk_nemo, ONLY: U_n10 => wrk_2d_29      ! neutral wind velocity at 10m     [m]
-      USE wrk_nemo, ONLY: xlogt => wrk_2d_30, xct => wrk_2d_31, zpsi_hu => wrk_2d_32, zpsi_ht => wrk_2d_33, zpsi_m => wrk_2d_34
-      USE wrk_nemo, ONLY: stab => iwrk_2d_1      ! 1st guess stability test integer
-      !!
-      REAL(wp), INTENT(in)   :: &
-         zt,      &     ! height for T_zt and q_zt                   [m]
-         zu             ! height for dU                              [m]
-      REAL(wp), INTENT(in), DIMENSION(jpi,jpj) ::  &
-         sst,      &     ! sea surface temperature              [Kelvin]
-         T_zt,     &     ! potential air temperature            [Kelvin]
-         q_sat,    &     ! sea surface specific humidity         [kg/kg]
-         q_zt,     &     ! specific air humidity                 [kg/kg]
-         dU              ! relative wind module |U(zu)-U(0)|       [m/s]
-      REAL(wp), INTENT(out), DIMENSION(jpi,jpj)  ::  &
-         Cd,       &     ! transfer coefficient for momentum         (tau)
-         Ch,       &     ! transfer coefficient for sensible heat (Q_sens)
-         Ce,       &     ! transfert coefficient for evaporation   (Q_lat)
-         T_zu,     &     ! air temp. shifted at zu                     [K]
-         q_zu            ! spec. hum.  shifted at zu               [kg/kg]
+      REAL(wp), INTENT(in   )                     ::   zt       ! height for T_zt and q_zt                   [m]
+      REAL(wp), INTENT(in   )                     ::   zu       ! height for dU                              [m]
+      REAL(wp), INTENT(in   ), DIMENSION(jpi,jpj) ::   sst      ! sea surface temperature              [Kelvin]
+      REAL(wp), INTENT(in   ), DIMENSION(jpi,jpj) ::   T_zt     ! potential air temperature            [Kelvin]
+      REAL(wp), INTENT(in   ), DIMENSION(jpi,jpj) ::   q_sat    ! sea surface specific humidity         [kg/kg]
+      REAL(wp), INTENT(in   ), DIMENSION(jpi,jpj) ::   q_zt     ! specific air humidity                 [kg/kg]
+      REAL(wp), INTENT(in   ), DIMENSION(jpi,jpj) ::   dU       ! relative wind module |U(zu)-U(0)|       [m/s]
+      REAL(wp), INTENT(  out), DIMENSION(jpi,jpj) ::   Cd       ! transfer coefficient for momentum         (tau)
+      REAL(wp), INTENT(  out), DIMENSION(jpi,jpj) ::   Ch       ! transfer coefficient for sensible heat (Q_sens)
+      REAL(wp), INTENT(  out), DIMENSION(jpi,jpj) ::   Ce       ! transfert coefficient for evaporation   (Q_lat)
+      REAL(wp), INTENT(  out), DIMENSION(jpi,jpj) ::   T_zu     ! air temp. shifted at zu                     [K]
+      REAL(wp), INTENT(  out), DIMENSION(jpi,jpj) ::   q_zu     ! spec. hum.  shifted at zu               [kg/kg]
 
       INTEGER :: j_itt
-      INTEGER, PARAMETER :: nb_itt = 3   ! number of itterations
-      REAL(wp), PARAMETER ::                        &
-         grav   = 9.8,      &  ! gravity                       
-         kappa  = 0.4          ! von Karman's constant
-      !!----------------------------------------------------------------------
-      !!  * Start
+      INTEGER , PARAMETER :: nb_itt = 3              ! number of itterations
+      REAL(wp), PARAMETER ::   grav   = 9.8          ! gravity                       
+      REAL(wp), PARAMETER ::   kappa  = 0.4          ! von Karman's constant
+      
+      REAL(wp), DIMENSION(:,:), POINTER ::   dU10          ! dU                                [m/s]
+      REAL(wp), DIMENSION(:,:), POINTER ::   dT            ! air/sea temperature differeence   [K]
+      REAL(wp), DIMENSION(:,:), POINTER ::   dq            ! air/sea humidity difference       [K]
+      REAL(wp), DIMENSION(:,:), POINTER ::   Cd_n10        ! 10m neutral drag coefficient
+      REAL(wp), DIMENSION(:,:), POINTER ::   Ce_n10        ! 10m neutral latent coefficient
+      REAL(wp), DIMENSION(:,:), POINTER ::   Ch_n10        ! 10m neutral sensible coefficient
+      REAL(wp), DIMENSION(:,:), POINTER ::   sqrt_Cd_n10   ! root square of Cd_n10
+      REAL(wp), DIMENSION(:,:), POINTER ::   sqrt_Cd       ! root square of Cd
+      REAL(wp), DIMENSION(:,:), POINTER ::   T_vpot        ! virtual potential temperature        [K]
+      REAL(wp), DIMENSION(:,:), POINTER ::   T_star        ! turbulent scale of tem. fluct.
+      REAL(wp), DIMENSION(:,:), POINTER ::   q_star        ! turbulent humidity of temp. fluct.
+      REAL(wp), DIMENSION(:,:), POINTER ::   U_star        ! turb. scale of velocity fluct.
+      REAL(wp), DIMENSION(:,:), POINTER ::   L             ! Monin-Obukov length                  [m]
+      REAL(wp), DIMENSION(:,:), POINTER ::   zeta_u        ! stability parameter at height zu
+      REAL(wp), DIMENSION(:,:), POINTER ::   zeta_t        ! stability parameter at height zt
+      REAL(wp), DIMENSION(:,:), POINTER ::   U_n10         ! neutral wind velocity at 10m        [m]
+      REAL(wp), DIMENSION(:,:), POINTER ::   xlogt, xct, zpsi_hu, zpsi_ht, zpsi_m
 
-      IF(  wrk_in_use(2,             14,15,16,17,18,19,        &
-                         20,21,22,23,24,25,26,27,28,29,        &         
-                         30,31,32,33,34)                .OR.   &
-          iwrk_in_use(2, 1)                               ) THEN
-         CALL ctl_stop('TURB_CORE_2Z: requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
+      INTEGER , DIMENSION(:,:), POINTER ::   stab          ! 1st stability test integer
+      !!----------------------------------------------------------------------
+      !
+      IF( nn_timing == 1 )  CALL timing_start('TURB_CORE_2Z')
+      !
+      CALL wrk_alloc( jpi,jpj, dU10, dT, dq, Cd_n10, Ce_n10, Ch_n10, sqrt_Cd_n10, sqrt_Cd, L )
+      CALL wrk_alloc( jpi,jpj, T_vpot, T_star, q_star, U_star, zeta_u, zeta_t, U_n10 )
+      CALL wrk_alloc( jpi,jpj, xlogt, xct, zpsi_hu, zpsi_ht, zpsi_m )
+      CALL wrk_alloc( jpi,jpj, stab )   ! interger
 
       !! Initial air/sea differences
       dU10 = max(0.5, dU)      !  we don't want to fall under 0.5 m/s
@@ -975,7 +826,12 @@ CONTAINS
 
       !! Neutral Drag Coefficient :
       stab = 0.5 + sign(0.5,dT)                 ! stab = 1  if dT > 0  -> STABLE
-      Cd_n10  = 1E-3*( 2.7/dU10 + 0.142 + dU10/13.09 ) 
+      IF( ln_cdgw ) THEN
+        cdn_wave = cdn_wave - rsmall*(tmask(:,:,1)-1)
+        Cd_n10(:,:) =   cdn_wave
+      ELSE
+        Cd_n10  = 1E-3*( 2.7/dU10 + 0.142 + dU10/13.09 ) 
+      ENDIF
       sqrt_Cd_n10 = sqrt(Cd_n10)
       Ce_n10  = 1E-3*( 34.6 * sqrt_Cd_n10 )
       Ch_n10  = 1E-3*sqrt_Cd_n10*(18*stab + 32.7*(1 - stab))
@@ -1003,9 +859,11 @@ CONTAINS
          zpsi_ht = psi_h(zeta_t)
          zpsi_m  = psi_m(zeta_u)
          !!
-         !! Shifting the wind speed to 10m and neutral stability : (L & Y eq.(9a))
-!        U_n10 = dU10/(1. + sqrt_Cd_n10/kappa*(log(zu/10.) - psi_m(zeta_u)))
-         U_n10 = dU10/(1. + sqrt_Cd_n10/kappa*(log(zu/10.) - zpsi_m))
+         !! Shifting the wind speed to 10m and neutral stability : L & Y eq.(9a)
+         !   In very rare low-wind conditions, the old way of estimating the
+         !   neutral wind speed at 10m leads to a negative value that causes the code
+         !   to crash. To prevent this a threshold of 0.25m/s is now imposed.
+         U_n10 = MAX( 0.25 , dU10/(1. + sqrt_Cd_n10/kappa*(log(zu/10.) - zpsi_m)) )
          !!
          !! Shifting temperature and humidity at zu :          (L & Y eq. (9b-9c))
 !        T_zu = T_zt - T_star/kappa*(log(zt/zu) + psi_h(zeta_u) - psi_h(zeta_t))
@@ -1016,20 +874,22 @@ CONTAINS
          !! q_zu cannot have a negative value : forcing 0
          stab = 0.5 + sign(0.5,q_zu) ;  q_zu = stab*q_zu
          !!
-         !! Updating the neutral 10m transfer coefficients :
-         Cd_n10  = 1E-3 * (2.7/U_n10 + 0.142 + U_n10/13.09)    ! L & Y eq. (6a)
-         sqrt_Cd_n10 = sqrt(Cd_n10)
-         Ce_n10  = 1E-3 * (34.6 * sqrt_Cd_n10)                 ! L & Y eq. (6b)
-         stab    = 0.5 + sign(0.5,zeta_u)
-         Ch_n10  = 1E-3*sqrt_Cd_n10*(18.*stab + 32.7*(1-stab)) ! L & Y eq. (6c-6d)
+         IF( ln_cdgw ) THEN
+            sqrt_Cd=kappa/((kappa/sqrt_Cd_n10) - zpsi_m) ; Cd=sqrt_Cd*sqrt_Cd;
+         ELSE
+           !! Updating the neutral 10m transfer coefficients :
+           Cd_n10  = 1E-3 * (2.7/U_n10 + 0.142 + U_n10/13.09)    ! L & Y eq. (6a)
+           sqrt_Cd_n10 = sqrt(Cd_n10)
+           Ce_n10  = 1E-3 * (34.6 * sqrt_Cd_n10)                 ! L & Y eq. (6b)
+           stab    = 0.5 + sign(0.5,zeta_u)
+           Ch_n10  = 1E-3*sqrt_Cd_n10*(18.*stab + 32.7*(1-stab)) ! L & Y eq. (6c-6d)
+           !!
+           !!
+           !! Shifting the neutral 10m transfer coefficients to (zu,zeta_u) :
+           xct = 1. + sqrt_Cd_n10/kappa*(log(zu/10.) - zpsi_m)
+           Cd = Cd_n10/(xct*xct) ; sqrt_Cd = sqrt(Cd)
+         ENDIF
          !!
-         !!
-         !! Shifting the neutral 10m transfer coefficients to (zu,zeta_u) :
-!        xct = 1. + sqrt_Cd_n10/kappa*(log(zu/10.) - psi_m(zeta_u))
-         xct = 1. + sqrt_Cd_n10/kappa*(log(zu/10.) - zpsi_m)
-         Cd = Cd_n10/(xct*xct) ; sqrt_Cd = sqrt(Cd)
-         !!
-!        xlogt = log(zu/10.) - psi_h(zeta_u)
          xlogt = log(zu/10.) - zpsi_hu
          !!
          xct = 1. + Ch_n10*xlogt/kappa/sqrt_Cd_n10
@@ -1041,150 +901,55 @@ CONTAINS
          !!
       END DO
       !!
-     IF( wrk_not_released(2,              14,15,16,17,18,19,          &
-         &                    20,21,22,23,24,25,26,27,28,29,          &
-         &                    30,31,32,33,34                )   .OR.  &  
-         iwrk_not_released(2, 1)                                  )   &
-         CALL ctl_stop('TURB_CORE_2Z: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi,jpj, dU10, dT, dq, Cd_n10, Ce_n10, Ch_n10, sqrt_Cd_n10, sqrt_Cd, L )
+      CALL wrk_dealloc( jpi,jpj, T_vpot, T_star, q_star, U_star, zeta_u, zeta_t, U_n10 )
+      CALL wrk_dealloc( jpi,jpj, xlogt, xct, zpsi_hu, zpsi_ht, zpsi_m )
+      CALL wrk_dealloc( jpi,jpj, stab )   ! interger
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('TURB_CORE_2Z')
       !
     END SUBROUTINE TURB_CORE_2Z
 
 
     FUNCTION psi_m(zta)   !! Psis, L & Y eq. (8c), (8d), (8e)
       !-------------------------------------------------------------------------------
-      USE wrk_nemo, ONLY: wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:     X2 => wrk_2d_35
-      USE wrk_nemo, ONLY:     X  => wrk_2d_36
-      USE wrk_nemo, ONLY: stabit => wrk_2d_37
-      !!
       REAL(wp), DIMENSION(jpi,jpj), INTENT(in) :: zta
 
       REAL(wp), PARAMETER :: pi = 3.141592653589793_wp
       REAL(wp), DIMENSION(jpi,jpj)             :: psi_m
+      REAL(wp), DIMENSION(:,:), POINTER        :: X2, X, stabit
       !-------------------------------------------------------------------------------
 
-      IF( wrk_in_use(2, 35,36,37) ) THEN
-         CALL ctl_stop('psi_m: requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
+      CALL wrk_alloc( jpi,jpj, X2, X, stabit )
 
       X2 = sqrt(abs(1. - 16.*zta))  ;  X2 = max(X2 , 1.0) ;  X  = sqrt(X2)
       stabit    = 0.5 + sign(0.5,zta)
       psi_m = -5.*zta*stabit  &                                                          ! Stable
          &    + (1. - stabit)*(2*log((1. + X)/2) + log((1. + X2)/2) - 2*atan(X) + pi/2)  ! Unstable 
 
-      IF( wrk_not_released(2, 35,36,37) )   CALL ctl_stop('psi_m: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi,jpj, X2, X, stabit )
       !
     END FUNCTION psi_m
 
 
     FUNCTION psi_h( zta )    !! Psis, L & Y eq. (8c), (8d), (8e)
       !-------------------------------------------------------------------------------
-      USE wrk_nemo, ONLY: wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:     X2 => wrk_2d_35
-      USE wrk_nemo, ONLY:     X  => wrk_2d_36
-      USE wrk_nemo, ONLY: stabit => wrk_2d_37
-      !
       REAL(wp), DIMENSION(jpi,jpj), INTENT(in) ::   zta
       !
       REAL(wp), DIMENSION(jpi,jpj)             ::   psi_h
+      REAL(wp), DIMENSION(:,:), POINTER        :: X2, X, stabit
       !-------------------------------------------------------------------------------
 
-      IF( wrk_in_use(2, 35,36,37) ) THEN
-         CALL ctl_stop('psi_h: requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
+      CALL wrk_alloc( jpi,jpj, X2, X, stabit )
 
       X2 = sqrt(abs(1. - 16.*zta))  ;  X2 = max(X2 , 1.) ;  X  = sqrt(X2)
       stabit    = 0.5 + sign(0.5,zta)
       psi_h = -5.*zta*stabit  &                                       ! Stable
          &    + (1. - stabit)*(2.*log( (1. + X2)/2. ))                 ! Unstable
 
-      IF( wrk_not_released(2, 35,36,37) )   CALL ctl_stop('psi_h: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi,jpj, X2, X, stabit )
       !
     END FUNCTION psi_h
-
-    SUBROUTINE Shapiro_1D(rla_varin,id_np, cd_overlap, rlpa_varout) !GIG
-      !!=====================================================================
-      !!
-      !! Description: This function applies a 1D Shapiro filter
-      !!              (3 points filter) horizontally to a 2D field
-      !!              in regular grid
-      !! Arguments :
-      !!            rla_varin   : Input variable to filter
-      !!            zla_mask    : Input mask variable
-      !!            id_np       : Number of Shapiro filter iterations
-      !!            cd_overlap  : Logical argument for periodical condition
-      !!                          (global ocean case)
-      !!            rlpa_varout : Output filtered variable
-      !!
-      !! History : 08/2009  S. CAILLEAU : from 1st version of N. FERRY
-      !!           09/2009  C. REGNIER  : Corrections
-      !!
-      !!=====================================================================
-      IMPLICIT NONE
-      INTEGER, INTENT(IN)                       :: id_np
-      REAL(wp), DIMENSION(jpi,jpj), INTENT(IN)  :: rla_varin !GIG
-      CHARACTER(len=20), INTENT(IN)             :: cd_overlap !GIG
-      REAL(wp), DIMENSION(jpi,jpj), INTENT(OUT) :: rlpa_varout !GIG
-
-      REAL(wp), DIMENSION(jpi,jpj)              :: rlpa_varout_tmp
-      REAL, PARAMETER                           :: rl_alpha = 1./2.    ! fixed stability coefficient (isotrope case)
-      REAL, parameter                           :: rap_aniso_diff_XY=2.25 ! anisotrope case
-      REAL                                      :: alphax,alphay, znum, zden,test
-      INTEGER                                   :: ji, jj, jn, nn
-!
-!! rap_aniso_diff_XY=2.25 : valeur trouvée empiriquement pour 140 itération pour le filtre de Shapiro et
-!! pour un rapport d'anisotopie de 1.5 : on filtre de plus rapidement en x qu'eny.
-!------------------------------------------------------------------------------
-!
-! Loop on several filter iterations
-
-!     Global ocean case
-      IF (( cd_overlap == 'MERCA_GLOB' )   .OR.   &
-          ( cd_overlap == 'REGULAR_GLOB' ) .OR.   &
-          ( cd_overlap == 'ORCA_GLOB' )) THEN
-             rlpa_varout(:,:) = rla_varin(:,:)
-             rlpa_varout_tmp(:,:) = rlpa_varout(:,:)
-!
-
-       alphax=1./2.
-       alphay=1./2.
-!  Dx/Dy=rap_aniso_diff_XY  , D_ = vitesse de diffusion
-!  140 passes du fitre, Lx/Ly=1.5, le rap_aniso_diff_XY correspondant est:
-       IF ( rap_aniso_diff_XY .GE. 1. ) alphay=alphay/rap_aniso_diff_XY
-       IF ( rap_aniso_diff_XY .LT. 1. ) alphax=alphax*rap_aniso_diff_XY
-
-        DO jn = 1,id_np   ! number of passes of the filter
-            DO ji = 2,jpim1
-               DO jj = 2,jpjm1
-                  ! We crop on the coast
-                   znum = rlpa_varout_tmp(ji,jj)   &
-                          + 0.25*alphax*(rlpa_varout_tmp(ji-1,jj  )-rlpa_varout_tmp(ji,jj))*tmask(ji-1,jj  ,1)  &
-                          + 0.25*alphax*(rlpa_varout_tmp(ji+1,jj  )-rlpa_varout_tmp(ji,jj))*tmask(ji+1,jj  ,1)  &
-                          + 0.25*alphay*(rlpa_varout_tmp(ji  ,jj-1)-rlpa_varout_tmp(ji,jj))*tmask(ji  ,jj-1,1)  &
-                          + 0.25*alphay*(rlpa_varout_tmp(ji  ,jj+1)-rlpa_varout_tmp(ji,jj))*tmask(ji  ,jj+1,1)
-                   rlpa_varout(ji,jj)=znum*tmask(ji,jj,1)+rla_varin(ji,jj)*(1.-tmask(ji,jj,1))
-                ENDDO  ! end loop ji
-            ENDDO  ! end loop jj
-!
-!
-!           Periodical condition in case of cd_overlap (global ocean)
-!           - on a mercator projection grid we consider that singular point at poles
-!             are a mean of the values at points of the previous latitude
-!           - on ORCA and regular grid we copy the values at points of the previous latitude
-            IF ( cd_overlap == 'MERCAT_GLOB' ) THEN
-!GIG case unchecked
-               rlpa_varout(1,1) = SUM(rlpa_varout(:,2)) / jpi
-               rlpa_varout(jpi,jpj) = SUM(rlpa_varout(:,jpj-1)) / jpi
-            ELSE
-               call lbc_lnk(rlpa_varout, 'T', 1.) ! Boundary condition
-            ENDIF
-            rlpa_varout_tmp(:,:) = rlpa_varout(:,:)
-         ENDDO  ! end loop jn
-      ENDIF
-
-!
-    END SUBROUTINE Shapiro_1D
-
   
    !!======================================================================
 END MODULE sbcblk_core

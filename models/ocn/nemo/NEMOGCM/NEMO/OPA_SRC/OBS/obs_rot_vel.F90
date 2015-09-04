@@ -8,6 +8,7 @@ MODULE obs_rot_vel
    !!   obs_rotvel : Rotate velocity data into N-S,E-W directorions
    !!----------------------------------------------------------------------
    !! * Modules used   
+   USE wrk_nemo                 ! Memory Allocation
    USE par_kind                 ! Precision variables
    USE par_oce                  ! Ocean parameters
    USE in_out_manager           ! I/O manager
@@ -29,7 +30,7 @@ MODULE obs_rot_vel
 
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: obs_rot_vel.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 
@@ -54,9 +55,6 @@ CONTAINS
       !!      ! :  2009-02 (K. Mogensen) : New routine
       !!----------------------------------------------------------------------
       !! * Modules used
-      USE wrk_nemo, ONLY: wrk_in_use, wrk_not_released   
-      USE wrk_nemo, ONLY: zsingu => wrk_2d_1, zcosgu => wrk_2d_2, &
-                          zsingv => wrk_2d_3, zcosgv => wrk_2d_4
       !! * Arguments
       TYPE(obs_prof), INTENT(INOUT) :: profdata    ! Profile data to be read
       INTEGER, INTENT(IN) :: k2dint     ! Horizontal interpolation methed
@@ -84,6 +82,7 @@ CONTAINS
       REAL(wp) :: zsin
       REAL(wp) :: zcos
       REAL(wp), DIMENSION(1) :: zobsmask
+      REAL(wp), POINTER, DIMENSION(:,:) :: zsingu,zcosgu,zsingv,zcosgv
       INTEGER, DIMENSION(:,:,:), ALLOCATABLE :: &
          & igrdiu, &
          & igrdju, &
@@ -92,10 +91,7 @@ CONTAINS
       INTEGER :: ji
       INTEGER :: jk
 
-      IF(wrk_in_use(2, 1,2,3,4))THEN
-         CALL ctl_stop('obs_rotvel : requested workspace arrays unavailable.')
-         RETURN
-      END IF
+      CALL wrk_alloc(jpi,jpj,zsingu,zcosgu,zsingv,zcosgv) 
 
       !-----------------------------------------------------------------------
       ! Allocate data for message parsing and interpolation
@@ -228,9 +224,7 @@ CONTAINS
          & zsinlv  &
          & )
 
-      IF(wrk_not_released(2, 1,2,3,4))THEN
-         CALL ctl_stop('obs_rotvel : failed to release workspace arrays.')
-      END IF
+      CALL wrk_dealloc(jpi,jpj,zsingu,zcosgu,zsingv,zcosgv) 
 
    END SUBROUTINE obs_rotvel
 

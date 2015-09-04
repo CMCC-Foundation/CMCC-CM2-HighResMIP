@@ -34,6 +34,8 @@ MODULE trazdf_imp
    USE in_out_manager  ! I/O manager
    USE lbclnk          ! ocean lateral boundary conditions (or mpp link)
    USE lib_mpp         ! MPP library
+   USE wrk_nemo        ! Memory Allocation
+   USE timing          ! Timing
 
    IMPLICIT NONE
    PRIVATE
@@ -49,12 +51,12 @@ MODULE trazdf_imp
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: trazdf_imp.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
  
-   SUBROUTINE tra_zdf_imp( kt, cdtype, p2dt, ptb, pta, kjpt ) 
+   SUBROUTINE tra_zdf_imp( kt, kit000, cdtype, p2dt, ptb, pta, kjpt ) 
       !!----------------------------------------------------------------------
       !!                  ***  ROUTINE tra_zdf_imp  ***
       !!
@@ -73,11 +75,10 @@ CONTAINS
       !!
       !! ** Action  : - pta  becomes the after tracer
       !!---------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
       USE oce     , ONLY:   zwd => ua       , zws => va         ! (ua,va) used as 3D workspace
-      USE wrk_nemo, ONLY:   zwi => wrk_3d_6 , zwt => wrk_3d_7   ! 3D workspace 
       !
       INTEGER                              , INTENT(in   ) ::   kt       ! ocean time-step index
+      INTEGER                              , INTENT(in   ) ::   kit000          ! first time step index
       CHARACTER(len=3)                     , INTENT(in   ) ::   cdtype   ! =TRA or TRC (tracer indicator)
       INTEGER                              , INTENT(in   ) ::   kjpt     ! number of tracers
       REAL(wp), DIMENSION(        jpk     ), INTENT(in   ) ::   p2dt     ! vertical profile of tracer time-step
@@ -86,13 +87,14 @@ CONTAINS
       !
       INTEGER  ::  ji, jj, jk, jn   ! dummy loop indices
       REAL(wp) ::  zrhs, ze3tb, ze3tn, ze3ta   ! local scalars
+      REAL(wp), POINTER, DIMENSION(:,:,:) ::  zwi, zwt
       !!---------------------------------------------------------------------
-
-      IF( wrk_in_use(3, 6,7) ) THEN
-         CALL ctl_stop('tra_zdf_imp : requested workspace arrays unavailable.')   ;   RETURN
-      ENDIF
-
-      IF( kt == nit000 )  THEN
+      !
+      IF( nn_timing == 1 )  CALL timing_start('tra_zdf_imp')
+      !
+      CALL wrk_alloc( jpi, jpj, jpk, zwi, zwt ) 
+      !
+      IF( kt == kit000 )  THEN
          IF(lwp)WRITE(numout,*)
          IF(lwp)WRITE(numout,*) 'tra_zdf_imp : implicit vertical mixing on ', cdtype
          IF(lwp)WRITE(numout,*) '~~~~~~~~~~~ '
@@ -227,7 +229,9 @@ CONTAINS
       END DO                                          !  end tracer loop  !
       !                                               ! ================= !
       !
-      IF( wrk_not_released(3, 6,7) )   CALL ctl_stop('tra_zdf_imp: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi, jpj, jpk, zwi, zwt ) 
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('tra_zdf_imp')
       !
    END SUBROUTINE tra_zdf_imp
 

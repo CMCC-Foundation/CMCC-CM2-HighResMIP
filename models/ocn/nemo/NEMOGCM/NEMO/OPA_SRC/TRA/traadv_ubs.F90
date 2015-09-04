@@ -21,6 +21,9 @@ MODULE traadv_ubs
    USE diaptr          ! poleward transport diagnostics
    USE dynspg_oce      ! choice/control of key cpp for surface pressure gradient
    USE trc_oce         ! share passive tracers/Ocean variables
+   USE wrk_nemo        ! Memory Allocation
+   USE timing          ! Timing
+   USE lib_fortran     ! Fortran utilities (allows no signed zero when 'key_nosignedzero' defined)
 
    IMPLICIT NONE
    PRIVATE
@@ -34,12 +37,12 @@ MODULE traadv_ubs
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: traadv_ubs.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
 
-   SUBROUTINE tra_adv_ubs ( kt, cdtype, p2dt, pun, pvn, pwn,      &
+   SUBROUTINE tra_adv_ubs ( kt, kit000, cdtype, p2dt, pun, pvn, pwn,      &
       &                                       ptb, ptn, pta, kjpt )
       !!----------------------------------------------------------------------
       !!                  ***  ROUTINE tra_adv_ubs  ***
@@ -47,13 +50,13 @@ CONTAINS
       !! ** Purpose :   Compute the now trend due to the advection of tracers
       !!      and add it to the general trend of passive tracer equations.
       !!
-      !! ** Method  :   The upstream biased third (UBS) is order scheme based 
-      !!      on an upstream-biased parabolic interpolation (Shchepetkin and McWilliams 2005)
+      !! ** Method  :   The upstream biased 3rd order scheme (UBS) is based on an 
+      !!      upstream-biased parabolic interpolation (Shchepetkin and McWilliams 2005)
       !!      It is only used in the horizontal direction.
       !!      For example the i-component of the advective fluxes are given by :
-      !!                !  e1u e3u un ( mi(Tn) - zltu(i  ) )   if un(i) >= 0
+      !!                !  e2u e3u un ( mi(Tn) - zltu(i  ) )   if un(i) >= 0
       !!          zwx = !  or 
-      !!                !  e1u e3u un ( mi(Tn) - zltu(i+1) )   if un(i) < 0
+      !!                !  e2u e3u un ( mi(Tn) - zltu(i+1) )   if un(i) < 0
       !!      where zltu is the second derivative of the before temperature field:
       !!          zltu = 1/e3t di[ e2u e3u / e1u di[Tb] ]
       !!      This results in a dissipatively dominant (i.e. hyper-diffusive) 
@@ -64,25 +67,22 @@ CONTAINS
       !!      (centered in time) while the second term which is the diffusive part 
       !!      of the scheme, is evaluated using the before velocity (forward in time). 
       !!      Note that UBS is not positive. Do not use it on passive tracers.
-      !!      On the vertical, the advection is evaluated using a TVD scheme, as
-      !!      the UBS have been found to be too diffusive.
+      !!                On the vertical, the advection is evaluated using a TVD scheme,
+      !!      as the UBS have been found to be too diffusive.
       !!
       !! ** Action : - update (pta) with the now advective tracer trends
       !!
       !! Reference : Shchepetkin, A. F., J. C. McWilliams, 2005, Ocean Modelling, 9, 347-404. 
       !!             Farrow, D.E., Stevens, D.P., 1995, J. Phys. Ocean. 25, 1731Ð1741. 
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
       USE oce     , ONLY:   zwx  => ua       , zwy  => va         ! (ua,va) used as workspace
-      USE wrk_nemo, ONLY:   ztu  => wrk_3d_1 , ztv  => wrk_3d_2   ! 3D workspace
-      USE wrk_nemo, ONLY:   zltu => wrk_3d_3 , zltv => wrk_3d_4   !  -      -
-      USE wrk_nemo, ONLY:   zti  => wrk_3d_5 , ztw  => wrk_3d_6   !  -      -
       !
       INTEGER                              , INTENT(in   ) ::   kt              ! ocean time-step index
+      INTEGER                              , INTENT(in   ) ::   kit000          ! first time step index
       CHARACTER(len=3)                     , INTENT(in   ) ::   cdtype          ! =TRA or TRC (tracer indicator)
       INTEGER                              , INTENT(in   ) ::   kjpt            ! number of tracers
       REAL(wp), DIMENSION(        jpk     ), INTENT(in   ) ::   p2dt            ! vertical profile of tracer time-step
-      REAL(wp), DIMENSION(jpi,jpj,jpk     ), INTENT(in   ) ::   pun, pvn, pwn   ! 3 ocean velocity components
+      REAL(wp), DIMENSION(jpi,jpj,jpk     ), INTENT(in   ) ::   pun, pvn, pwn   ! 3 ocean transport components
       REAL(wp), DIMENSION(jpi,jpj,jpk,kjpt), INTENT(in   ) ::   ptb, ptn        ! before and now tracer fields
       REAL(wp), DIMENSION(jpi,jpj,jpk,kjpt), INTENT(inout) ::   pta             ! tracer trend 
       !
@@ -90,20 +90,22 @@ CONTAINS
       REAL(wp) ::   ztra, zbtr, zcoef, z2dtt                       ! local scalars
       REAL(wp) ::   zfp_ui, zfm_ui, zcenut, ztak, zfp_wk, zfm_wk   !   -      -
       REAL(wp) ::   zfp_vj, zfm_vj, zcenvt, zeeu, zeev, z_hdivn    !   -      -
+      REAL(wp), POINTER, DIMENSION(:,:,:) :: ztu, ztv, zltu, zltv, zti, ztw
       !!----------------------------------------------------------------------
+      !
+      IF( nn_timing == 1 )  CALL timing_start('tra_adv_ubs')
+      !
+      CALL wrk_alloc( jpi, jpj, jpk, ztu, ztv, zltu, zltv, zti, ztw )
+      !
 
-      IF( wrk_in_use(3, 1,2,3,4,5,6) )THEN
-         CALL ctl_stop('tra_adv_ubs: requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
-
-      IF( kt == nit000 )  THEN
+      IF( kt == kit000 )  THEN
          IF(lwp) WRITE(numout,*)
          IF(lwp) WRITE(numout,*) 'tra_adv_ubs :  horizontal UBS advection scheme on ', cdtype
          IF(lwp) WRITE(numout,*) '~~~~~~~~~~~~'
-         !
-         l_trd = .FALSE.
-         IF( ( cdtype == 'TRA' .AND. l_trdtra ) .OR. ( cdtype == 'TRC' .AND. l_trdtrc ) ) l_trd = .TRUE.
       ENDIF
+      !
+      l_trd = .FALSE.
+      IF( ( cdtype == 'TRA' .AND. l_trdtra ) .OR. ( cdtype == 'TRC' .AND. l_trdtrc ) ) l_trd = .TRUE.
       !
       !                                                          ! ===========
       DO jn = 1, kjpt                                            ! tracer loop
@@ -139,17 +141,17 @@ CONTAINS
          DO jk = 1, jpkm1                                 ! Horizontal slab
             DO jj = 1, jpjm1
                DO ji = 1, fs_jpim1   ! vector opt.
-                  ! upstream transport
+                  ! upstream transport (x2)
                   zfp_ui = pun(ji,jj,jk) + ABS( pun(ji,jj,jk) )
                   zfm_ui = pun(ji,jj,jk) - ABS( pun(ji,jj,jk) )
                   zfp_vj = pvn(ji,jj,jk) + ABS( pvn(ji,jj,jk) )
                   zfm_vj = pvn(ji,jj,jk) - ABS( pvn(ji,jj,jk) )
-                  ! centered scheme
-                  zcenut = 0.5 * pun(ji,jj,jk) * ( ptn(ji,jj,jk,jn) + ptn(ji+1,jj  ,jk,jn) )
-                  zcenvt = 0.5 * pvn(ji,jj,jk) * ( ptn(ji,jj,jk,jn) + ptn(ji  ,jj+1,jk,jn) )
-                  ! UBS scheme
-                  zwx(ji,jj,jk) =  zcenut - zfp_ui * zltu(ji,jj,jk) - zfm_ui * zltu(ji+1,jj,jk) 
-                  zwy(ji,jj,jk) =  zcenvt - zfp_vj * zltv(ji,jj,jk) - zfm_vj * zltv(ji,jj+1,jk) 
+                  ! 2nd order centered advective fluxes (x2)
+                  zcenut = pun(ji,jj,jk) * ( ptn(ji,jj,jk,jn) + ptn(ji+1,jj  ,jk,jn) )
+                  zcenvt = pvn(ji,jj,jk) * ( ptn(ji,jj,jk,jn) + ptn(ji  ,jj+1,jk,jn) )
+                  ! UBS advective fluxes
+                  zwx(ji,jj,jk) = 0.5 * ( zcenut - zfp_ui * zltu(ji,jj,jk) - zfm_ui * zltu(ji+1,jj,jk) )
+                  zwy(ji,jj,jk) = 0.5 * ( zcenvt - zfp_vj * zltv(ji,jj,jk) - zfm_vj * zltv(ji,jj+1,jk) )
                END DO
             END DO
          END DO                                           ! End of slab         
@@ -196,8 +198,8 @@ CONTAINS
          ztw(:,:,jpk) = 0.e0   ;   zti(:,:,jpk) = 0.e0
 
          ! Surface value
-         IF( lk_vvl ) THEN   ;   ztw(:,:,1) = 0.e0                      ! variable volume : flux set to zero
-         ELSE                ;   ztw(:,:,1) = pwn(:,:,1) * ptb(:,:,1,jn)   ! free constant surface 
+         IF( lk_vvl ) THEN   ;   ztw(:,:,1) = 0.e0                         ! variable volume : flux set to zero
+         ELSE                ;   ztw(:,:,1) = pwn(:,:,1) * ptb(:,:,1,jn)   ! constant volume : non zero flux though z=0 
          ENDIF
          !  upstream advection with initial mass fluxes & intermediate update
          ! -------------------------------------------------------------------
@@ -267,7 +269,9 @@ CONTAINS
          !
       ENDDO
       !
-      IF( wrk_not_released(3, 1,2,3,4,5,6) )   CALL ctl_stop('tra_adv_ubs: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi, jpj, jpk, ztu, ztv, zltu, zltv, zti, ztw )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('tra_adv_ubs')
       !
    END SUBROUTINE tra_adv_ubs
 
@@ -285,8 +289,6 @@ CONTAINS
       !!       drange (1995) multi-dimensional forward-in-time and upstream-
       !!       in-space based differencing for fluid
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zbetup => wrk_3d_1, zbetdo => wrk_3d_2   ! 3D workspace
       !
       REAL(wp), INTENT(in   ), DIMENSION(jpk)          ::   p2dt   ! vertical profile of tracer time-step
       REAL(wp),                DIMENSION (jpi,jpj,jpk) ::   pbef   ! before field
@@ -296,11 +298,13 @@ CONTAINS
       INTEGER  ::   ji, jj, jk   ! dummy loop indices
       INTEGER  ::   ikm1         ! local integer
       REAL(wp) ::   zpos, zneg, zbt, za, zb, zc, zbig, zrtrn, z2dtt   ! local scalars
+      REAL(wp), POINTER, DIMENSION(:,:,:) :: zbetup, zbetdo
       !!----------------------------------------------------------------------
-
-      IF( wrk_in_use(3, 1,2) ) THEN
-         CALL ctl_stop('nonosc_z: requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
+      !
+      IF( nn_timing == 1 )  CALL timing_start('nonosc_z')
+      !
+      CALL wrk_alloc( jpi, jpj, jpk, zbetup, zbetdo )
+      !
 
       zbig  = 1.e+40_wp
       zrtrn = 1.e-15_wp
@@ -372,7 +376,9 @@ CONTAINS
          END DO
       END DO
       !
-      IF( wrk_not_released(3, 1,2) )   CALL ctl_stop('nonosc_z: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi, jpj, jpk, zbetup, zbetdo )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('nonosc_z')
       !
    END SUBROUTINE nonosc_z
 

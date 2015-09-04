@@ -30,6 +30,7 @@ MODULE solmat
    USE lbclnk          ! lateral boudary conditions
    USE lib_mpp         ! distributed memory computing
    USE in_out_manager  ! I/O manager
+   USE timing          ! timing
 
    IMPLICIT NONE
    PRIVATE
@@ -38,7 +39,7 @@ MODULE solmat
 
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: solmat.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -63,7 +64,9 @@ CONTAINS
       REAL(wp) ::   zcoefs, zcoefw, zcoefe, zcoefn  ! temporary scalars
       REAL(wp) ::   z2dt, zcoef
       !!----------------------------------------------------------------------
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('sol_mat')
+      !
       
       ! 1. Construction of the matrix
       ! -----------------------------
@@ -296,6 +299,8 @@ CONTAINS
       gcdes(:,:) = 0.e0
       gccd (:,:) = 0.e0
       ! 
+      IF( nn_timing == 1 )  CALL timing_stop('sol_mat')
+      !
    END SUBROUTINE sol_mat
 
 

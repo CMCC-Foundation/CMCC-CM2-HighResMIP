@@ -24,20 +24,20 @@ MODULE oce
    REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:,:)   ::           wn             !: vertical velocity            [m/s]
    REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:,:)   ::   rotb ,  rotn           !: relative vorticity           [s-1]
    REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:,:)   ::   hdivb,  hdivn          !: horizontal divergence        [s-1]
-   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:,:)   ::   tb   ,  tn    , ta     !: potential temperature    [Celcius]
-   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:,:)   ::   sb   ,  sn    , sa     !: salinity                     [psu]
-   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:,:,:) ::   tsb  ,  tsn   , tsa    !: 4D T-S fields        [Celcius,psu] 
+   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:,:,:) ::   tsb  ,  tsn            !: 4D T-S fields        [Celcius,psu] 
    REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:,:)   ::   rn2b ,  rn2            !: brunt-vaisala frequency**2   [s-2]
+   !
+   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:,:,:) ::  tsa             !: 4D T-S trends fields & work array 
    !
    REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   rhd    !: in situ density anomalie rhd=(rho-rau0)/rau0  [no units]
    REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   rhop   !: potential volumic mass                           [kg/m3]
 
    !! free surface                                      !  before  ! now    ! after  !
    !! ------------                                      !  fields  ! fields ! trends !
-   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:) ::   sshb   , sshn   , ssha   !: sea surface height at t-point [m]
-   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:) ::   sshu_b , sshu_n , sshu_a !: sea surface height at u-point [m]
-   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:) ::   sshv_b , sshv_n , sshv_a !: sea surface height at u-point [m]
-   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:) ::            sshf_n          !: sea surface height at f-point [m]
+   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:), TARGET ::   sshb   , sshn   , ssha   !: sea surface height at t-point [m]
+   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:)         ::   sshu_b , sshu_n , sshu_a !: sea surface height at u-point [m]
+   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:)         ::   sshv_b , sshv_n , sshv_a !: sea surface height at u-point [m]
+   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:)         ::            sshf_n          !: sea surface height at f-point [m]
    !
    REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:) ::   spgu, spgv               !: horizontal surface pressure gradient
 
@@ -48,7 +48,7 @@ MODULE oce
 
    !!----------------------------------------------------------------------
    !! NEMO/OPA 4.0 , NEMO Consortium (2011)
-   !! $Id: oce.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -65,8 +65,6 @@ CONTAINS
          &      wn   (jpi,jpj,jpk)      ,                                                       &
          &      rotb (jpi,jpj,jpk)      , rotn (jpi,jpj,jpk)      ,                             &   
          &      hdivb(jpi,jpj,jpk)      , hdivn(jpi,jpj,jpk)      ,                             &
-         &      tb   (jpi,jpj,jpk)      , tn   (jpi,jpj,jpk)      , ta(jpi,jpj,jpk)       ,     &
-         &      sb   (jpi,jpj,jpk)      , sn   (jpi,jpj,jpk)      , sa (jpi,jpj,jpk)      ,     &      
          &      tsb  (jpi,jpj,jpk,jpts) , tsn  (jpi,jpj,jpk,jpts) , tsa(jpi,jpj,jpk,jpts) ,     &
          &      rn2b (jpi,jpj,jpk)      , rn2  (jpi,jpj,jpk)                              , STAT=ierr(1) )
          !

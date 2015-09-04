@@ -28,6 +28,8 @@ MODULE traldf
    USE in_out_manager  ! I/O manager
    USE lib_mpp         ! distribued memory computing library
    USE lbclnk          ! ocean lateral boundary conditions (or mpp link)
+   USE wrk_nemo        ! Memory allocation
+   USE timing          ! Timing
 
    IMPLICIT NONE
    PRIVATE
@@ -45,7 +47,7 @@ MODULE traldf
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: traldf.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -58,40 +60,45 @@ CONTAINS
       !!----------------------------------------------------------------------
       INTEGER, INTENT( in ) ::   kt   ! ocean time-step index
       !!
-      REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  ztrdt, ztrds
+      REAL(wp), POINTER, DIMENSION(:,:,:) ::  ztrdt, ztrds
       !!----------------------------------------------------------------------
+      !
+      IF( nn_timing == 1 )  CALL timing_start('tra_ldf')
+      !
+      rldf = 1     ! For active tracers the 
 
       IF( l_trdtra )   THEN                    !* Save ta and sa trends
-         ALLOCATE( ztrdt(jpi,jpj,jpk) )   ;    ztrdt(:,:,:) = tsa(:,:,:,jp_tem) 
-         ALLOCATE( ztrds(jpi,jpj,jpk) )   ;    ztrds(:,:,:) = tsa(:,:,:,jp_sal)
+         CALL wrk_alloc( jpi, jpj, jpk, ztrdt, ztrds ) 
+         ztrdt(:,:,:) = tsa(:,:,:,jp_tem) 
+         ztrds(:,:,:) = tsa(:,:,:,jp_sal)
       ENDIF
 
       SELECT CASE ( nldf )                       ! compute lateral mixing trend and add it to the general trend
-      CASE ( 0 )   ;   CALL tra_ldf_lap     ( kt, 'TRA', gtsu, gtsv, tsb, tsa, jpts        )  ! iso-level laplacian
+      CASE ( 0 )   ;   CALL tra_ldf_lap     ( kt, nit000, 'TRA', gtsu, gtsv, tsb, tsa, jpts        )  ! iso-level laplacian
       CASE ( 1 )                                                                              ! rotated laplacian
          IF( ln_traldf_grif ) THEN                                                          
-                       CALL tra_ldf_iso_grif( kt, 'TRA', gtsu, gtsv, tsb, tsa, jpts, ahtb0 )      ! Griffies operator
+                       CALL tra_ldf_iso_grif( kt, nit000,'TRA', gtsu, gtsv, tsb, tsa, jpts, ahtb0 )      ! Griffies operator
          ELSE                                                                                
-                       CALL tra_ldf_iso     ( kt, 'TRA', gtsu, gtsv, tsb, tsa, jpts, ahtb0 )      ! Madec operator
+                       CALL tra_ldf_iso     ( kt, nit000, 'TRA', gtsu, gtsv, tsb, tsa, jpts, ahtb0 )      ! Madec operator
          ENDIF
-      CASE ( 2 )   ;   CALL tra_ldf_bilap   ( kt, 'TRA', gtsu, gtsv, tsb, tsa, jpts        )  ! iso-level bilaplacian
-      CASE ( 3 )   ;   CALL tra_ldf_bilapg  ( kt, 'TRA',             tsb, tsa, jpts        )  ! s-coord. geopot. bilap.
+      CASE ( 2 )   ;   CALL tra_ldf_bilap   ( kt, nit000, 'TRA', gtsu, gtsv, tsb, tsa, jpts        )  ! iso-level bilaplacian
+      CASE ( 3 )   ;   CALL tra_ldf_bilapg  ( kt, nit000, 'TRA',             tsb, tsa, jpts        )  ! s-coord. geopot. bilap.
          !
       CASE ( -1 )                                ! esopa: test all possibility with control print
-         CALL tra_ldf_lap   ( kt, 'TRA', gtsu, gtsv, tsb, tsa, jpts        ) 
+         CALL tra_ldf_lap   ( kt, nit000, 'TRA', gtsu, gtsv, tsb, tsa, jpts        ) 
          CALL prt_ctl( tab3d_1=tsa(:,:,:,jp_tem), clinfo1=' ldf0 - Ta: ', mask1=tmask,               &
          &             tab3d_2=tsa(:,:,:,jp_sal), clinfo2=       ' Sa: ', mask2=tmask, clinfo3='tra' )
          IF( ln_traldf_grif ) THEN
-            CALL tra_ldf_iso_grif( kt, 'TRA', gtsu, gtsv, tsb, tsa, jpts, ahtb0 )
+            CALL tra_ldf_iso_grif( kt, nit000, 'TRA', gtsu, gtsv, tsb, tsa, jpts, ahtb0 )
          ELSE
-            CALL tra_ldf_iso     ( kt, 'TRA', gtsu, gtsv, tsb, tsa, jpts, ahtb0 )  
+            CALL tra_ldf_iso     ( kt, nit000, 'TRA', gtsu, gtsv, tsb, tsa, jpts, ahtb0 )  
          ENDIF
          CALL prt_ctl( tab3d_1=tsa(:,:,:,jp_tem), clinfo1=' ldf1 - Ta: ', mask1=tmask,               &
          &             tab3d_2=tsa(:,:,:,jp_sal), clinfo2=       ' Sa: ', mask2=tmask, clinfo3='tra' )
-         CALL tra_ldf_bilap ( kt, 'TRA', gtsu, gtsv, tsb, tsa, jpts        ) 
+         CALL tra_ldf_bilap ( kt, nit000, 'TRA', gtsu, gtsv, tsb, tsa, jpts        ) 
          CALL prt_ctl( tab3d_1=tsa(:,:,:,jp_tem), clinfo1=' ldf2 - Ta: ', mask1=tmask,               &
          &             tab3d_2=tsa(:,:,:,jp_sal), clinfo2=       ' Sa: ', mask2=tmask, clinfo3='tra' )
-         CALL tra_ldf_bilapg( kt, 'TRA',             tsb, tsa, jpts        ) 
+         CALL tra_ldf_bilapg( kt, nit000, 'TRA',             tsb, tsa, jpts        ) 
          CALL prt_ctl( tab3d_1=tsa(:,:,:,jp_tem), clinfo1=' ldf3 - Ta: ', mask1=tmask,               &
          &             tab3d_2=tsa(:,:,:,jp_sal), clinfo2=       ' Sa: ', mask2=tmask, clinfo3='tra' )
       END SELECT
@@ -106,11 +113,13 @@ CONTAINS
          ztrds(:,:,:) = tsa(:,:,:,jp_sal) - ztrds(:,:,:)
          CALL trd_tra( kt, 'TRA', jp_tem, jptra_trd_ldf, ztrdt )
          CALL trd_tra( kt, 'TRA', jp_sal, jptra_trd_ldf, ztrds )
-         DEALLOCATE( ztrdt )      ;     DEALLOCATE( ztrds ) 
+         CALL wrk_dealloc( jpi, jpj, jpk, ztrdt, ztrds ) 
       ENDIF
       !                                          ! print mean trends (used for debugging)
       IF(ln_ctl)   CALL prt_ctl( tab3d_1=tsa(:,:,:,jp_tem), clinfo1=' ldf  - Ta: ', mask1=tmask,               &
          &                       tab3d_2=tsa(:,:,:,jp_sal), clinfo2=       ' Sa: ', mask2=tmask, clinfo3='tra' )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('tra_ldf')
       !
    END SUBROUTINE tra_ldf
 
@@ -153,7 +162,7 @@ CONTAINS
       IF( ln_traldf_level )   ioptio = ioptio + 1
       IF( ln_traldf_hor   )   ioptio = ioptio + 1
       IF( ln_traldf_iso   )   ioptio = ioptio + 1
-      IF( ioptio /= 1 )   CALL ctl_stop( '          use only ONE direction (level/hor/iso)' )
+      IF( ioptio >  1 )   CALL ctl_stop( '          use only ONE direction (level/hor/iso)' )
 
       ! defined the type of lateral diffusion from ln_traldf_... logicals
       ! CAUTION : nldf = 1 is used in trazdf_imp, change it carefully
@@ -236,9 +245,6 @@ CONTAINS
       !!
       !! ** Purpose :   initializations of 
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zt_ref => wrk_3d_1, ztb => wrk_3d_2, zavt => wrk_3d_3   ! 3D workspaces
-      USE wrk_nemo, ONLY:   zs_ref => wrk_3d_4, zsb => wrk_3d_5                     ! 3D workspaces
       !
       USE zdf_oce         ! vertical mixing
       USE trazdf          ! vertical mixing: double diffusion
@@ -248,11 +254,13 @@ CONTAINS
       INTEGER  ::   ierr            ! local integer
       LOGICAL  ::   llsave          ! local logical
       REAL(wp) ::   zt0, zs0, z12   ! local scalar
+      REAL(wp), POINTER, DIMENSION(:,:,:) :: zt_ref, zs_ref, ztb, zsb, zavt     
       !!----------------------------------------------------------------------
-
-      IF( wrk_in_use(3, 1,2,3,4,5) ) THEN
-         CALL ctl_stop('ldf_ano : requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
+      !
+      IF( nn_timing == 1 )  CALL timing_start('ldf_ano')
+      !
+      CALL wrk_alloc( jpi, jpj, jpk, zt_ref, zs_ref, ztb, zsb, zavt ) 
+      !
 
       IF(lwp) THEN
          WRITE(numout,*)
@@ -296,8 +304,8 @@ CONTAINS
 
       ! Compute the ldf trends
       ! ----------------------
-      CALL tra_ldf( nit000+1 )      ! horizontal components (+1: no more init)
-      CALL tra_zdf( nit000   )      ! vertical component (if necessary nit000 to performed the init)
+      CALL tra_ldf( nit000 + 1 )      ! horizontal components (+1: no more init)
+      CALL tra_zdf( nit000     )      ! vertical component (if necessary nit000 to performed the init)
 
       ! finalise the computation and recover all arrays
       ! -----------------------------------------------
@@ -319,7 +327,9 @@ CONTAINS
       tsa(:,:,:,jp_sal) = va  (:,:,:)
       avt(:,:,:)        = zavt(:,:,:)
       !
-      IF( wrk_not_released(3, 1,2,3,4,5) )   CALL ctl_stop('ldf_ano: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi, jpj, jpk, zt_ref, zs_ref, ztb, zsb, zavt ) 
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('ldf_ano')
       !
    END SUBROUTINE ldf_ano
 

@@ -14,6 +14,7 @@ MODULE flo4rk
    USE oce             ! ocean dynamics and tracers
    USE dom_oce         ! ocean space and time domain
    USE in_out_manager  ! I/O manager
+   USE wrk_nemo        ! working array
 
    IMPLICIT NONE
    PRIVATE
@@ -31,7 +32,7 @@ MODULE flo4rk
 #  include "domzgr_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: flo4rk.F90 2528 2010-12-27 17:33:53Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -51,10 +52,19 @@ CONTAINS
       INTEGER, INTENT(in) ::   kt   ! ocean time-step index
       !!
       INTEGER ::  jfl, jind           ! dummy loop indices
-      REAL(wp), DIMENSION(jpnfl)   ::   zgifl , zgjfl , zgkfl    ! index RK  positions
-      REAL(wp), DIMENSION(jpnfl)   ::   zufl  , zvfl  , zwfl     ! interpolated velocity at the float position 
-      REAL(wp), DIMENSION(jpnfl,4) ::   zrkxfl, zrkyfl, zrkzfl   ! RK coefficients
+      INTEGER ::  ierror              ! error value
+
+      REAL(wp), POINTER, DIMENSION(:)   ::   zgifl , zgjfl , zgkfl    ! index RK  positions
+      REAL(wp), POINTER, DIMENSION(:)   ::   zufl  , zvfl  , zwfl     ! interpolated velocity at the float position 
+      REAL(wp), POINTER, DIMENSION(:,:) ::   zrkxfl, zrkyfl, zrkzfl   ! RK coefficients
       !!---------------------------------------------------------------------
+      CALL wrk_alloc( jpnfl,    zgifl , zgjfl , zgkfl  , zufl, zvfl, zwfl)
+      CALL wrk_alloc( jpnfl, 4, zrkxfl, zrkyfl, zrkzfl )
+      !
+      IF( ierror /= 0 ) THEN
+         WRITE(numout,*) 'flo_4rk: allocation of workspace arrays failed'
+      ENDIF
+
     
       IF( kt == nit000 ) THEN
          IF(lwp) WRITE(numout,*)
@@ -145,6 +155,9 @@ CONTAINS
          END DO
       END DO
       !
+      CALL wrk_dealloc( jpnfl,    zgifl , zgjfl , zgkfl  , zufl, zvfl, zwfl)
+      CALL wrk_dealloc( jpnfl, 4, zrkxfl, zrkyfl, zrkzfl )
+      !
    END SUBROUTINE flo_4rk
 
 
@@ -166,18 +179,22 @@ CONTAINS
       !!
       INTEGER  ::   jfl, jind1, jind2, jind3   ! dummy loop indices
       REAL(wp) ::   zsumu, zsumv, zsumw        ! local scalar
-      INTEGER , DIMENSION(jpnfl)   ::   iilu, ijlu, iklu   ! nearest neighbour INDEX-u
-      INTEGER , DIMENSION(jpnfl)   ::   iilv, ijlv, iklv   ! nearest neighbour INDEX-v
-      INTEGER , DIMENSION(jpnfl)   ::   iilw, ijlw, iklw   ! nearest neighbour INDEX-w
-      INTEGER , DIMENSION(jpnfl,4) ::   iidu, ijdu, ikdu   ! 64 nearest neighbour INDEX-u
-      INTEGER , DIMENSION(jpnfl,4) ::   iidv, ijdv, ikdv   ! 64 nearest neighbour INDEX-v
-      INTEGER , DIMENSION(jpnfl,4) ::   iidw, ijdw, ikdw   ! 64 nearest neighbour INDEX-w
-      REAL(wp) , DIMENSION(jpnfl,4,4,4) ::   ztufl , ztvfl , ztwfl   ! velocity at choosen time step
-      REAL(wp) , DIMENSION(jpnfl,4)     ::   zlagxu, zlagyu, zlagzu   ! Lagrange  coefficients
-      REAL(wp) , DIMENSION(jpnfl,4)     ::   zlagxv, zlagyv, zlagzv   !    -           -
-      REAL(wp) , DIMENSION(jpnfl,4)     ::   zlagxw, zlagyw, zlagzw   !    -           -
+      INTEGER  , POINTER, DIMENSION(:)       ::   iilu, ijlu, iklu   ! nearest neighbour INDEX-u
+      INTEGER  , POINTER, DIMENSION(:)       ::   iilv, ijlv, iklv   ! nearest neighbour INDEX-v
+      INTEGER  , POINTER, DIMENSION(:)       ::   iilw, ijlw, iklw   ! nearest neighbour INDEX-w
+      INTEGER  , POINTER, DIMENSION(:,:)     ::   iidu, ijdu, ikdu   ! 64 nearest neighbour INDEX-u
+      INTEGER  , POINTER, DIMENSION(:,:)     ::   iidv, ijdv, ikdv   ! 64 nearest neighbour INDEX-v
+      INTEGER  , POINTER, DIMENSION(:,:)     ::   iidw, ijdw, ikdw   ! 64 nearest neighbour INDEX-w
+      REAL(wp) , POINTER, DIMENSION(:,:)     ::   zlagxu, zlagyu, zlagzu   ! Lagrange  coefficients
+      REAL(wp) , POINTER, DIMENSION(:,:)     ::   zlagxv, zlagyv, zlagzv   !    -           -
+      REAL(wp) , POINTER, DIMENSION(:,:)     ::   zlagxw, zlagyw, zlagzw   !    -           -
+      REAL(wp) , POINTER, DIMENSION(:,:,:,:) ::   ztufl , ztvfl , ztwfl   ! velocity at choosen time step
       !!---------------------------------------------------------------------
-      
+      CALL wrk_alloc( jpnfl,    iilu, ijlu, iklu, iilv, ijlv, iklv, iilw, ijlw, iklw )
+      CALL wrk_alloc( jpnfl, 4, iidu, ijdu, ikdu, iidv, ijdv, ikdv, iidw, ijdw, ikdw )
+      CALL wrk_alloc( jpnfl, 4, zlagxu, zlagyu, zlagzu, zlagxv, zlagyv, zlagzv, zlagxw, zlagyw, zlagzw )
+      CALL wrk_alloc( jpnfl, 4, 4, 4, ztufl , ztvfl , ztwfl )
+ 
       ! Interpolation of U velocity
 
       ! nearest neightboring point for computation of u       
@@ -434,6 +451,11 @@ CONTAINS
          END DO
          pwfl(jfl) = zsumw
       END DO
+      !   
+      CALL wrk_dealloc( jpnfl,    iilu, ijlu, iklu, iilv, ijlv, iklv, iilw, ijlw, iklw )
+      CALL wrk_dealloc( jpnfl, 4, iidu, ijdu, ikdu, iidv, ijdv, ikdv, iidw, ijdw, ikdw )
+      CALL wrk_dealloc( jpnfl, 4, zlagxu, zlagyu, zlagzu, zlagxv, zlagyv, zlagzv, zlagxw, zlagyw, zlagzw )
+      CALL wrk_dealloc( jpnfl, 4, 4, 4, ztufl , ztvfl , ztwfl )
       !   
    END SUBROUTINE flo_interp
 

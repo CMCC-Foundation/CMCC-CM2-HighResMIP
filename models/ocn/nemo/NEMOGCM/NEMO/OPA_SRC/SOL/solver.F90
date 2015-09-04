@@ -22,16 +22,16 @@ MODULE solver
    USE sol_oce         ! solver variables
    USE dynspg_oce      ! choice/control of key cpp for surface pressure gradient
    USE solmat          ! matrix of the solver
-   USE obc_oce         ! Lateral open boundary condition
    USE in_out_manager  ! I/O manager
    USE lbclnk          ! ocean lateral boundary conditions (or mpp link)
    USE lib_mpp         ! MPP library
+   USE timing          ! timing
 
    IMPLICIT NONE
 
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: solver.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -53,6 +53,9 @@ CONTAINS
       !!
       NAMELIST/namsol/ nn_solv, nn_sol_arp, nn_nmin, nn_nmax, nn_nmod, rn_eps, rn_resmax, rn_sor
       !!----------------------------------------------------------------------
+      !
+      IF( nn_timing == 1 )  CALL timing_start('solver_init')
+      !
 
       IF(lwp) THEN                  !* open elliptic solver statistics file (only on the printing processors)
          CALL ctl_opn( numsol, 'solver.stat', 'REPLACE', 'FORMATTED', 'SEQUENTIAL', -1, numout, lwp, narea )
@@ -79,7 +82,9 @@ CONTAINS
       eps = rn_eps
 
       !                              ! allocate solver arrays
-      IF( sol_oce_alloc() /= 0 )   CALL ctl_stop( 'STOP', 'solver_init : unable to allocate sol_oce arrays' )
+      IF( .NOT. lk_agrif .OR. .NOT. ln_rstart) THEN
+         IF( sol_oce_alloc() /= 0 )   CALL ctl_stop( 'STOP', 'solver_init : unable to allocate sol_oce arrays' )
+      ENDIF
 
       SELECT CASE( nn_solv )          !* parameter check
       !
@@ -109,6 +114,8 @@ CONTAINS
       c_solver_pt = 'T'                   ! always T-point (ssh solver only, not anymore bsf)
 
       CALL sol_mat( kt )            !* Construction of the elliptic system matrix
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('solver_init')
       !
    END SUBROUTINE solver_init
 #endif

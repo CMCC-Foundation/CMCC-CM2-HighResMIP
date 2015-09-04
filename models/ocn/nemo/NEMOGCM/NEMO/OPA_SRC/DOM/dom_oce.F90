@@ -51,7 +51,6 @@ MODULE dom_oce
    REAL(wp), PUBLIC ::   rdtmin          !: minimum time step on tracers
    REAL(wp), PUBLIC ::   rdtmax          !: maximum time step on tracers
    REAL(wp), PUBLIC ::   rdth            !: depth variation of tracer step
-   INTEGER , PUBLIC ::   nclosea         !: =0 suppress closed sea/lake from the ORCA domain or not (=1)
 
    !                                                  !!! associated variables
    INTEGER , PUBLIC                 ::   neuler  = 0   !: restart euler forward option (0=Euler)
@@ -82,7 +81,7 @@ MODULE dom_oce
    INTEGER, PUBLIC ::   nbondi, nbondj    !: mark of i- and j-direction local boundaries
    INTEGER, PUBLIC ::   npolj             !: north fold mark (0, 3 or 4)
    INTEGER, PUBLIC ::   nlci, nldi, nlei  !: i-dimensions of the local subdomain and its first and last indoor indices
-   INTEGER, PUBLIC ::   nlcj, nldj, nlej  !: j-dimensions of the local subdomain and its first and last indoor indices
+   INTEGER, PUBLIC ::   nlcj, nldj, nlej  !: i-dimensions of the local subdomain and its first and last indoor indices
    INTEGER, PUBLIC ::   noea, nowe        !: index of the local neighboring processors in
    INTEGER, PUBLIC ::   noso, nono        !: east, west, south and north directions
    INTEGER, PUBLIC ::   npne, npnw        !: index of north east and north west processor
@@ -149,9 +148,9 @@ MODULE dom_oce
 #else
    LOGICAL, PUBLIC, PARAMETER ::   lk_vvl = .FALSE.   !: fixed grid flag
 #endif
-   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:) ::   hur  , hvr    !: inverse of u and v-points ocean depth (1/m)
-   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:) ::   hu   , hv     !: depth at u- and v-points (meters)
-   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:) ::   hu_0 , hv_0   !: refernce depth at u- and v-points (meters)
+   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:), TARGET ::   hur  , hvr    !: inverse of u and v-points ocean depth (1/m)
+   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:)         ::   hu   , hv     !: depth at u- and v-points (meters)
+   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:)         ::   hu_0 , hv_0   !: refernce depth at u- and v-points (meters)
 
    INTEGER, PUBLIC ::   nla10              !: deepest    W level Above  ~10m (nlb10 - 1)
    INTEGER, PUBLIC ::   nlb10              !: shallowest W level Bellow ~10m (nla10 + 1) 
@@ -210,7 +209,7 @@ MODULE dom_oce
    REAL(wp), PUBLIC ::   fjulstartyear !: first day of the current year in julian days
    REAL(wp), PUBLIC ::   adatrj        !: number of elapsed days since the begining of the whole simulation
    !                                   !: (cumulative duration of previous runs that may have used different time-step size)
-   INTEGER , PUBLIC, DIMENSION(0: 1) ::   nyear_len     !: length in days of the previous/current year
+   INTEGER , PUBLIC, DIMENSION(0: 2) ::   nyear_len     !: length in days of the previous/current year
    INTEGER , PUBLIC, DIMENSION(0:13) ::   nmonth_len    !: length in days of the months of the current year
    INTEGER , PUBLIC, DIMENSION(0:13) ::   nmonth_half   !: second since Jan 1st 0h of the current year and the half of the months
    INTEGER , PUBLIC, DIMENSION(0:13) ::   nmonth_end    !: second since Jan 1st 0h of the current year and the end of the months
@@ -236,7 +235,7 @@ MODULE dom_oce
 
    !!----------------------------------------------------------------------
    !! NEMO/OPA 4.0 , NEMO Consortium (2011)
-   !! $Id: dom_oce.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS

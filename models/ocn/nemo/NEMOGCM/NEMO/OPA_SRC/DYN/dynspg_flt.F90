@@ -25,6 +25,7 @@ MODULE dynspg_flt
    USE zdf_oce         ! ocean vertical physics
    USE sbc_oce         ! surface boundary condition: ocean
    USE obc_oce         ! Lateral open boundary condition
+   USE bdy_oce         ! Lateral open boundary condition
    USE sol_oce         ! ocean elliptic solver
    USE phycst          ! physical constants
    USE domvvl          ! variable volume
@@ -32,14 +33,14 @@ MODULE dynspg_flt
    USE solmat          ! matrix construction for elliptic solvers
    USE solpcg          ! preconditionned conjugate gradient solver
    USE solsor          ! Successive Over-relaxation solver
-   USE obcdyn          ! ocean open boundary condition (obc_dyn routines)
-   USE obcvol          ! ocean open boundary condition (obc_vol routines)
-   USE bdy_oce         ! Unstructured open boundaries condition
-   USE bdydyn          ! Unstructured open boundaries condition (bdy_dyn routine) 
-   USE bdyvol          ! Unstructured open boundaries condition (bdy_vol routine)
+   USE obcdyn          ! ocean open boundary condition on dynamics
+   USE obcvol          ! ocean open boundary condition (obc_vol routine)
+   USE bdydyn          ! ocean open boundary condition on dynamics
+   USE bdyvol          ! ocean open boundary condition (bdy_vol routine)
    USE cla             ! cross land advection
    USE in_out_manager  ! I/O manager
    USE lib_mpp         ! distributed memory computing library
+   USE wrk_nemo        ! Memory Allocation
    USE lbclnk          ! ocean lateral boundary conditions (or mpp link)
    USE prtctl          ! Print control
    USE iom
@@ -48,6 +49,7 @@ MODULE dynspg_flt
 #if defined key_agrif
    USE agrif_opa_interp
 #endif
+   USE timing          ! Timing
 
    IMPLICIT NONE
    PRIVATE
@@ -60,7 +62,7 @@ MODULE dynspg_flt
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: dynspg_flt.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -102,14 +104,17 @@ CONTAINS
       !!
       !! References : Roullet and Madec 1999, JGR.
       !!---------------------------------------------------------------------
-      USE oce, ONLY:   zub   => ta , zvb   => sa   ! (ta,sa) used as workspace
-      !!
       INTEGER, INTENT(in   ) ::   kt       ! ocean time-step index
       INTEGER, INTENT(  out) ::   kindic   ! solver convergence flag (<0 if not converge)
       !!                                   
       INTEGER  ::   ji, jj, jk   ! dummy loop indices
       REAL(wp) ::   z2dt, z2dtg, zgcb, zbtd, ztdgu, ztdgv   ! local scalars
+      REAL(wp), POINTER, DIMENSION(:,:,:) ::  zub, zvb
       !!----------------------------------------------------------------------
+      !
+      IF( nn_timing == 1 )  CALL timing_start('dyn_spg_flt')
+      !
+      CALL wrk_alloc( jpi,jpj,jpk, zub, zvb )
       !
       IF( kt == nit000 ) THEN
          IF(lwp) WRITE(numout,*)
@@ -182,12 +187,12 @@ CONTAINS
       ENDIF
 
 #if defined key_obc
-      CALL obc_dyn( kt )      ! Update velocities on each open boundary with the radiation algorithm
-      CALL obc_vol( kt )      ! Correction of the barotropic componant velocity to control the volume of the system
+      IF( lk_obc ) CALL obc_dyn( kt )   ! Update velocities on each open boundary with the radiation algorithm
+      IF( lk_obc)  CALL obc_vol( kt )   ! Correction of the barotropic componant velocity to control the volume of the system
 #endif
 #if defined key_bdy
-      CALL bdy_dyn_frs( kt )       ! Update velocities on unstructured boundary using the Flow Relaxation Scheme
-      CALL bdy_vol( kt )           ! Correction of the barotropic component velocity to control the volume of the system
+      IF( lk_bdy ) CALL bdy_dyn( kt )   ! Update velocities on each open boundary
+      IF( lk_bdy ) CALL bdy_vol( kt )   ! Correction of the barotropic component velocity to control the volume of the system
 #endif
 #if defined key_agrif
       CALL Agrif_dyn( kt )    ! Update velocities on each coarse/fine interfaces 
@@ -302,15 +307,25 @@ CONTAINS
             ztdgv = z2dtg * (gcx(ji  ,jj+1) - gcx(ji,jj) ) / e2v(ji,jj)
             ! multiplied by z2dt
 #if defined key_obc
-            ! caution : grad D = 0 along open boundaries
-            spgu(ji,jj) = z2dt * ztdgu * obcumask(ji,jj)
-            spgv(ji,jj) = z2dt * ztdgv * obcvmask(ji,jj)
-#elif defined key_bdy
+            IF(lk_obc) THEN
             ! caution : grad D = 0 along open boundaries
             ! Remark: The filtering force could be reduced here in the FRS zone
             !         by multiplying spgu/spgv by (1-alpha) ??  
-            spgu(ji,jj) = z2dt * ztdgu * bdyumask(ji,jj)
-            spgv(ji,jj) = z2dt * ztdgv * bdyvmask(ji,jj)           
+               spgu(ji,jj) = z2dt * ztdgu * obcumask(ji,jj)
+               spgv(ji,jj) = z2dt * ztdgv * obcvmask(ji,jj)
+            ELSE
+               spgu(ji,jj) = z2dt * ztdgu
+               spgv(ji,jj) = z2dt * ztdgv
+            ENDIF
+#elif defined key_bdy
+            IF(lk_bdy) THEN
+            ! caution : grad D = 0 along open boundaries
+               spgu(ji,jj) = z2dt * ztdgu * bdyumask(ji,jj)
+               spgv(ji,jj) = z2dt * ztdgv * bdyvmask(ji,jj)
+            ELSE
+               spgu(ji,jj) = z2dt * ztdgu
+               spgv(ji,jj) = z2dt * ztdgv
+            ENDIF
 #else
             spgu(ji,jj) = z2dt * ztdgu
             spgv(ji,jj) = z2dt * ztdgv
@@ -344,6 +359,10 @@ CONTAINS
       ! write filtered free surface arrays in restart file
       ! --------------------------------------------------
       IF( lrst_oce ) CALL flt_rst( kt, 'WRITE' )
+      !
+      CALL wrk_dealloc( jpi,jpj,jpk, zub, zvb )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('dyn_spg_flt')
       !
    END SUBROUTINE dyn_spg_flt
 

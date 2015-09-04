@@ -28,6 +28,8 @@ MODULE diaptr
    USE in_out_manager   ! I/O manager
    USE lib_mpp          ! MPP library
    USE lbclnk           ! lateral boundary condition - processor exchanges
+   USE timing           ! preformance summary
+   USE wrk_nemo         ! working arrays
 
    IMPLICIT NONE
    PRIVATE
@@ -84,7 +86,7 @@ MODULE diaptr
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: diaptr.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -210,10 +212,6 @@ CONTAINS
       !!
       !! ** Action  : - p_fval: i-mean poleward flux of pva
       !!----------------------------------------------------------------------
-#if defined key_mpp_mpi
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zwork => wrk_1d_1
-#endif
       !!
       IMPLICIT none
       REAL(wp) , INTENT(in), DIMENSION(jpi,jpj,jpk)           ::   pva    ! mask flux array at V-point
@@ -226,12 +224,14 @@ CONTAINS
       INTEGER, DIMENSION(2) ::   ish2
       INTEGER               ::   ijpjjpk
 #endif
+#if defined key_mpp_mpi
+      REAL(wp), POINTER, DIMENSION(:) ::   zwork    ! mask flux array at V-point
+#endif
       !!--------------------------------------------------------------------
       !
 #if defined key_mpp_mpi
-      IF( wrk_in_use(1, 1) ) THEN
-         CALL ctl_stop('ptr_vjk: ERROR - requested workspace array is unavailable')   ;   RETURN
-      END IF
+      ijpjjpk = jpj*jpk
+      CALL wrk_alloc( jpj*jpk, zwork )
 #endif
 
       p_fval => p_fval2d
@@ -258,7 +258,6 @@ CONTAINS
       END IF
       !
 #if defined key_mpp_mpi
-      ijpjjpk = jpj*jpk
       ish(1) = ijpjjpk  ;   ish2(1) = jpj   ;   ish2(2) = jpk
       zwork(1:ijpjjpk) = RESHAPE( p_fval, ish )
       CALL mpp_sum( zwork, ijpjjpk, ncomm_znl )
@@ -266,7 +265,7 @@ CONTAINS
 #endif
       !
 #if defined key_mpp_mpi
-      IF( wrk_not_released(1, 1) )   CALL ctl_stop('ptr_vjk: ERROR - failed to release workspace array')
+      CALL wrk_dealloc( jpj*jpk, zwork )
 #endif
       !
    END FUNCTION ptr_vjk
@@ -282,10 +281,6 @@ CONTAINS
       !!
       !! ** Action  : - p_fval: i-sum of e1t*e3t*pta
       !!----------------------------------------------------------------------
-#if defined key_mpp_mpi
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zwork => wrk_1d_1
-#endif
       !!
       REAL(wp) , INTENT(in), DIMENSION(jpi,jpj,jpk) ::   pta    ! tracer flux array at T-point
       REAL(wp) , INTENT(in), DIMENSION(jpi,jpj)     ::   pmsk   ! Optional 2D basin mask
@@ -297,12 +292,14 @@ CONTAINS
       INTEGER, DIMENSION(2) ::   ish2
       INTEGER               ::   ijpjjpk
 #endif
+#if defined key_mpp_mpi
+      REAL(wp), POINTER, DIMENSION(:) ::   zwork    ! mask flux array at V-point
+#endif
       !!-------------------------------------------------------------------- 
       !
 #if defined key_mpp_mpi
-      IF( wrk_in_use(1, 1) ) THEN
-         CALL ctl_stop('ptr_tjk: requested workspace array unavailable')   ;   RETURN
-      ENDIF
+      ijpjjpk = jpj*jpk
+      CALL wrk_alloc( jpj*jpk, zwork )
 #endif
 
       p_fval => p_fval2d
@@ -316,7 +313,6 @@ CONTAINS
          END DO
       END DO
 #if defined key_mpp_mpi
-      ijpjjpk = jpj*jpk
       ish(1) = jpj*jpk   ;   ish2(1) = jpj   ;   ish2(2) = jpk
       zwork(1:ijpjjpk)= RESHAPE( p_fval, ish )
       CALL mpp_sum( zwork, ijpjjpk, ncomm_znl )
@@ -324,7 +320,7 @@ CONTAINS
 #endif
       !
 #if defined key_mpp_mpi
-      IF( wrk_not_released(1, 1) )   CALL ctl_stop('ptr_tjk: failed to release workspace array')
+      CALL wrk_dealloc( jpj*jpk, zwork )
 #endif
       !    
    END FUNCTION ptr_tjk
@@ -343,6 +339,8 @@ CONTAINS
       INTEGER  ::   ji, jj, jk, jn   ! dummy loop indices
       REAL(wp) ::   zv               ! local scalar
       !!----------------------------------------------------------------------
+      !
+      IF( nn_timing == 1 )   CALL timing_start('dia_ptr')
       !
       IF( kt == nit000 .OR. MOD( kt, nn_fptr ) == 0 )   THEN
          !
@@ -433,10 +431,12 @@ CONTAINS
       ENDIF
       !
 #if defined key_mpp_mpi
-      IF( kt == nitend .AND. l_znl_root )   CALL histclo( numptr )      ! Close the
+      IF( kt == nitend .AND. l_znl_root )   CALL histclo( numptr )      ! Close the file
 #else
-      IF( kt == nitend )   CALL histclo( numptr )      ! Close the file
+      IF( kt == nitend )                    CALL histclo( numptr )      ! Close the file
 #endif
+      !
+      IF( nn_timing == 1 )   CALL timing_stop('dia_ptr')
       !
    END SUBROUTINE dia_ptr
 
@@ -471,9 +471,11 @@ CONTAINS
          WRITE(numout,*) '      Frequency of computation                           nn_fptr    = ', nn_fptr
          WRITE(numout,*) '      Frequency of outputs                               nn_fwri    = ', nn_fwri
       ENDIF
-
-      IF( ln_diaptr) THEN
-
+      
+      IF( ln_diaptr) THEN  
+     
+         IF( nn_timing == 1 )   CALL timing_start('dia_ptr_init')
+      
          IF( ln_subbas ) THEN   ;   nptr = 5       ! Global, Atlantic, Pacific, Indian, Indo-Pacific
          ELSE                   ;   nptr = 1       ! Global only
          ENDIF
@@ -511,9 +513,9 @@ CONTAINS
             WHERE( sjk(:,:,jn) /= 0._wp )   r1_sjk(:,:,jn) = 1._wp / sjk(:,:,jn)
          END DO
 
-         ! Initialise arrays to zero because diatpr is called before they are first calculated
-         ! Note that this means diagnostics will not be exactly correct when model run is restarted.
-         htr_adv(:) = 0._wp ; str_adv(:) = 0._wp ; htr_ldf(:) = 0._wp ; str_ldf(:) = 0._wp
+      ! Initialise arrays to zero because diatpr is called before they are first calculated
+      ! Note that this means diagnostics will not be exactly correct when model run is restarted.
+      htr_adv(:) = 0._wp ; str_adv(:) =  0._wp ;  htr_ldf(:) = 0._wp ; str_ldf(:) =  0._wp
 
 #if defined key_mpp_mpi 
          iglo (1) = jpjglo                   ! MPP case using MPI  ('key_mpp_mpi')
@@ -527,7 +529,9 @@ CONTAINS
 #else
          nidom_ptr = FLIO_DOM_NONE
 #endif
-      ENDIF
+      IF( nn_timing == 1 )   CALL timing_stop('dia_ptr_init')
+      !
+      ENDIF 
       ! 
    END SUBROUTINE dia_ptr_init
 
@@ -540,9 +544,6 @@ CONTAINS
       !!
       !! ** Method  :   NetCDF file
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zphi => wrk_1d_1, zfoo => wrk_1d_2    ! 1D workspace
-      USE wrk_nemo, ONLY:   z_1  => wrk_2d_1                      ! 2D      -
       !!
       INTEGER, INTENT(in) ::   kt   ! ocean time-step index
       !!
@@ -557,11 +558,13 @@ CONTAINS
       INTEGER            ::   inum                                    ! temporary logical unit
 #endif
       REAL(wp)           ::   zsto, zout, zdt, zjulian                ! temporary scalars
-      !!----------------------------------------------------------------------
-
-      IF( wrk_in_use(1, 1,2) .OR. wrk_in_use(2, 1) ) THEN
-         CALL ctl_stop('dia_ptr_wri: requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
+      !!
+      REAL(wp), POINTER, DIMENSION(:)   ::   zphi, zfoo    ! 1D workspace
+      REAL(wp), POINTER, DIMENSION(:,:) ::   z_1           ! 2D workspace
+      !!-------------------------------------------------------------------- 
+      !
+      CALL wrk_alloc( jpj      , zphi , zfoo )
+      CALL wrk_alloc( jpj , jpk, z_1 )
 
       ! define time axis
       it    = kt / nn_fptr
@@ -875,8 +878,8 @@ CONTAINS
          !
       ENDIF
       !
-      IF( wrk_not_released(1, 1,2) .OR.    &
-          wrk_not_released(2, 1)    )   CALL ctl_stop('dia_ptr_wri: failed to release workspace arrays')
+      CALL wrk_dealloc( jpj      , zphi , zfoo )
+      CALL wrk_dealloc( jpj , jpk, z_1 )
       !
   END SUBROUTINE dia_ptr_wri
 

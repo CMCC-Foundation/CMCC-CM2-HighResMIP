@@ -31,8 +31,12 @@ MODULE ldftra_oce
    REAL(wp), PUBLIC ::   rn_slpmax       = 0.01_wp   !: slope limit
 
    REAL(wp), PUBLIC ::   aht0, ahtb0, aeiv0         !!: OLD namelist names
-   LOGICAL , PUBLIC ::   l_triad_iso     = .FALSE.   !: calculate triads twice
-   LOGICAL , PUBLIC ::   l_no_smooth     = .FALSE.   !: no Shapiro smoothing
+   LOGICAL , PUBLIC ::   ln_triad_iso    = .FALSE.   !: calculate triads twice
+   LOGICAL , PUBLIC ::   ln_botmix_grif  = .FALSE.   !: mixing on bottom
+   LOGICAL , PUBLIC ::   l_grad_zps      = .FALSE.   !: special treatment for Horz Tgradients w partial steps 
+
+   REAL(wp), PUBLIC ::   rldf                        !: multiplicative factor of diffusive coefficient
+                                                     !: Needed to define the ratio between passive and active tracer diffusion coef. 
 
 #if defined key_traldf_c3d
    REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   ahtt, ahtu, ahtv, ahtw   !: ** 3D coefficients ** at T-,U-,V-,W-points
@@ -74,7 +78,7 @@ MODULE ldftra_oce
 
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: ldftra_oce.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS

@@ -20,11 +20,14 @@ MODULE sbcssr
    USE in_out_manager  ! I/O manager
    USE lib_mpp         ! distribued memory computing library
    USE lbclnk          ! ocean lateral boundary conditions (or mpp link)
+   USE timing          ! Timing
+   USE lib_fortran     ! Fortran utilities (allows no signed zero when 'key_nosignedzero' defined)
 
    IMPLICIT NONE
    PRIVATE
 
-   PUBLIC   sbc_ssr    ! routine called in sbcmod
+   PUBLIC   sbc_ssr        ! routine called in sbcmod
+   PUBLIC   sbc_ssr_init   ! routine called in sbcmod
 
    REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:) ::   erp   !: evaporation damping   [kg/m2/s]
    REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:) ::   qrp   !: heat flux damping        [w/m2]
@@ -45,7 +48,7 @@ MODULE sbcssr
 #  include "domzgr_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 4.0 , NEMO Consortium (2011)
-   !! $Id: sbcssr.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -78,71 +81,8 @@ CONTAINS
       NAMELIST/namsbc_ssr/ cn_dir, nn_sstr, nn_sssr, rn_dqdt, rn_deds, sn_sst, sn_sss, ln_sssr_bnd, rn_sssr_bnd
       !!----------------------------------------------------------------------
       !
-      !                                               ! -------------------- !
-      IF( kt == nit000 ) THEN                         ! First call kt=nit000 !
-         !                                            ! -------------------- !
-         !                            !* set file information
-         cn_dir  = './'            ! directory in which the model is executed
-         ! ... default values (NB: frequency positive => hours, negative => months)
-         !            !   file    ! frequency !  variable  ! time intep !  clim   ! 'yearly' or ! weights  ! rotation   !
-         !            !   name    !  (hours)  !   name     !   (T/F)    !  (T/F)  !  'monthly'  ! filename ! pairs      !
-         sn_sst = FLD_N( 'sst'    ,    24     ,  'sst'     ,  .false.   , .false. ,   'yearly'  , ''       , ''         )
-         sn_sss = FLD_N( 'sss'    ,    -1     ,  'sss'     ,  .true.    , .false. ,   'yearly'  , ''       , ''         )
-
-         REWIND ( numnam )            !* read in namlist namflx
-         READ( numnam, namsbc_ssr ) 
-
-         IF(lwp) THEN                 !* control print
-            WRITE(numout,*)
-            WRITE(numout,*) 'sbc_ssr : SST and/or SSS damping term '
-            WRITE(numout,*) '~~~~~~~ '
-            WRITE(numout,*) '   Namelist namsbc_ssr :'
-            WRITE(numout,*) '      SST restoring term (Yes=1)             nn_sstr     = ', nn_sstr
-            WRITE(numout,*) '      SSS damping term (Yes=1, salt flux)    nn_sssr     = ', nn_sssr
-            WRITE(numout,*) '                       (Yes=2, volume flux) '
-            WRITE(numout,*) '      dQ/dT (restoring magnitude on SST)     rn_dqdt     = ', rn_dqdt, ' W/m2/K'
-            WRITE(numout,*) '      dE/dS (restoring magnitude on SST)     rn_deds     = ', rn_deds, ' mm/day'
-            WRITE(numout,*) '      flag to bound erp term                 ln_sssr_bnd = ', ln_sssr_bnd
-            WRITE(numout,*) '      ABS(Max./Min.) erp threshold           rn_sssr_bnd = ', rn_sssr_bnd, ' mm/day'
-         ENDIF
-
-         ! Allocate erp and qrp array
-         ALLOCATE( qrp(jpi,jpj), erp(jpi,jpj), STAT=ierror )
-         IF( ierror > 0 )   CALL ctl_stop( 'STOP', 'sbc_ssr: unable to allocate erp and qrp array' )
-
-         IF( nn_sstr == 1 ) THEN      !* set sf_sst structure & allocate arrays
-            !
-            ALLOCATE( sf_sst(1), STAT=ierror )
-            IF( ierror > 0 )   CALL ctl_stop( 'STOP', 'sbc_ssr: unable to allocate sf_sst structure' )
-            ALLOCATE( sf_sst(1)%fnow(jpi,jpj,1), STAT=ierror )
-            IF( ierror > 0 )   CALL ctl_stop( 'STOP', 'sbc_ssr: unable to allocate sf_sst now array' )
-            !
-            ! fill sf_sst with sn_sst and control print
-            CALL fld_fill( sf_sst, (/ sn_sst /), cn_dir, 'sbc_ssr', 'SST restoring term toward SST data', 'namsbc_ssr' )
-            IF( sf_sst(1)%ln_tint )   ALLOCATE( sf_sst(1)%fdta(jpi,jpj,1,2), STAT=ierror )
-            IF( ierror > 0 )   CALL ctl_stop( 'STOP', 'sbc_ssr: unable to allocate sf_sst data array' )
-            !
-         ENDIF
-         !
-         IF( nn_sssr >= 1 ) THEN      ! set sf_sss structure & allocate arrays
-            !
-            ALLOCATE( sf_sss(1), STAT=ierror )
-            IF( ierror > 0 )   CALL ctl_stop( 'STOP', 'sbc_ssr: unable to allocate sf_sss structure' )
-            ALLOCATE( sf_sss(1)%fnow(jpi,jpj,1), STAT=ierror )
-            IF( ierror > 0 )   CALL ctl_stop( 'STOP', 'sbc_ssr: unable to allocate sf_sss now array' )
-            !
-            ! fill sf_sss with sn_sss and control print
-            CALL fld_fill( sf_sss, (/ sn_sss /), cn_dir, 'sbc_ssr', 'SSS restoring term toward SSS data', 'namsbc_ssr' )
-            IF( sf_sss(1)%ln_tint )   ALLOCATE( sf_sss(1)%fdta(jpi,jpj,1,2), STAT=ierror )
-            IF( ierror > 0 )   CALL ctl_stop( 'STOP', 'sbc_ssr: unable to allocate sf_sss data array' )
-            !
-         ENDIF
-         !
-         ! Initialize qrp and erp if no restoring 
-         IF( nn_sstr /= 1                   )   qrp(:,:) = 0.e0 
-         IF( nn_sssr /= 1 .OR. nn_sssr /= 2 )   erp(:,:) = 0.e0 
-      ENDIF
-
+      IF( nn_timing == 1 )  CALL timing_start('sbc_ssr')
+      !
       IF( nn_sstr + nn_sssr /= 0 ) THEN
          !
          IF( nn_sstr == 1)   CALL fld_read( kt, nn_fsbc, sf_sst )   ! Read SST data and provides it at kt
@@ -200,7 +140,94 @@ CONTAINS
          !
       ENDIF
       !
+      IF( nn_timing == 1 )  CALL timing_stop('sbc_ssr')
+      !
    END SUBROUTINE sbc_ssr
+
+ 
+   SUBROUTINE sbc_ssr_init
+      !!---------------------------------------------------------------------
+      !!                  ***  ROUTINE sbc_ssr_init  ***
+      !!
+      !! ** Purpose :   initialisation of surface damping term
+      !!
+      !! ** Method  : - Read namelist namsbc_ssr
+      !!              - Read observed SST and/or SSS if required
+      !!---------------------------------------------------------------------
+      INTEGER  ::   ji, jj   ! dummy loop indices
+      REAL(wp) ::   zerp     ! local scalar for evaporation damping
+      REAL(wp) ::   zqrp     ! local scalar for heat flux damping
+      REAL(wp) ::   zsrp     ! local scalar for unit conversion of rn_deds factor
+      REAL(wp) ::   zerp_bnd ! local scalar for unit conversion of rn_epr_max factor
+      INTEGER  ::   ierror   ! return error code
+      !!
+      CHARACTER(len=100) ::  cn_dir          ! Root directory for location of ssr files
+      TYPE(FLD_N) ::   sn_sst, sn_sss        ! informations about the fields to be read
+      NAMELIST/namsbc_ssr/ cn_dir, nn_sstr, nn_sssr, rn_dqdt, rn_deds, sn_sst, sn_sss, ln_sssr_bnd, rn_sssr_bnd
+      !!----------------------------------------------------------------------
+      !
+      !                            !* set file information
+      cn_dir  = './'            ! directory in which the model is executed
+      ! ... default values (NB: frequency positive => hours, negative => months)
+      !            !   file    ! frequency !  variable  ! time intep !  clim   ! 'yearly' or ! weights  ! rotation   !
+      !            !   name    !  (hours)  !   name     !   (T/F)    !  (T/F)  !  'monthly'  ! filename ! pairs      !
+      sn_sst = FLD_N( 'sst'    ,    24     ,  'sst'     ,  .false.   , .false. ,   'yearly'  , ''       , ''         )
+      sn_sss = FLD_N( 'sss'    ,    -1     ,  'sss'     ,  .true.    , .false. ,   'yearly'  , ''       , ''         )
+
+      REWIND( numnam )             !* read in namlist namflx
+      READ  ( numnam, namsbc_ssr ) 
+
+      IF(lwp) THEN                 !* control print
+         WRITE(numout,*)
+         WRITE(numout,*) 'sbc_ssr : SST and/or SSS damping term '
+         WRITE(numout,*) '~~~~~~~ '
+         WRITE(numout,*) '   Namelist namsbc_ssr :'
+         WRITE(numout,*) '      SST restoring term (Yes=1)             nn_sstr     = ', nn_sstr
+         WRITE(numout,*) '      SSS damping term (Yes=1, salt flux)    nn_sssr     = ', nn_sssr
+         WRITE(numout,*) '                       (Yes=2, volume flux) '
+         WRITE(numout,*) '      dQ/dT (restoring magnitude on SST)     rn_dqdt     = ', rn_dqdt, ' W/m2/K'
+         WRITE(numout,*) '      dE/dS (restoring magnitude on SST)     rn_deds     = ', rn_deds, ' mm/day'
+         WRITE(numout,*) '      flag to bound erp term                 ln_sssr_bnd = ', ln_sssr_bnd
+         WRITE(numout,*) '      ABS(Max./Min.) erp threshold           rn_sssr_bnd = ', rn_sssr_bnd, ' mm/day'
+      ENDIF
+      !
+      !                            !* Allocate erp and qrp array
+      ALLOCATE( qrp(jpi,jpj), erp(jpi,jpj), STAT=ierror )
+      IF( ierror > 0 )   CALL ctl_stop( 'STOP', 'sbc_ssr: unable to allocate erp and qrp array' )
+      !
+      IF( nn_sstr == 1 ) THEN      !* set sf_sst structure & allocate arrays
+         !
+         ALLOCATE( sf_sst(1), STAT=ierror )
+         IF( ierror > 0 )   CALL ctl_stop( 'STOP', 'sbc_ssr: unable to allocate sf_sst structure' )
+         ALLOCATE( sf_sst(1)%fnow(jpi,jpj,1), STAT=ierror )
+         IF( ierror > 0 )   CALL ctl_stop( 'STOP', 'sbc_ssr: unable to allocate sf_sst now array' )
+         !
+         ! fill sf_sst with sn_sst and control print
+         CALL fld_fill( sf_sst, (/ sn_sst /), cn_dir, 'sbc_ssr', 'SST restoring term toward SST data', 'namsbc_ssr' )
+         IF( sf_sst(1)%ln_tint )   ALLOCATE( sf_sst(1)%fdta(jpi,jpj,1,2), STAT=ierror )
+         IF( ierror > 0 )   CALL ctl_stop( 'STOP', 'sbc_ssr: unable to allocate sf_sst data array' )
+         !
+      ENDIF
+      !
+      IF( nn_sssr >= 1 ) THEN      !* set sf_sss structure & allocate arrays
+         !
+         ALLOCATE( sf_sss(1), STAT=ierror )
+         IF( ierror > 0 )   CALL ctl_stop( 'STOP', 'sbc_ssr: unable to allocate sf_sss structure' )
+         ALLOCATE( sf_sss(1)%fnow(jpi,jpj,1), STAT=ierror )
+         IF( ierror > 0 )   CALL ctl_stop( 'STOP', 'sbc_ssr: unable to allocate sf_sss now array' )
+         !
+         ! fill sf_sss with sn_sss and control print
+         CALL fld_fill( sf_sss, (/ sn_sss /), cn_dir, 'sbc_ssr', 'SSS restoring term toward SSS data', 'namsbc_ssr' )
+         IF( sf_sss(1)%ln_tint )   ALLOCATE( sf_sss(1)%fdta(jpi,jpj,1,2), STAT=ierror )
+         IF( ierror > 0 )   CALL ctl_stop( 'STOP', 'sbc_ssr: unable to allocate sf_sss data array' )
+         !
+      ENDIF
+      !
+      !                            !* Initialize qrp and erp if no restoring 
+      IF( nn_sstr /= 1                   )   qrp(:,:) = 0._wp
+      IF( nn_sssr /= 1 .OR. nn_sssr /= 2 )   erp(:,:) = 0._wp
+      !
+   END SUBROUTINE sbc_ssr_init
       
    !!======================================================================
 END MODULE sbcssr

@@ -8,97 +8,118 @@ MODULE wrk_nemo
    !!----------------------------------------------------------------------
 
    !!----------------------------------------------------------------------
-   !!   wrk_alloc         : define in memory the work space arrays
-   !!   wrk_in_use, iwrk_in_use, wrk_in_use_xz : check the availability of a workspace 
-   !!   wrk_not_released, iwrk_not_released, wrk_not_released_xz : release the workspace
-   !!   print_in_use_list : print out the table holding which workspace arrays are currently marked as in use
-   !!   get_next_arg      : get the next argument
-   !!   wrk_stop          : act as local alternative to ctl_stop
+   !!   wrk_alloc         : get work space arrays
+   !!   wrk_dealloc       : release work space arrays
+   !!
+   !! 1d arrays:
+   !!   REAL(wp), POINTER, DIMENSION(:) :: arr1, arr2, ... arr10
+   !!    or
+   !!   INTEGER, POINTER, DIMENSION(:) :: arr1, arr2, ... arr10
+   !!   ...
+   !!   CALL wrk_alloc( nx, arr1, arr2, ... arr10, kistart = kistart )
+   !!   ...
+   !!   CALL wrk_dealloc( nx, arr1, arr2, ... arr10, kistart = kistart)
+   !!   with:
+   !!     - arr*: 1d arrays. real or (not and) integer
+   !!     - nx: size of the 1d arr* arrays
+   !!     - arr2, ..., arr10: optional parameters
+   !!     - kistart: optional parameter to lower bound of the 1st dimension (default = 1)
+   !!
+   !! 2d arrays:
+   !!   REAL(wp), POINTER, DIMENSION(:,:) :: arr1, arr2, ... arr10
+   !!    or
+   !!   INTEGER, POINTER, DIMENSION(:,:) :: arr1, arr2, ... arr10
+   !!   ...
+   !!   CALL wrk_alloc( nx, ny, arr1, arr2, ... arr10, kistart = kistart, kjstart = kjstart )
+   !!   ...
+   !!   CALL wrk_dealloc( nx, ny, arr1, arr2, ... arr10, kistart = kistart, kjstart = kjstart )
+   !!   with:
+   !!     - arr* 2d arrays. real or (not and) integer
+   !!     - nx, ny: size of the 2d arr* arrays
+   !!     - arr2, ..., arr10: optional parameters
+   !!     - kistart, kjstart: optional parameters to lower bound of the 1st/2nd dimension (default = 1)
+   !!
+   !! 3d arrays:
+   !!   REAL(wp), POINTER, DIMENSION(:,:,:) :: arr1, arr2, ... arr10
+   !!    or
+   !!   INTEGER, POINTER, DIMENSION(:,:,:) :: arr1, arr2, ... arr10
+   !!   ...
+   !!   CALL wrk_alloc( nx, ny, nz, arr1, arr2, ... arr10, kistart = kistart, kjstart = kjstart, kkstart = kkstart )
+   !!   ...
+   !!   CALL wrk_dealloc( nx, ny, nz, arr1, arr2, ... arr10, kistart = kistart, kjstart = kjstart, kkstart = kkstart )
+   !!   with:
+   !!     - arr* 3d arrays. real or (not and) integer
+   !!     - nx, ny, nz: size of the 3d arr* arrays
+   !!     - arr2, ..., arr10: optional parameters
+   !!     - kistart, kjstart, kkstart: optional parameters to lower bound of the 1st/2nd/3rd dimension (default = 1)
+   !!
+   !! 4d arrays:
+   !!   REAL(wp), POINTER, DIMENSION(:,:,:,:) :: arr1, arr2, ... arr10
+   !!    or
+   !!   INTEGER, POINTER, DIMENSION(:,:,:,:) :: arr1, arr2, ... arr10
+   !!   ...
+   !!   CALL wrk_alloc( nx, ny, nz, nl, arr1, arr2, ... arr10, &
+   !!      &            kistart = kistart, kjstart = kjstart, kkstart = kkstart, klstart = klstart )
+   !!   ...
+   !!   CALL wrk_dealloc( nx, ny, nz, nl, arr1, arr2, ... arr10, &
+   !!      &            kistart = kistart, kjstart = kjstart, kkstart = kkstart, klstart = klstart )
+   !!   with:
+   !!     - arr* 3d arrays. real or (not and) integer
+   !!     - nx, ny, nz, nl: size of the 4d arr* arrays
+   !!     - arr2, ..., arr10: optional parameters
+   !!     - kistart, kjstart, kkstart, klstart: optional parameters to lower bound of the 1st/2nd/3rd/4th dimension (default = 1)
+   !!   
    !!----------------------------------------------------------------------
    USE par_oce        ! ocean parameters
 
    IMPLICIT NONE
    PRIVATE
-
-   PUBLIC   wrk_alloc   ! function called in nemogcm module (nemo_init routine)
-   PUBLIC   wrk_in_use, iwrk_in_use, wrk_in_use_xz                     ! function called almost everywhere
-   PUBLIC   wrk_not_released, iwrk_not_released, wrk_not_released_xz   ! function called almost everywhere
-
-   INTEGER, PARAMETER :: num_1d_wrkspaces  = 27   ! No. of 1D workspace arrays ( MAX(jpi*jpj,jpi*jpk,jpj*jpk) )
-   INTEGER, PARAMETER :: num_2d_wrkspaces  = 37   ! No. of 2D workspace arrays (jpi,jpj)
-   INTEGER, PARAMETER :: num_3d_wrkspaces  = 15   ! No. of 3D workspace arrays (jpi,jpj,jpk)
-   INTEGER, PARAMETER :: num_4d_wrkspaces  = 4    ! No. of 4D workspace arrays (jpi,jpj,jpk,jpts)
-
-   INTEGER, PARAMETER :: num_xz_wrkspaces  = 4   ! No. of 2D, xz workspace arrays (jpi,jpk)
-
-   INTEGER, PARAMETER :: num_1d_lwrkspaces = 0   ! No. of 1D logical workspace arrays
-   INTEGER, PARAMETER :: num_2d_lwrkspaces = 3   ! No. of 2D logical workspace arrays
-   INTEGER, PARAMETER :: num_3d_lwrkspaces = 1   ! No. of 3D logical workspace arrays
-   INTEGER, PARAMETER :: num_4d_lwrkspaces = 0   ! No. of 4D logical workspace arrays
-
-   INTEGER, PARAMETER :: num_1d_iwrkspaces = 0   ! No. of 1D integer workspace arrays
-   INTEGER, PARAMETER :: num_2d_iwrkspaces = 1   ! No. of 2D integer workspace arrays
-   INTEGER, PARAMETER :: num_3d_iwrkspaces = 0   ! No. of 3D integer workspace arrays
-   INTEGER, PARAMETER :: num_4d_iwrkspaces = 0   ! No. of 4D integer workspace arrays
-   ! Maximum no. of workspaces of any one dimensionality that can be
-   ! requested - MAX(num_1d_wrkspaces, num_2d_wrkspaces, num_3d_wrkspaces, num_4d_wrkspaces) 
-   INTEGER :: max_num_wrkspaces = 37
-
-   ! If adding more arrays here, remember to increment the appropriate 
-   ! num_Xd_wrkspaces parameter above and to allocate them in wrk_alloc()
-
-   !                                                               !!**  1D, REAL(wp) workspaces  **
-   REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:)      , TARGET, PUBLIC ::   wrk_1d_1 , wrk_1d_2 , wrk_1d_3 , wrk_1d_4 , wrk_1d_5
-   REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:)      , TARGET, PUBLIC ::   wrk_1d_6 , wrk_1d_7 , wrk_1d_8 , wrk_1d_9 , wrk_1d_10
-   REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:)      , TARGET, PUBLIC ::   wrk_1d_11, wrk_1d_12, wrk_1d_13, wrk_1d_14, wrk_1d_15
-   REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:)      , TARGET, PUBLIC ::   wrk_1d_16, wrk_1d_17, wrk_1d_18, wrk_1d_19, wrk_1d_20
-   REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:)      , TARGET, PUBLIC ::   wrk_1d_21, wrk_1d_22, wrk_1d_23, wrk_1d_24, wrk_1d_25
-   REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:)      , TARGET, PUBLIC ::   wrk_1d_26, wrk_1d_27
-
-   !                                                               !!**  2D, x-y, REAL(wp) workspaces  **
-   REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:)    , TARGET, PUBLIC ::   wrk_2d_1 , wrk_2d_2 , wrk_2d_3 , wrk_2d_4 , wrk_2d_5
-   REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:)    , TARGET, PUBLIC ::   wrk_2d_6 , wrk_2d_7 , wrk_2d_8 , wrk_2d_9 , wrk_2d_10
-   REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:)    , TARGET, PUBLIC ::   wrk_2d_11, wrk_2d_12, wrk_2d_13, wrk_2d_14, wrk_2d_15
-   REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:)    , TARGET, PUBLIC ::   wrk_2d_16, wrk_2d_17, wrk_2d_18, wrk_2d_19, wrk_2d_20
-   REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:)    , TARGET, PUBLIC ::   wrk_2d_21, wrk_2d_22, wrk_2d_23, wrk_2d_24, wrk_2d_25
-   REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:)    , TARGET, PUBLIC ::   wrk_2d_26, wrk_2d_27, wrk_2d_28, wrk_2d_29, wrk_2d_30
-   REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:)    , TARGET, PUBLIC ::   wrk_2d_31, wrk_2d_32, wrk_2d_33, wrk_2d_34, wrk_2d_35
-   REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:)    , TARGET, PUBLIC ::   wrk_2d_36, wrk_2d_37
-
-   !                                                               !!**  2D, x-z, REAL(wp) workspaces  **
-   REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:)            , PUBLIC ::   wrk_xz_1, wrk_xz_2, wrk_xz_3, wrk_xz_4 
    
-   !                                                               !!**  3D, x-y-z, REAL(wp) workspaces  **
-   REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:,:)  , TARGET, PUBLIC ::   wrk_3d_1 , wrk_3d_2 , wrk_3d_3 , wrk_3d_4 , wrk_3d_5
-   REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:,:)  , TARGET, PUBLIC ::   wrk_3d_6 , wrk_3d_7 , wrk_3d_8 , wrk_3d_9 , wrk_3d_10
-   REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:,:)  , TARGET, PUBLIC ::   wrk_3d_11, wrk_3d_12, wrk_3d_13, wrk_3d_14, wrk_3d_15
+   PUBLIC wrk_alloc, wrk_dealloc, wrk_list
 
-   !                                                               !!**  4D, x-y-z-tra, REAL(wp) workspaces  **
-   REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:,:,:), TARGET, PUBLIC ::   wrk_4d_1, wrk_4d_2, wrk_4d_3, wrk_4d_4 
+   INTERFACE wrk_alloc
+      MODULE PROCEDURE wrk_alloc_1dr, wrk_alloc_2dr, wrk_alloc_3dr, wrk_alloc_4dr,   &
+         &             wrk_alloc_1di, wrk_alloc_2di, wrk_alloc_3di, wrk_alloc_4di
+   END INTERFACE
+
+   INTERFACE wrk_dealloc
+      MODULE PROCEDURE wrk_dealloc_1dr, wrk_dealloc_2dr, wrk_dealloc_3dr, wrk_dealloc_4dr,   &
+         &             wrk_dealloc_1di, wrk_dealloc_2di, wrk_dealloc_3di, wrk_dealloc_4di
+   END INTERFACE
+
+
+   INTEGER, PARAMETER :: jparray = 1000
+   INTEGER, PARAMETER :: jpmaxdim = 4
+
+   INTEGER, PARAMETER :: jpnotdefined = 0
+   INTEGER, PARAMETER :: jpinteger = 1
+   INTEGER, PARAMETER :: jpreal = 2
+  
+   TYPE leaf
+      LOGICAL :: in_use
+      INTEGER :: indic
+      INTEGER , DIMENSION(:)      , POINTER :: iwrk1d => NULL()    
+      INTEGER , DIMENSION(:,:)    , POINTER :: iwrk2d => NULL()    
+      INTEGER , DIMENSION(:,:,:)  , POINTER :: iwrk3d => NULL()    
+      INTEGER , DIMENSION(:,:,:,:), POINTER :: iwrk4d => NULL()    
+      REAL(wp), DIMENSION(:)      , POINTER :: zwrk1d => NULL()    
+      REAL(wp), DIMENSION(:,:)    , POINTER :: zwrk2d => NULL()    
+      REAL(wp), DIMENSION(:,:,:)  , POINTER :: zwrk3d => NULL()    
+      REAL(wp), DIMENSION(:,:,:,:), POINTER :: zwrk4d => NULL()    
+      TYPE (leaf), POINTER :: next => NULL() 
+      TYPE (leaf), POINTER :: prev => NULL() 
+   END TYPE leaf
    
-   !                                                               !!** 2D integer workspace  **
-   INTEGER , ALLOCATABLE, SAVE, DIMENSION(:,:)            , PUBLIC ::   iwrk_2d_1
+   TYPE branch
+      INTEGER :: itype
+      INTEGER, DIMENSION(jpmaxdim) :: ishape, istart
+      TYPE(leaf), POINTER :: start => NULL()     
+      TYPE(leaf), POINTER :: current => NULL()      
+   END TYPE branch
 
-   LOGICAL, DIMENSION(num_1d_wrkspaces)  ::   in_use_1d     !: Flags to track which 1D workspace arrays are in use  
-   LOGICAL, DIMENSION(num_2d_wrkspaces)  ::   in_use_2d     !: Flags to track which 2D workspace arrays are in use
-   LOGICAL, DIMENSION(num_3d_wrkspaces)  ::   in_use_3d     !: Flags to track which 3D workspace arrays are in use
-   LOGICAL, DIMENSION(num_4d_wrkspaces)  ::   in_use_4d     !: Flags to track which 4D workspace arrays are in use
-   LOGICAL, DIMENSION(num_xz_wrkspaces)  ::   in_use_xz     !: Flags to track which 2D, xz workspace arrays are in use
-   LOGICAL, DIMENSION(num_2d_lwrkspaces) ::   in_use_2dll   !: Flags to track which 2D, logical workspace arrays are in use
-   LOGICAL, DIMENSION(num_3d_lwrkspaces) ::   in_use_3dll   !: Flags to track which 3D, logical workspace arrays are in use
-   LOGICAL, DIMENSION(num_2d_iwrkspaces) ::   in_use_2di    !: Flags to track which 2D, integer workspace arrays are in use
+   TYPE(branch), SAVE, DIMENSION(jparray) :: tree
 
-   ! Labels for specifying workspace type in call to print_in_use_list()
-   INTEGER, PARAMETER ::   INTEGER_TYPE = 0
-   INTEGER, PARAMETER ::   LOGICAL_TYPE = 1
-   INTEGER, PARAMETER ::   REAL_TYPE    = 2
-
-   INTEGER :: kumout  ! Local copy of numout unit number for error/warning messages
-   LOGICAL :: llwp    ! Local copy of lwp - whether we are master PE or not
-
-   CHARACTER(LEN=*), PARAMETER ::   cform_err2 = "(/,' ===>>> : E R R O R',     /,'         ===========',/)"       !:
-   CHARACTER(LEN=*), PARAMETER ::   cform_war2 = "(/,' ===>>> : W A R N I N G', /,'         ===============',/)"   !:
-
+   LOGICAL ::   linit = .FALSE.
    !!----------------------------------------------------------------------
    !! NEMO/OPA 4.0 , NEMO Consortium (2011)
    !! $Id:$
@@ -106,745 +127,450 @@ MODULE wrk_nemo
    !!----------------------------------------------------------------------
 CONTAINS
 
-  FUNCTION wrk_alloc(iunit, lwp_arg)
-      !!----------------------------------------------------------------------
-      !!                   ***  FUNCTION wrk_alloc  ***
-      !!
-      !! ** Purpose :   Define in memory once for all the NEMO 2D, 3D and 4d 
-      !!                work space arrays
-      !!----------------------------------------------------------------------
-      INTEGER, INTENT(in) ::   iunit         ! Unit no. to use for error/warning messages in this module
-      LOGICAL, INTENT(in) ::   lwp_arg       ! Value of lwp
+   SUBROUTINE wrk_list
+      ! to list 3d arrays in use, to be duplicated for all cases 
+      WRITE(*,*) 'Arrays in use :'
+      !      CALL listage(tree_3d(1)%s_wrk_3d_start)
+      WRITE(*,*) ''
+      
+   END SUBROUTINE wrk_list
+   
+   
+   RECURSIVE SUBROUTINE listage(ptr)
+      
+      TYPE(leaf), POINTER, INTENT(in) :: ptr
       !
-      INTEGER ::   wrk_alloc   ! Return value
-      INTEGER ::   extent_1d   ! Extent to allocate for 1D arrays
-      INTEGER ::   ierror(6)   ! local integer
-      !!----------------------------------------------------------------------
+      IF( ASSOCIATED(ptr%next) ) CALL listage(ptr%next)
+      WRITE(*,*) ptr%in_use, ptr%indic   
+      
+   END SUBROUTINE listage
+
+
+   SUBROUTINE wrk_alloc_1dr( kidim, p1d01, p1d02, p1d03, p1d04, p1d05, p1d06, p1d07, p1d08, p1d09, p1d10, kistart )
+      INTEGER                        , INTENT(in   )           ::   kidim   ! dimensions size
+      REAL(wp), POINTER, DIMENSION(:), INTENT(inout)           ::   p1d01
+      REAL(wp), POINTER, DIMENSION(:), INTENT(inout), OPTIONAL ::   p1d02,p1d03,p1d04,p1d05,p1d06,p1d07,p1d08,p1d09,p1d10
+      INTEGER                        , INTENT(in   ), OPTIONAL ::   kistart
       !
-      ! Save the unit number to use for err/warning messages
-      kumout = iunit
-      ! Save whether we are master PE or not (for output messages)
-      llwp = lwp_arg
+      CALL wrk_alloc_xd( kidim, 0, 0, 0, kistart, 1, 1, 1,                                            &
+         &               p1d01 = p1d01, p1d02 = p1d02, p1d03 = p1d03, p1d04 = p1d04, p1d05 = p1d05,   &
+         &               p1d06 = p1d06, p1d07 = p1d07, p1d08 = p1d08, p1d09 = p1d09, p1d10 = p1d10    )
       !
-      ! Extent to use for 1D work arrays - find the maximum product of 
-      ! jpi*jpj, jpi*jpk and jpj*jpk and use that
-      IF    ( jpi < jpj .AND. jpi < jpk ) THEN   ;   extent_1d = jpj*jpk
-      ELSEIF( jpj < jpi .AND. jpj < jpk ) THEN   ;   extent_1d = jpi*jpk
-      ELSE                                       ;   extent_1d = jpi*jpj
+   END SUBROUTINE wrk_alloc_1dr
+
+
+   SUBROUTINE wrk_alloc_1di( kidim, k1d01, k1d02, k1d03, k1d04, k1d05, k1d06, k1d07, k1d08, k1d09, k1d10, kistart )
+      INTEGER                        , INTENT(in   )           ::   kidim   ! dimensions size
+      INTEGER , POINTER, DIMENSION(:), INTENT(inout)           ::   k1d01
+      INTEGER , POINTER, DIMENSION(:), INTENT(inout), OPTIONAL ::   k1d02,k1d03,k1d04,k1d05,k1d06,k1d07,k1d08,k1d09,k1d10
+      INTEGER                        , INTENT(in   ), OPTIONAL ::   kistart
+      !
+      CALL wrk_alloc_xd( kidim, 0, 0, 0, kistart, 1, 1, 1,                                            &
+         &               k1d01 = k1d01, k1d02 = k1d02, k1d03 = k1d03, k1d04 = k1d04, k1d05 = k1d05,   &
+         &               k1d06 = k1d06, k1d07 = k1d07, k1d08 = k1d08, k1d09 = k1d09, k1d10 = k1d10    )
+      !
+   END SUBROUTINE wrk_alloc_1di
+
+
+   SUBROUTINE wrk_alloc_2dr( kidim, kjdim, p2d01, p2d02, p2d03, p2d04, p2d05, p2d06, p2d07, p2d08, p2d09, p2d10, kistart, kjstart )
+      INTEGER                          , INTENT(in   )           ::   kidim, kjdim   ! dimensions size
+      REAL(wp), POINTER, DIMENSION(:,:), INTENT(inout)           ::   p2d01
+      REAL(wp), POINTER, DIMENSION(:,:), INTENT(inout), OPTIONAL ::   p2d02,p2d03,p2d04,p2d05,p2d06,p2d07,p2d08,p2d09,p2d10
+      INTEGER                          , INTENT(in   ), OPTIONAL ::   kistart, kjstart
+      !
+      CALL wrk_alloc_xd( kidim, kjdim, 0, 0, kistart, kjstart, 1, 1,                                  &
+         &               p2d01 = p2d01, p2d02 = p2d02, p2d03 = p2d03, p2d04 = p2d04, p2d05 = p2d05,   &
+         &               p2d06 = p2d06, p2d07 = p2d07, p2d08 = p2d08, p2d09 = p2d09, p2d10 = p2d10    )
+      !
+   END SUBROUTINE wrk_alloc_2dr
+
+
+   SUBROUTINE wrk_alloc_2di( kidim, kjdim, k2d01, k2d02, k2d03, k2d04, k2d05, k2d06, k2d07, k2d08, k2d09, k2d10, kistart, kjstart )
+      INTEGER                          , INTENT(in   )           ::   kidim, kjdim   ! dimensions size
+      INTEGER , POINTER, DIMENSION(:,:), INTENT(inout)           ::   k2d01
+      INTEGER , POINTER, DIMENSION(:,:), INTENT(inout), OPTIONAL ::   k2d02,k2d03,k2d04,k2d05,k2d06,k2d07,k2d08,k2d09,k2d10
+      INTEGER                          , INTENT(in   ), OPTIONAL ::   kistart, kjstart
+      !
+      CALL wrk_alloc_xd( kidim, kjdim, 0, 0, kistart, kjstart, 1, 1,                                  &
+         &               k2d01 = k2d01, k2d02 = k2d02, k2d03 = k2d03, k2d04 = k2d04, k2d05 = k2d05,   &
+         &               k2d06 = k2d06, k2d07 = k2d07, k2d08 = k2d08, k2d09 = k2d09, k2d10 = k2d10    )
+      !
+   END SUBROUTINE wrk_alloc_2di
+
+
+   SUBROUTINE wrk_alloc_3dr( kidim, kjdim, kkdim, p3d01, p3d02, p3d03, p3d04, p3d05, p3d06, p3d07, p3d08, p3d09, p3d10,   &
+      &                      kistart, kjstart, kkstart )
+      INTEGER                            , INTENT(in   )           ::   kidim, kjdim, kkdim   ! dimensions size
+      REAL(wp), POINTER, DIMENSION(:,:,:), INTENT(inout)           ::   p3d01
+      REAL(wp), POINTER, DIMENSION(:,:,:), INTENT(inout), OPTIONAL ::   p3d02,p3d03,p3d04,p3d05,p3d06,p3d07,p3d08,p3d09,p3d10
+      INTEGER                            , INTENT(in   ), OPTIONAL ::   kistart, kjstart, kkstart
+      !
+      CALL wrk_alloc_xd( kidim, kjdim, kkdim, 0, kistart, kjstart, kkstart, 1,                        &
+         &               p3d01 = p3d01, p3d02 = p3d02, p3d03 = p3d03, p3d04 = p3d04, p3d05 = p3d05,   &
+         &               p3d06 = p3d06, p3d07 = p3d07, p3d08 = p3d08, p3d09 = p3d09, p3d10 = p3d10    )
+      !
+   END SUBROUTINE wrk_alloc_3dr
+
+
+   SUBROUTINE wrk_alloc_3di( kidim, kjdim, kkdim, k3d01, k3d02, k3d03, k3d04, k3d05, k3d06, k3d07, k3d08, k3d09, k3d10,   &
+      &                      kistart, kjstart, kkstart )
+      INTEGER                            , INTENT(in   )           ::   kidim, kjdim, kkdim   ! dimensions size
+      INTEGER , POINTER, DIMENSION(:,:,:), INTENT(inout)           ::   k3d01
+      INTEGER , POINTER, DIMENSION(:,:,:), INTENT(inout), OPTIONAL ::   k3d02,k3d03,k3d04,k3d05,k3d06,k3d07,k3d08,k3d09,k3d10
+      INTEGER                            , INTENT(in   ), OPTIONAL ::   kistart, kjstart, kkstart
+      !
+      CALL wrk_alloc_xd( kidim, kjdim, kkdim, 0, kistart, kjstart, kkstart, 1,                        &
+         &               k3d01 = k3d01, k3d02 = k3d02, k3d03 = k3d03, k3d04 = k3d04, k3d05 = k3d05,   &
+         &               k3d06 = k3d06, k3d07 = k3d07, k3d08 = k3d08, k3d09 = k3d09, k3d10 = k3d10    )
+      !
+   END SUBROUTINE wrk_alloc_3di
+
+
+   SUBROUTINE wrk_alloc_4dr( kidim, kjdim, kkdim, kldim, p4d01, p4d02, p4d03, p4d04, p4d05, p4d06, p4d07, p4d08, p4d09, p4d10,   &
+      &                      kistart, kjstart, kkstart, klstart )
+      INTEGER                              , INTENT(in   )           ::   kidim, kjdim, kkdim, kldim   ! dimensions size
+      REAL(wp), POINTER, DIMENSION(:,:,:,:), INTENT(inout)           ::   p4d01
+      REAL(wp), POINTER, DIMENSION(:,:,:,:), INTENT(inout), OPTIONAL ::   p4d02,p4d03,p4d04,p4d05,p4d06,p4d07,p4d08,p4d09,p4d10
+      INTEGER                              , INTENT(in   ), OPTIONAL ::   kistart, kjstart, kkstart, klstart
+      !
+      CALL wrk_alloc_xd( kidim, kjdim, kkdim, kldim, kistart, kjstart, kkstart, klstart,              &
+         &               p4d01 = p4d01, p4d02 = p4d02, p4d03 = p4d03, p4d04 = p4d04, p4d05 = p4d05,   &
+         &               p4d06 = p4d06, p4d07 = p4d07, p4d08 = p4d08, p4d09 = p4d09, p4d10 = p4d10    )
+      !
+   END SUBROUTINE wrk_alloc_4dr
+
+
+   SUBROUTINE wrk_alloc_4di( kidim, kjdim, kkdim, kldim, k4d01, k4d02, k4d03, k4d04, k4d05, k4d06, k4d07, k4d08, k4d09, k4d10,   &
+      &                      kistart, kjstart, kkstart, klstart )
+      INTEGER                              , INTENT(in   )           ::   kidim, kjdim, kkdim, kldim   ! dimensions size
+      INTEGER , POINTER, DIMENSION(:,:,:,:), INTENT(inout)           ::   k4d01
+      INTEGER , POINTER, DIMENSION(:,:,:,:), INTENT(inout), OPTIONAL ::   k4d02,k4d03,k4d04,k4d05,k4d06,k4d07,k4d08,k4d09,k4d10
+      INTEGER                              , INTENT(in   ), OPTIONAL ::   kistart, kjstart, kkstart, klstart
+      !
+      CALL wrk_alloc_xd( kidim, kjdim, kkdim, kldim, kistart, kjstart, kkstart, klstart,              &
+         &               k4d01 = k4d01, k4d02 = k4d02, k4d03 = k4d03, k4d04 = k4d04, k4d05 = k4d05,   &
+         &               k4d06 = k4d06, k4d07 = k4d07, k4d08 = k4d08, k4d09 = k4d09, k4d10 = k4d10    )
+      !
+   END SUBROUTINE wrk_alloc_4di
+
+
+   SUBROUTINE wrk_dealloc_1dr( kidim, p1d01, p1d02, p1d03, p1d04, p1d05, p1d06, p1d07, p1d08, p1d09, p1d10, kistart )
+      INTEGER                        , INTENT(in   )           ::   kidim   ! dimensions size
+      REAL(wp), POINTER, DIMENSION(:), INTENT(inout)           ::   p1d01
+      REAL(wp), POINTER, DIMENSION(:), INTENT(inout), OPTIONAL ::   p1d02,p1d03,p1d04,p1d05,p1d06,p1d07,p1d08,p1d09,p1d10
+      INTEGER                        , INTENT(in   ), OPTIONAL ::   kistart
+      !
+      INTEGER :: icnt, jn
+      icnt = 1 + COUNT( (/                PRESENT(p1d02),PRESENT(p1d03),PRESENT(p1d04),PRESENT(p1d05),   &
+         &                 PRESENT(p1d06),PRESENT(p1d07),PRESENT(p1d08),PRESENT(p1d09),PRESENT(p1d10) /) )
+      DO jn = 1, icnt   ;   CALL wrk_deallocbase( jpreal, kidim, 0, 0, 0, kistart, 1, 1, 1)   ;   END DO
+      !
+   END SUBROUTINE wrk_dealloc_1dr
+
+
+   SUBROUTINE wrk_dealloc_1di( kidim, k1d01, k1d02, k1d03, k1d04, k1d05, k1d06, k1d07, k1d08, k1d09, k1d10, kistart )
+      INTEGER                        , INTENT(in   )           ::   kidim   ! dimensions size
+      INTEGER , POINTER, DIMENSION(:), INTENT(inout)           ::   k1d01
+      INTEGER , POINTER, DIMENSION(:), INTENT(inout), OPTIONAL ::   k1d02,k1d03,k1d04,k1d05,k1d06,k1d07,k1d08,k1d09,k1d10
+      INTEGER                        , INTENT(in   ), OPTIONAL ::   kistart
+      !
+      INTEGER :: icnt, jn
+      icnt = 1 + COUNT( (/                PRESENT(k1d02),PRESENT(k1d03),PRESENT(k1d04),PRESENT(k1d05),   &
+         &                 PRESENT(k1d06),PRESENT(k1d07),PRESENT(k1d08),PRESENT(k1d09),PRESENT(k1d10) /) )
+      DO jn = 1, icnt   ;   CALL wrk_deallocbase( jpinteger, kidim, 0, 0, 0, kistart, 1, 1, 1 )   ;   END DO
+      !
+   END SUBROUTINE wrk_dealloc_1di
+
+
+   SUBROUTINE wrk_dealloc_2dr( kidim, kjdim, p2d01, p2d02, p2d03, p2d04, p2d05, p2d06, p2d07, p2d08, p2d09, p2d10, kistart,kjstart )
+      INTEGER                          , INTENT(in   )           ::   kidim, kjdim   ! dimensions size
+      REAL(wp), POINTER, DIMENSION(:,:), INTENT(inout)           ::   p2d01
+      REAL(wp), POINTER, DIMENSION(:,:), INTENT(inout), OPTIONAL ::   p2d02,p2d03,p2d04,p2d05,p2d06,p2d07,p2d08,p2d09,p2d10
+      INTEGER                          , INTENT(in   ), OPTIONAL ::   kistart, kjstart
+      !
+      INTEGER :: icnt, jn
+      icnt = 1 + COUNT( (/                PRESENT(p2d02),PRESENT(p2d03),PRESENT(p2d04),PRESENT(p2d05),   &
+         &                 PRESENT(p2d06),PRESENT(p2d07),PRESENT(p2d08),PRESENT(p2d09),PRESENT(p2d10) /) )
+      DO jn = 1, icnt   ;   CALL wrk_deallocbase( jpreal, kidim, kjdim, 0, 0, kistart, kjstart, 1, 1 )   ;   END DO
+      !
+   END SUBROUTINE wrk_dealloc_2dr
+
+
+   SUBROUTINE wrk_dealloc_2di( kidim, kjdim, k2d01, k2d02, k2d03, k2d04, k2d05, k2d06, k2d07, k2d08, k2d09, k2d10, kistart,kjstart )
+      INTEGER                          , INTENT(in   )           ::   kidim, kjdim   ! dimensions size
+      INTEGER , POINTER, DIMENSION(:,:), INTENT(inout)           ::   k2d01
+      INTEGER , POINTER, DIMENSION(:,:), INTENT(inout), OPTIONAL ::   k2d02,k2d03,k2d04,k2d05,k2d06,k2d07,k2d08,k2d09,k2d10
+      INTEGER                          , INTENT(in   ), OPTIONAL ::   kistart, kjstart
+      !
+      INTEGER :: icnt, jn
+      icnt = 1 + COUNT( (/                PRESENT(k2d02),PRESENT(k2d03),PRESENT(k2d04),PRESENT(k2d05),   &
+         &                 PRESENT(k2d06),PRESENT(k2d07),PRESENT(k2d08),PRESENT(k2d09),PRESENT(k2d10) /) )
+      DO jn = 1, icnt   ;   CALL wrk_deallocbase( jpinteger, kidim, kjdim, 0, 0, kistart, kjstart, 1, 1 )   ;   END DO
+      !
+   END SUBROUTINE wrk_dealloc_2di
+
+
+   SUBROUTINE wrk_dealloc_3dr( kidim, kjdim, kkdim, p3d01, p3d02, p3d03, p3d04, p3d05, p3d06, p3d07, p3d08, p3d09, p3d10,   &
+      &                        kistart, kjstart, kkstart )
+      INTEGER                            , INTENT(in   )           ::   kidim, kjdim, kkdim   ! dimensions size
+      REAL(wp), POINTER, DIMENSION(:,:,:), INTENT(inout)           ::   p3d01
+      REAL(wp), POINTER, DIMENSION(:,:,:), INTENT(inout), OPTIONAL ::   p3d02,p3d03,p3d04,p3d05,p3d06,p3d07,p3d08,p3d09,p3d10
+      INTEGER                            , INTENT(in   ), OPTIONAL ::   kistart, kjstart, kkstart
+      !
+      INTEGER :: icnt, jn
+      icnt = 1 + COUNT( (/                PRESENT(p3d02),PRESENT(p3d03),PRESENT(p3d04),PRESENT(p3d05),   &
+         &                 PRESENT(p3d06),PRESENT(p3d07),PRESENT(p3d08),PRESENT(p3d09),PRESENT(p3d10) /) )
+      DO jn = 1, icnt   ;   CALL wrk_deallocbase( jpreal, kidim, kjdim, kkdim, 0, kistart, kjstart, kkstart, 1 )   ;   END DO
+      !
+   END SUBROUTINE wrk_dealloc_3dr
+
+
+   SUBROUTINE wrk_dealloc_3di( kidim, kjdim, kkdim, k3d01, k3d02, k3d03, k3d04, k3d05, k3d06, k3d07, k3d08, k3d09, k3d10,   &
+      &                        kistart, kjstart, kkstart )
+      INTEGER                            , INTENT(in   )           ::   kidim, kjdim, kkdim   ! dimensions size
+      INTEGER , POINTER, DIMENSION(:,:,:), INTENT(inout)           ::   k3d01
+      INTEGER , POINTER, DIMENSION(:,:,:), INTENT(inout), OPTIONAL ::   k3d02,k3d03,k3d04,k3d05,k3d06,k3d07,k3d08,k3d09,k3d10
+      INTEGER                            , INTENT(in   ), OPTIONAL ::   kistart, kjstart, kkstart
+      !
+      INTEGER :: icnt, jn
+      icnt = 1 + COUNT( (/                PRESENT(k3d02),PRESENT(k3d03),PRESENT(k3d04),PRESENT(k3d05),   &
+         &                 PRESENT(k3d06),PRESENT(k3d07),PRESENT(k3d08),PRESENT(k3d09),PRESENT(k3d10) /) )
+      DO jn = 1, icnt   ;   CALL wrk_deallocbase( jpinteger, kidim, kjdim, kkdim, 0, kistart, kjstart, kkstart, 1 )   ;   END DO
+      !
+   END SUBROUTINE wrk_dealloc_3di
+
+
+   SUBROUTINE wrk_dealloc_4dr( kidim, kjdim, kkdim, kldim, p4d01, p4d02, p4d03, p4d04, p4d05, p4d06, p4d07, p4d08, p4d09, p4d10,   &
+      &                        kistart, kjstart, kkstart, klstart )
+      INTEGER                              , INTENT(in   )           ::   kidim, kjdim, kkdim, kldim   ! dimensions size
+      REAL(wp), POINTER, DIMENSION(:,:,:,:), INTENT(inout)           ::   p4d01
+      REAL(wp), POINTER, DIMENSION(:,:,:,:), INTENT(inout), OPTIONAL ::   p4d02,p4d03,p4d04,p4d05,p4d06,p4d07,p4d08,p4d09,p4d10
+      INTEGER                              , INTENT(in   ), OPTIONAL ::   kistart, kjstart, kkstart, klstart
+      !
+      INTEGER :: icnt, jn
+      icnt = 1 + COUNT( (/                PRESENT(p4d02),PRESENT(p4d03),PRESENT(p4d04),PRESENT(p4d05),   &
+         &                 PRESENT(p4d06),PRESENT(p4d07),PRESENT(p4d08),PRESENT(p4d09),PRESENT(p4d10) /) )
+      DO jn = 1, icnt ; CALL wrk_deallocbase( jpreal, kidim, kjdim, kkdim, kldim, kistart, kjstart, kkstart, klstart ) ; END DO
+      !
+   END SUBROUTINE wrk_dealloc_4dr
+
+
+   SUBROUTINE wrk_dealloc_4di( kidim, kjdim, kkdim, kldim, k4d01, k4d02, k4d03, k4d04, k4d05, k4d06, k4d07, k4d08, k4d09, k4d10,   &
+      &                        kistart, kjstart, kkstart, klstart )
+      INTEGER                              , INTENT(in   )           ::   kidim, kjdim, kkdim, kldim   ! dimensions size
+      INTEGER , POINTER, DIMENSION(:,:,:,:), INTENT(inout)           ::   k4d01
+      INTEGER , POINTER, DIMENSION(:,:,:,:), INTENT(inout), OPTIONAL ::   k4d02,k4d03,k4d04,k4d05,k4d06,k4d07,k4d08,k4d09,k4d10
+      INTEGER                              , INTENT(in   ), OPTIONAL ::   kistart, kjstart, kkstart, klstart
+      !
+      INTEGER :: icnt, jn
+      icnt = 1 + COUNT( (/                PRESENT(k4d02),PRESENT(k4d03),PRESENT(k4d04),PRESENT(k4d05),   &
+         &                 PRESENT(k4d06),PRESENT(k4d07),PRESENT(k4d08),PRESENT(k4d09),PRESENT(k4d10) /) )
+      DO jn = 1, icnt ; CALL wrk_deallocbase( jpinteger, kidim, kjdim, kkdim, kldim, kistart, kjstart, kkstart, klstart ) ; END DO
+      !
+   END SUBROUTINE wrk_dealloc_4di
+
+
+   SUBROUTINE wrk_alloc_xd( kidim, kjdim, kkdim, kldim,                                             &
+      &                     kisrt, kjsrt, kksrt, klsrt,                                             &
+      &                     k1d01, k1d02, k1d03, k1d04, k1d05, k1d06, k1d07, k1d08, k1d09, k1d10,   &
+      &                     k2d01, k2d02, k2d03, k2d04, k2d05, k2d06, k2d07, k2d08, k2d09, k2d10,   &
+      &                     k3d01, k3d02, k3d03, k3d04, k3d05, k3d06, k3d07, k3d08, k3d09, k3d10,   &
+      &                     k4d01, k4d02, k4d03, k4d04, k4d05, k4d06, k4d07, k4d08, k4d09, k4d10,   &
+      &                     p1d01, p1d02, p1d03, p1d04, p1d05, p1d06, p1d07, p1d08, p1d09, p1d10,   &
+      &                     p2d01, p2d02, p2d03, p2d04, p2d05, p2d06, p2d07, p2d08, p2d09, p2d10,   &
+      &                     p3d01, p3d02, p3d03, p3d04, p3d05, p3d06, p3d07, p3d08, p3d09, p3d10,   &
+      &                     p4d01, p4d02, p4d03, p4d04, p4d05, p4d06, p4d07, p4d08, p4d09, p4d10    )
+      INTEGER                              ,INTENT(in   )         ::   kidim, kjdim, kkdim, kldim   ! dimensions size
+      INTEGER                              ,INTENT(in   ),OPTIONAL::   kisrt, kjsrt, kksrt, klsrt
+      INTEGER , POINTER, DIMENSION(:      ),INTENT(inout),OPTIONAL::   k1d01,k1d02,k1d03,k1d04,k1d05,k1d06,k1d07,k1d08,k1d09,k1d10
+      INTEGER , POINTER, DIMENSION(:,:    ),INTENT(inout),OPTIONAL::   k2d01,k2d02,k2d03,k2d04,k2d05,k2d06,k2d07,k2d08,k2d09,k2d10
+      INTEGER , POINTER, DIMENSION(:,:,:  ),INTENT(inout),OPTIONAL::   k3d01,k3d02,k3d03,k3d04,k3d05,k3d06,k3d07,k3d08,k3d09,k3d10
+      INTEGER , POINTER, DIMENSION(:,:,:,:),INTENT(inout),OPTIONAL::   k4d01,k4d02,k4d03,k4d04,k4d05,k4d06,k4d07,k4d08,k4d09,k4d10
+      REAL(wp), POINTER, DIMENSION(:      ),INTENT(inout),OPTIONAL::   p1d01,p1d02,p1d03,p1d04,p1d05,p1d06,p1d07,p1d08,p1d09,p1d10
+      REAL(wp), POINTER, DIMENSION(:,:    ),INTENT(inout),OPTIONAL::   p2d01,p2d02,p2d03,p2d04,p2d05,p2d06,p2d07,p2d08,p2d09,p2d10
+      REAL(wp), POINTER, DIMENSION(:,:,:  ),INTENT(inout),OPTIONAL::   p3d01,p3d02,p3d03,p3d04,p3d05,p3d06,p3d07,p3d08,p3d09,p3d10
+      REAL(wp), POINTER, DIMENSION(:,:,:,:),INTENT(inout),OPTIONAL::   p4d01,p4d02,p4d03,p4d04,p4d05,p4d06,p4d07,p4d08,p4d09,p4d10
+      !
+      LOGICAL ::   llpres
+      INTEGER ::   jn, iisrt, ijsrt, iksrt, ilsrt
+      !
+      IF( .NOT. linit ) THEN
+         tree(:)%itype = jpnotdefined
+         DO jn = 1, jparray   ;   tree(jn)%ishape(:) = 0   ;   tree(jn)%istart(:) = 0   ;   END DO
+         linit = .TRUE.
       ENDIF
-      !
-      ! Initialise the 'in use' flags for each work-space array
-      in_use_1d  (:) = .FALSE.
-      in_use_2d  (:) = .FALSE.
-      in_use_3d  (:) = .FALSE.
-      in_use_4d  (:) = .FALSE.
-      in_use_xz  (:) = .FALSE.
-      in_use_2dll(:) = .FALSE.
-      in_use_3dll(:) = .FALSE.
-      in_use_2di (:) = .FALSE.
-      !
-      ierror(:) = 0
-      !
-      ALLOCATE( wrk_1d_1 (extent_1d) , wrk_1d_2 (extent_1d) , wrk_1d_3 (extent_1d) , wrk_1d_4 (extent_1d) ,     &
-         &      wrk_1d_5 (extent_1d) , wrk_1d_6 (extent_1d) , wrk_1d_7 (extent_1d) , wrk_1d_8 (extent_1d) ,     &
-         &      wrk_1d_9 (extent_1d) , wrk_1d_10(extent_1d)                                               ,     &
-         &      wrk_1d_11(extent_1d) , wrk_1d_12(extent_1d) , wrk_1d_13(extent_1d) , wrk_1d_14(extent_1d) ,     &
-         &      wrk_1d_15(extent_1d) , wrk_1d_16(extent_1d) , wrk_1d_17(extent_1d) , wrk_1d_18(extent_1d) ,     &
-         &      wrk_1d_19(extent_1d) , wrk_1d_20(extent_1d)                                               ,     &
-         &      wrk_1d_21(extent_1d) , wrk_1d_22(extent_1d) , wrk_1d_23(extent_1d) , wrk_1d_24(extent_1d) ,     &
-         &      wrk_1d_25(extent_1d) , wrk_1d_26(extent_1d) , wrk_1d_27(extent_1d)                        , STAT=ierror(1) )
-         !
-      ALLOCATE( wrk_2d_1 (jpi,jpj) , wrk_2d_2 (jpi,jpj) , wrk_2d_3 (jpi,jpj) , wrk_2d_4 (jpi,jpj) ,     & 
-         &      wrk_2d_5 (jpi,jpj) , wrk_2d_6 (jpi,jpj) , wrk_2d_7 (jpi,jpj) , wrk_2d_8 (jpi,jpj) ,     &
-         &      wrk_2d_9 (jpi,jpj) , wrk_2d_10(jpi,jpj)                                           ,     &
-         &      wrk_2d_11(jpi,jpj) , wrk_2d_12(jpi,jpj) , wrk_2d_13(jpi,jpj) , wrk_2d_14(jpi,jpj) ,     &
-         &      wrk_2d_15(jpi,jpj) , wrk_2d_16(jpi,jpj) , wrk_2d_17(jpi,jpj) , wrk_2d_18(jpi,jpj) ,     &
-         &      wrk_2d_19(jpi,jpj) , wrk_2d_20(jpi,jpj)                                           ,     &
-         &      wrk_2d_21(jpi,jpj) , wrk_2d_22(jpi,jpj) , wrk_2d_23(jpi,jpj) , wrk_2d_24(jpi,jpj) ,     &
-         &      wrk_2d_25(jpi,jpj) , wrk_2d_26(jpi,jpj) , wrk_2d_27(jpi,jpj) , wrk_2d_28(jpi,jpj) ,     &
-         &      wrk_2d_29(jpi,jpj) , wrk_2d_30(jpi,jpj)                                           ,     &
-         &      wrk_2d_31(jpi,jpj) , wrk_2d_32(jpi,jpj) , wrk_2d_33(jpi,jpj) , wrk_2d_34(jpi,jpj) ,     &
-         &      wrk_2d_35(jpi,jpj) , wrk_2d_36(jpi,jpj) , wrk_2d_37(jpi,jpj)                      , STAT=ierror(2) )
-         !
-      ALLOCATE( wrk_3d_1 (jpi,jpj,jpk) , wrk_3d_2 (jpi,jpj,jpk) , wrk_3d_3 (jpi,jpj,jpk) , wrk_3d_4 (jpi,jpj,jpk) ,     &
-         &      wrk_3d_5 (jpi,jpj,jpk) , wrk_3d_6 (jpi,jpj,jpk) , wrk_3d_7 (jpi,jpj,jpk) , wrk_3d_8 (jpi,jpj,jpk) ,     &
-         &      wrk_3d_9 (jpi,jpj,jpk) , wrk_3d_10(jpi,jpj,jpk)                                                   ,     & 
-         &      wrk_3d_11(jpi,jpj,jpk) , wrk_3d_12(jpi,jpj,jpk) , wrk_3d_13(jpi,jpj,jpk) , wrk_3d_14(jpi,jpj,jpk) ,     & 
-         &      wrk_3d_15(jpi,jpj,jpk)                                                                            , STAT=ierror(3) )
-         !
-      ALLOCATE( wrk_4d_1(jpi,jpj,jpk,jpts) , wrk_4d_2(jpi,jpj,jpk,jpts),     &
-         &      wrk_4d_3(jpi,jpj,jpk,jpts) , wrk_4d_4(jpi,jpj,jpk,jpts), STAT=ierror(4) )
-         !
-      ALLOCATE( wrk_xz_1(jpi,jpk) , wrk_xz_2(jpi,jpk) , wrk_xz_3(jpi,jpk) , wrk_xz_4(jpi,jpk) , STAT=ierror(5) )
-         !
-      ALLOCATE( iwrk_2d_1(jpi,jpj)      , STAT=ierror(6) )
-      !
-      wrk_alloc = MAXVAL( ierror )
-      !
-      ! Calling routine, nemo_alloc(), checks for errors and takes 
-      ! appropriate action - we just print a warning message
-      IF( wrk_alloc /= 0 ) THEN
-         WRITE(kumout,cform_war2)
-         WRITE(kumout,*) 'wrk_alloc: allocation of workspace arrays failed'
-      ENDIF
-      !
-   END FUNCTION wrk_alloc
+
+      IF( PRESENT(kisrt) ) THEN   ;   iisrt =  kisrt   ;   ELSE   ;   iisrt = 1   ;   ENDIF 
+      IF( PRESENT(kjsrt) ) THEN   ;   ijsrt =  kjsrt   ;   ELSE   ;   ijsrt = 1   ;   ENDIF 
+      IF( PRESENT(kksrt) ) THEN   ;   iksrt =  kksrt   ;   ELSE   ;   iksrt = 1   ;   ENDIF 
+      IF( PRESENT(klsrt) ) THEN   ;   ilsrt =  klsrt   ;   ELSE   ;   ilsrt = 1   ;   ENDIF 
+
+      llpres =  PRESENT(k1d01) .OR. PRESENT(k2d01) .OR. PRESENT(k3d01) .OR. PRESENT(k4d01)   &
+         & .OR. PRESENT(p1d01) .OR. PRESENT(p2d01) .OR. PRESENT(p3d01) .OR. PRESENT(p4d01)
+      IF( llpres ) CALL wrk_allocbase( kidim, kjdim, kkdim, kldim, iisrt, ijsrt, iksrt, ilsrt,   &
+         &                             k1d01, k2d01, k3d01, k4d01, p1d01, p2d01, p3d01, p4d01    )
+      llpres =  PRESENT(k1d02) .OR. PRESENT(k2d02) .OR. PRESENT(k3d02) .OR. PRESENT(k4d02)   &
+         & .OR. PRESENT(p1d02) .OR. PRESENT(p2d02) .OR. PRESENT(p3d02) .OR. PRESENT(p4d02)
+      IF( llpres ) CALL wrk_allocbase( kidim, kjdim, kkdim, kldim, iisrt, ijsrt, iksrt, ilsrt,   &
+         &                             k1d02, k2d02, k3d02, k4d02, p1d02, p2d02, p3d02, p4d02    )
+      llpres =  PRESENT(k1d03) .OR. PRESENT(k2d03) .OR. PRESENT(k3d03) .OR. PRESENT(k4d03)   &
+         & .OR. PRESENT(p1d03) .OR. PRESENT(p2d03) .OR. PRESENT(p3d03) .OR. PRESENT(p4d03)
+      IF( llpres ) CALL wrk_allocbase( kidim, kjdim, kkdim, kldim, iisrt, ijsrt, iksrt, ilsrt,   &
+         &                             k1d03, k2d03, k3d03, k4d03, p1d03, p2d03, p3d03, p4d03    )
+      llpres =  PRESENT(k1d04) .OR. PRESENT(k2d04) .OR. PRESENT(k3d04) .OR. PRESENT(k4d04)   &
+         & .OR. PRESENT(p1d04) .OR. PRESENT(p2d04) .OR. PRESENT(p3d04) .OR. PRESENT(p4d04)
+      IF( llpres ) CALL wrk_allocbase( kidim, kjdim, kkdim, kldim, iisrt, ijsrt, iksrt, ilsrt,   &
+         &                             k1d04, k2d04, k3d04, k4d04, p1d04, p2d04, p3d04, p4d04    )
+      llpres =  PRESENT(k1d05) .OR. PRESENT(k2d05) .OR. PRESENT(k3d05) .OR. PRESENT(k4d05)   &
+         & .OR. PRESENT(p1d05) .OR. PRESENT(p2d05) .OR. PRESENT(p3d05) .OR. PRESENT(p4d05)
+      IF( llpres ) CALL wrk_allocbase( kidim, kjdim, kkdim, kldim, iisrt, ijsrt, iksrt, ilsrt,   &
+         &                             k1d05, k2d05, k3d05, k4d05, p1d05, p2d05, p3d05, p4d05    )
+      llpres =  PRESENT(k1d06) .OR. PRESENT(k2d06) .OR. PRESENT(k3d06) .OR. PRESENT(k4d06)   &
+         & .OR. PRESENT(p1d06) .OR. PRESENT(p2d06) .OR. PRESENT(p3d06) .OR. PRESENT(p4d06)
+      IF( llpres ) CALL wrk_allocbase( kidim, kjdim, kkdim, kldim, iisrt, ijsrt, iksrt, ilsrt,   &
+         &                             k1d06, k2d06, k3d06, k4d06, p1d06, p2d06, p3d06, p4d06    )
+      llpres =  PRESENT(k1d07) .OR. PRESENT(k2d07) .OR. PRESENT(k3d07) .OR. PRESENT(k4d07)   &
+         & .OR. PRESENT(p1d07) .OR. PRESENT(p2d07) .OR. PRESENT(p3d07) .OR. PRESENT(p4d07)
+      IF( llpres ) CALL wrk_allocbase( kidim, kjdim, kkdim, kldim, iisrt, ijsrt, iksrt, ilsrt,   &
+         &                             k1d07, k2d07, k3d07, k4d07, p1d07, p2d07, p3d07, p4d07    )
+      llpres =  PRESENT(k1d08) .OR. PRESENT(k2d08) .OR. PRESENT(k3d08) .OR. PRESENT(k4d08)   &
+         & .OR. PRESENT(p1d08) .OR. PRESENT(p2d08) .OR. PRESENT(p3d08) .OR. PRESENT(p4d08)
+      IF( llpres ) CALL wrk_allocbase( kidim, kjdim, kkdim, kldim, iisrt, ijsrt, iksrt, ilsrt,   &
+         &                             k1d08, k2d08, k3d08, k4d08, p1d08, p2d08, p3d08, p4d08    )
+      llpres =  PRESENT(k1d09) .OR. PRESENT(k2d09) .OR. PRESENT(k3d09) .OR. PRESENT(k4d09)   &
+         & .OR. PRESENT(p1d09) .OR. PRESENT(p2d09) .OR. PRESENT(p3d09) .OR. PRESENT(p4d09)
+      IF( llpres ) CALL wrk_allocbase( kidim, kjdim, kkdim, kldim, iisrt, ijsrt, iksrt, ilsrt,   &
+         &                             k1d09, k2d09, k3d09, k4d09, p1d09, p2d09, p3d09, p4d09    )
+      llpres =  PRESENT(k1d10) .OR. PRESENT(k2d10) .OR. PRESENT(k3d10) .OR. PRESENT(k4d10)   &
+         & .OR. PRESENT(p1d10) .OR. PRESENT(p2d10) .OR. PRESENT(p3d10) .OR. PRESENT(p4d10)
+      IF( llpres ) CALL wrk_allocbase( kidim, kjdim, kkdim, kldim, iisrt, ijsrt, iksrt, ilsrt,   &
+         &                             k1d10, k2d10, k3d10, k4d10, p1d10, p2d10, p3d10, p4d10    )
+
+   END SUBROUTINE wrk_alloc_xd
 
 
-   FUNCTION wrk_in_use( kdim,    index1,  index2,  index3,  index4,    &
-      &                 index5,  index6,  index7,  index8,  index9,    &
-      &                 index10, index11, index12, index13, index14,   &
-      &                 index15, index16, index17, index18, index19,   &
-      &                 index20, index21, index22, index23, index24,   &
-      &                 index25, index26, index27)
-      !!----------------------------------------------------------------------
-      !!                   ***  FUNCTION wrk_in_use  ***
-      !!
-      !! ** Purpose :   Request a set of KIND(wp) workspaces to use. Returns 
-      !!                .TRUE. if any of those requested are already in use, 
-      !!                .FALSE. otherwise. 
-      !!
-      !! ** Method  :   Sets internal flags to signal that requested workspaces are in use.
-      !!                key_no_workspace_check defined ==> always return FALSE
-      !!----------------------------------------------------------------------
-      INTEGER          , INTENT(in) ::   kdim        ! Dimensionality of requested workspace(s)
-      INTEGER          , INTENT(in) ::   index1      ! Index of first requested workspace
-      INTEGER, OPTIONAL, INTENT(in) ::             index2 , index3 , index4 , index5 , index6 , index7 , index8 , index9, index10
-      INTEGER, OPTIONAL, INTENT(in) ::   index11, index12, index13, index14, index15, index16, index17, index18, index19, index20
-      INTEGER, OPTIONAL, INTENT(in) ::   index21, index22, index23, index24, index25, index26, index27
+   SUBROUTINE wrk_allocbase( kidim , kjdim , kkdim , kldim , kisrt , kjsrt , kksrt , klsrt ,   &
+      &                      kwrk1d, kwrk2d, kwrk3d, kwrk4d, pwrk1d, pwrk2d, pwrk3d, pwrk4d    )
+      INTEGER                              , INTENT(in   )           :: kidim, kjdim, kkdim, kldim
+      INTEGER                              , INTENT(in   )           :: kisrt, kjsrt, kksrt, klsrt
+      INTEGER , POINTER, DIMENSION(:)      , INTENT(inout), OPTIONAL :: kwrk1d  
+      INTEGER , POINTER, DIMENSION(:,:)    , INTENT(inout), OPTIONAL :: kwrk2d  
+      INTEGER , POINTER, DIMENSION(:,:,:)  , INTENT(inout), OPTIONAL :: kwrk3d  
+      INTEGER , POINTER, DIMENSION(:,:,:,:), INTENT(inout), OPTIONAL :: kwrk4d  
+      REAL(wp), POINTER, DIMENSION(:)      , INTENT(inout), OPTIONAL :: pwrk1d  
+      REAL(wp), POINTER, DIMENSION(:,:)    , INTENT(inout), OPTIONAL :: pwrk2d  
+      REAL(wp), POINTER, DIMENSION(:,:,:)  , INTENT(inout), OPTIONAL :: pwrk3d  
+      REAL(wp), POINTER, DIMENSION(:,:,:,:), INTENT(inout), OPTIONAL :: pwrk4d  
       !
-      LOGICAL ::   wrk_in_use      ! Return value
-      INTEGER ::   iarg, iptr   ! local integer
-      !!----------------------------------------------------------------------
-      !
-      wrk_in_use = .FALSE.
-      !
-#if ! defined   key_no_workspace_check   ||   ! defined   key_agrif
-      ! NB: check not available with AGRIF
-      !
-      iptr    = index1
-      iarg    = 1
-      !
-      DO WHILE( .NOT. wrk_in_use .AND. iarg <= max_num_wrkspaces )
-         !
-         IF( kdim == 1 ) THEN
-            IF( iptr > num_1d_wrkspaces ) THEN
-               CALL wrk_stop('wrk_in_use - more 1D workspace arrays requested than defined in wrk_nemo module')
-               wrk_in_use = .TRUE.
-               EXIT
-            ELSEIF( in_use_1d(iptr) ) THEN
-               wrk_in_use = .TRUE.
-               CALL print_in_use_list(1, REAL_TYPE, in_use_1d)
-            ENDIF
-            in_use_1d(iptr) = .TRUE.
-            !
-         ELSEIF( kdim == 2 ) THEN
-            IF( iptr > num_2d_wrkspaces ) THEN
-               CALL wrk_stop('wrk_in_use - more 2D workspace arrays requested than defined in wrk_nemo module')
-               wrk_in_use = .TRUE.
-               EXIT
-            ELSEIF( in_use_2d(iptr) ) THEN
-               wrk_in_use = .TRUE.
-               CALL print_in_use_list(2, REAL_TYPE, in_use_2d)
-            ENDIF
-            in_use_2d(iptr) = .TRUE.
-            !
-         ELSEIF( kdim == 3 ) THEN
-            IF( iptr > num_3d_wrkspaces ) THEN
-               CALL wrk_stop( 'wrk_in_use - more 3D workspace arrays requested than defined in wrk_nemo module' )
-               wrk_in_use = .TRUE.
-               EXIT
-            ELSEIF( in_use_3d(iptr) ) THEN
-               wrk_in_use = .TRUE.
-               CALL print_in_use_list(3, REAL_TYPE, in_use_3d)
-            ENDIF
-            in_use_3d(iptr) = .TRUE.
-            !
-         ELSEIF( kdim == 4 ) THEN
-            IF(iptr > num_4d_wrkspaces)THEN
-               CALL wrk_stop( 'wrk_in_use - more 4D workspace arrays requested than defined in wrk_nemo module' )
-               wrk_in_use = .TRUE.
-               EXIT
-            ELSEIF( in_use_4d(iptr) ) THEN
-               wrk_in_use = .TRUE.
-               CALL print_in_use_list( 4, REAL_TYPE, in_use_4d )
-            ENDIF
-            !
-            in_use_4d(iptr) = .TRUE.
-            !
-         ELSE 
-            IF(llwp) WRITE(kumout,*) 'wrk_in_use: unsupported value of kdim = ',kdim
-            CALL wrk_stop( 'wrk_in_use: unrecognised value for number of dimensions' )
-         ENDIF
+      INTEGER, DIMENSION(jpmaxdim) :: ishape, isrt, iend
+      INTEGER :: itype
+      INTEGER :: ii
 
-         CALL get_next_arg( iarg  ,  iptr  ,  index2,  index3,  index4,    &
-            &               index5,  index6,  index7,  index8,  index9,    &
-            &               index10, index11, index12, index13, index14,   &
-            &               index15, index16, index17, index18, index19,   &
-            &               index20, index21, index22, index23, index24,   &
-            &               index25, index26, index27)
+      ! define the shape to be given to the work array
+      ishape(:) = (/ kidim, kjdim, kkdim, kldim /)
+      ! define the starting index of the dimension shape to be given to the work array
+      isrt  (:) = (/ kisrt, kjsrt, kksrt, klsrt /)
+      iend  (:) = ishape(:) + isrt(:) - 1
 
-         IF( iarg == -1 ) THEN      ! We've checked all of the arguments and are done
-            EXIT
-         ELSEIF( iarg == -99 ) THEN
-            CALL wrk_stop( 'wrk_in_use : caught unexpected argument count - BUG' )
-            EXIT
-         ENDIF
-         !
-      END DO ! end of DO WHILE()
-#endif
-      !
-   END FUNCTION wrk_in_use
+      ! is it integer or real array?
+      IF( PRESENT(kwrk1d) .OR. PRESENT(kwrk2d) .OR. PRESENT(kwrk3d) .OR. PRESENT(kwrk4d) )   itype = jpinteger   
+      IF( PRESENT(pwrk1d) .OR. PRESENT(pwrk2d) .OR. PRESENT(pwrk3d) .OR. PRESENT(pwrk4d) )   itype = jpreal         
 
-
-   FUNCTION iwrk_in_use( kdim, index1, index2, index3, index4,   &
-      &                        index5, index6, index7 )
-      !!----------------------------------------------------------------------
-      !!                   ***  FUNCTION iwrk_in_use  ***
-      !!
-      !! ** Purpose :   Request a set of INTEGER workspaces to use. Returns 
-      !!                .TRUE. if any of those requested are already in use, 
-      !!                .FALSE. otherwise. 
-      !!
-      !! ** Method  :   Sets internal flags to signal that requested workspaces
-      !!                are in use.
-      !!----------------------------------------------------------------------
-      INTEGER          , INTENT(in) ::   kdim        ! Dimensionality of requested workspace(s)
-      INTEGER          , INTENT(in) ::   index1      ! Index of first requested workspace
-      INTEGER, OPTIONAL, INTENT(in) ::   index2, index3, index4, index5, index6, index7
-      !
-      LOGICAL ::   iwrk_in_use    ! Return value
-      INTEGER ::   iarg, iptr
-      !!----------------------------------------------------------------------
-      !
-      iwrk_in_use = .FALSE.
-      !
-#if ! defined   key_no_workspace_check   ||   ! defined   key_agrif
-      ! NB: check not available with AGRIF
-      !
-      iptr     = index1
-      iarg     = 1
-      !
-      DO WHILE( .NOT.iwrk_in_use .AND. iarg <= max_num_wrkspaces )
-         !
-         IF( kdim == 2 ) THEN
-            IF( iptr > num_2d_wrkspaces ) THEN
-               CALL wrk_stop( 'wrk_in_use - more 2D workspace arrays requested than defined in wrk_nemo module' )
-               iwrk_in_use = .TRUE.
-            ELSEIF( in_use_2di(iptr) ) THEN
-               iwrk_in_use = .TRUE.
-               CALL print_in_use_list( 2, INTEGER_TYPE, in_use_2di )
-            ENDIF
-            in_use_2di(iptr) = .TRUE.
-            !
-         ELSE
-            IF(llwp) WRITE(kumout,*) 'iwrk_in_use: unsupported value of kdim = ',kdim
-            CALL wrk_stop('iwrk_in_use: unsupported value for number of dimensions')
-         ENDIF
-         !
-         SELECT CASE (iarg)         ! Move on to next optional argument
-         CASE ( 1 )
-            IF( .NOT. PRESENT(index2) ) THEN   ;   EXIT
-            ELSE                               ;   iarg = 2   ;   iptr = index2
-            ENDIF
-         CASE ( 2 )
-            IF( .NOT. PRESENT(index3) ) THEN   ;   EXIT
-            ELSE                               ;   iarg = 3   ;   iptr = index3
-            ENDIF
-         CASE ( 3 )
-            IF( .NOT. PRESENT(index4) ) THEN   ;   EXIT
-            ELSE                               ;   iarg = 4   ;   iptr = index4
-            ENDIF
-         CASE ( 4 )
-            IF( .NOT. PRESENT(index5) ) THEN   ;   EXIT
-            ELSE                               ;   iarg = 5   ;   iptr = index5
-            ENDIF
-         CASE ( 5 )
-            IF( .NOT. PRESENT(index6) ) THEN   ;   EXIT
-            ELSE                               ;   iarg = 6   ;   iptr = index6
-            ENDIF
-         CASE ( 6 )
-            IF( .NOT. PRESENT(index7) ) THEN   ;   EXIT
-            ELSE                               ;   iarg = 7   ;   iptr = index7
-            ENDIF
-         CASE ( 7 )
-            EXIT
-         CASE DEFAULT
-            CALL wrk_stop( 'iwrk_in_use : caught unexpected argument count - BUG' )
-            EXIT
-         END SELECT
-         !
-      END DO ! end of DO WHILE()
-#endif
-      !
-   END FUNCTION iwrk_in_use
-
-
-   FUNCTION wrk_in_use_xz( index1, index2, index3, index4,   &
-      &                    index5, index6, index7, index8, index9 )
-      !!----------------------------------------------------------------------
-      !!                   ***  FUNCTION wrk_in_use_xz  ***
-      !!
-      !! ** Purpose :   Request a set of 2D, xz (jpi,jpk) workspaces to use. 
-      !!                Returns .TRUE. if any of those requested are already in
-      !!                use, .FALSE. otherwise. 
-      !!
-      !! ** Method  :   Sets internal flags to signal that requested workspaces
-      !!                are in use.
-      !!----------------------------------------------------------------------
-      INTEGER          , INTENT(in) ::   index1      ! Index of first requested workspace
-      INTEGER, OPTIONAL, INTENT(in) ::   index2, index3, index4, index5
-      INTEGER, OPTIONAL, INTENT(in) ::   index6, index7, index8, index9
-      !
-      LOGICAL ::   wrk_in_use_xz   ! Return value
-      INTEGER ::   iarg, iptr      ! local integer
-      !!----------------------------------------------------------------------
-      !
-      wrk_in_use_xz = .FALSE.
-      !
-#if ! defined   key_no_workspace_check   ||   ! defined   key_agrif
-      ! NB: check not available with AGRIF
-      !
-      iptr = index1
-      iarg = 1
-      !
-      DO WHILE( .NOT. wrk_in_use_xz .AND. iarg <= max_num_wrkspaces )
-         !
-         IF( iptr > num_xz_wrkspaces ) THEN
-            CALL wrk_stop('wrk_in_use_xz - more 2D xz workspace arrays requested than defined in wrk_nemo module')
-            wrk_in_use_xz = .TRUE.
-            EXIT
-         ELSE IF( in_use_xz(iptr) ) THEN
-            wrk_in_use_xz = .TRUE.
-            CALL print_in_use_list(2, REAL_TYPE, in_use_xz) !ARPDBG - bug
-         ENDIF
-         !
-         in_use_xz(iptr) = .TRUE.
-         !
-         CALL get_next_arg( iarg  , iptr  , index2, index3, index4,   &
-            &               index5, index6, index7, index8, index9 )
-         !
-         IF( iarg == -1 ) THEN      ! We've checked all of the arguments and are done
-            EXIT
-         ELSEIF( iarg == -99 ) THEN
-            CALL wrk_stop( 'wrk_in_use_xz : caught unexpected argument count - BUG' )   ;   EXIT
-         ENDIF
-         !
-      END DO ! while( (.NOT. wrk_in_use_xz) .AND. iarg <= max_num_wrkspaces)
-#endif
-      !
-   END FUNCTION wrk_in_use_xz
-
-
-   FUNCTION wrk_not_released( kdim,    index1,  index2,  index3,  index4,  &
-      &                       index5,  index6,  index7,  index8,  index9,  &
-      &                       index10, index11, index12, index13, index14, &
-      &                       index15, index16, index17, index18, index19, &
-      &                       index20, index21, index22, index23, index24, &
-      &                       index25, index26, index27)
-      !!----------------------------------------------------------------------
-      !!                 ***  FUNCTION wrk_not_released  ***
-      !!
-      !! ** Purpose :   Flag that the specified workspace arrays are no-longer
-      !!                in use.
-      !!----------------------------------------------------------------------
-      INTEGER          , INTENT(in) ::   kdim             ! Dimensionality of workspace(s)
-      INTEGER          , INTENT(in) ::   index1           ! Index of 1st workspace to release
-      INTEGER, OPTIONAL, INTENT(in) ::            index2 , index3 , index4 , index5 , index6 , index7 , index8 , index9 , index10
-      INTEGER, OPTIONAL, INTENT(in) ::   index11, index12, index13, index14, index15, index16, index17, index18, index19, index20
-      INTEGER, OPTIONAL, INTENT(in) ::   index21, index22, index23, index24, index25, index26, index27
-      !
-      LOGICAL ::   wrk_not_released   ! Return value
-      INTEGER ::   iarg, iptr
-      !!----------------------------------------------------------------------
-      !
-      wrk_not_released = .FALSE.
-      !
-#if ! defined   key_no_workspace_check   ||   ! defined   key_agrif
-      ! NB: check not available with AGRIF
-      !
-      iptr = index1
-      iarg = 1
-      !
-      DO WHILE( iarg <= max_num_wrkspaces )
-         !
-         IF( kdim == 1 ) THEN
-            IF( iptr > num_1d_wrkspaces ) THEN
-               CALL wrk_stop( 'wrk_not_released : attempt to release a non-existent 1D workspace array' )
-               wrk_not_released = .TRUE.
-            ELSE
-               in_use_1d(iptr) = .FALSE.
-            ENDIF
-            !
-         ELSE IF(kdim == 2) THEN
-            IF( iptr > num_2d_wrkspaces ) THEN
-               CALL wrk_stop( 'wrk_not_released : attempt to release a non-existent 2D workspace array' )
-               wrk_not_released = .TRUE.
-            ENDIF
-            in_use_2d(iptr) = .FALSE.
-            !
-         ELSEIF( kdim == 3 ) THEN
-            IF( iptr > num_3d_wrkspaces ) THEN
-               CALL wrk_stop('wrk_not_released : attempt to release a non-existent 3D workspace array')
-               wrk_not_released = .TRUE.
-            ENDIF
-            in_use_3d(iptr) = .FALSE.
-            !
-          ELSEIF( kdim == 4 ) THEN
-            IF( iptr > num_4d_wrkspaces ) THEN
-               CALL wrk_stop('wrk_not_released : attempt to release a non-existent 4D workspace array')
-               wrk_not_released = .TRUE.
-            ENDIF
-            in_use_4d(iptr) = .FALSE.
-            !
-         ELSE 
-            IF(llwp) WRITE(kumout,*) 'wrk_not_released: unsupported value of kdim = ',kdim
-            CALL wrk_stop('wrk_not_released: unrecognised value for number of dimensions')
-         ENDIF
-         !
-         ! Move on to next optional argument
-         CALL get_next_arg( iarg  ,  iptr  ,  index2,  index3,  index4,   &
-            &               index5,  index6,  index7,  index8,  index9,   &
-            &               index10, index11, index12, index13,           &
-            &               index14, index15, index16, index17,           &
-            &               index18, index19, index20, index21,           &
-            &               index22, index23, index24, index25,           &
-            &               index26, index27 )
-
-         IF( iarg == -1 ) THEN      ! We've checked all of the arguments and are done
-            EXIT
-         ELSEIF( iarg == -99 ) THEN
-             CALL wrk_stop('wrk_not_released - caught unexpected argument count - BUG')   ;   EXIT
-         ENDIF
-         !
-      END DO ! end of DO WHILE()
-#endif
-      !
-   END FUNCTION wrk_not_released
-
-
-   FUNCTION iwrk_not_released( kdim, index1, index2, index3, index4,   &
-      &                              index5, index6, index7 )
-      !!----------------------------------------------------------------------
-      !!                 ***  FUNCTION iwrk_not_released  ***
-      !!
-      !! ** Purpose :   Flag that the specified INTEGER workspace arrays are
-      !!                no-longer in use.
-      !!----------------------------------------------------------------------
-      INTEGER          , INTENT(in) ::   kdim             ! Dimensionality of workspace(s)
-      INTEGER          , INTENT(in) ::   index1           ! Index of 1st workspace to release
-      INTEGER, OPTIONAL, INTENT(in) ::   index2, index3, index4, index5, index6, index7
-      !
-      LOGICAL :: iwrk_not_released   ! Return value
-      INTEGER :: iarg, iptr          ! local integer
-      !!----------------------------------------------------------------------
-      !
-      iwrk_not_released = .FALSE.
-      !
-#if ! defined   key_no_workspace_check   ||   ! defined   key_agrif
-      ! NB: check not available with AGRIF
-      !
-      iptr = index1
-      iarg = 1
-      !
-      DO WHILE(iarg <= max_num_wrkspaces)
-         !
-         IF( kdim == 2 ) THEN
-            IF( iptr > num_2d_iwrkspaces ) THEN
-               CALL wrk_stop('iwrk_not_released : attempt to release a non-existant 2D workspace array')
-               iwrk_not_released = .TRUE.
-            ENDIF
-            in_use_2di(iptr) = .FALSE.
-         ELSE 
-            IF(llwp) WRITE(kumout,*) 'iwrk_not_released: unsupported value of kdim = ',kdim
-            CALL wrk_stop('iwrk_not_released: unsupported value for number of dimensions')
-         ENDIF
-         !
-         ! Move on to next optional argument
-         SELECT CASE (iarg)
-         CASE ( 1 )
-            IF( .NOT. PRESENT(index2) ) THEN   ;   EXIT
-            ELSE                               ;   iarg = 2   ;   iptr = index2
-            ENDIF
-         CASE ( 2 )
-            IF( .NOT. PRESENT(index3) ) THEN   ;   EXIT
-            ELSE                               ;   iarg = 3   ;   iptr = index3
-            ENDIF
-         CASE ( 3 )
-            IF( .NOT. PRESENT(index4) ) THEN   ;   EXIT
-            ELSE                               ;   iarg = 4   ;   iptr = index4
-            ENDIF
-         CASE ( 4 )
-            IF( .NOT. PRESENT(index5) ) THEN   ;   EXIT
-            ELSE                               ;   iarg = 5   ;   iptr = index5
-            ENDIF
-         CASE ( 5 )
-            IF( .NOT. PRESENT(index6) ) THEN   ;   EXIT
-            ELSE                               ;   iarg = 6   ;   iptr = index6
-            ENDIF
-         CASE ( 6 )
-            IF( .NOT. PRESENT(index7) ) THEN   ;   EXIT
-            ELSE                               ;   iarg = 7   ;   iptr = index7
-            ENDIF
-         CASE ( 7 )
-            EXIT
-         CASE DEFAULT
-            CALL wrk_stop( 'iwrk_not_released : caught unexpected argument count - BUG' )
-            EXIT
-         END SELECT
-         !
-      END DO ! end of DO WHILE()
-#endif
-      !
-   END FUNCTION iwrk_not_released
-
-
-   FUNCTION wrk_not_released_xz( index1, index2, index3, index4, index5,   &
-      &                          index6, index7, index8, index9 )
-      !!----------------------------------------------------------------------
-      !!                 ***  FUNCTION wrk_not_released_xz  ***
-      !!
-      !!----------------------------------------------------------------------
-      INTEGER          , INTENT(in) ::   index1   ! Index of 1st workspace to release
-      INTEGER, OPTIONAL, INTENT(in) ::   index2, index3, index4, index5, index6, index7, index8, index9
-      !
-      LOGICAL ::   wrk_not_released_xz   ! Return value
-      INTEGER ::   iarg, iptr            ! local integer
-      !!----------------------------------------------------------------------
-      !
-      wrk_not_released_xz = .FALSE.
-      !
-#if ! defined   key_no_workspace_check   ||   ! defined   key_agrif
-      ! NB: check not available with AGRIF
-      !
-      iptr           = index1
-      iarg           = 1
-      !
-      DO WHILE( iarg <= max_num_wrkspaces )
-         !
-         IF( iptr > num_xz_wrkspaces ) THEN
-            CALL wrk_stop('wrk_not_released_xz : attempt to release a non-existant 2D xz workspace array')
-            wrk_not_released_xz = .TRUE.
-            EXIT
-         ENDIF
-         in_use_xz(iptr) = .FALSE.
-         !
-         ! Move on to next optional argument
-         CALL get_next_arg( iarg, iptr, index2, index3, index4,   &
-            &                           index5, index6, index7, index8, index9)
-         !
-         IF(  iarg == -1 ) THEN     ! We've checked all of the arguments and are done
-            EXIT
-         ELSEIF( iarg == -99 ) THEN
-            CALL wrk_stop('wrk_not_released_xz : caught unexpected argument count - BUG')
-            EXIT
-         ENDIF
-         !
-      END DO ! while (iarg <= max_num_wrkspaces)
-#endif
-      !
-   END FUNCTION wrk_not_released_xz
-
-
-   SUBROUTINE print_in_use_list( kdim, itype, in_use_list )
-      !!----------------------------------------------------------------------
-      !!                 *** ROUTINE print_in_use_list ***
-      !!
-      !! ** Purpose:   to print out the table holding which workspace arrays
-      !!             are currently marked as in use.
-      !!----------------------------------------------------------------------
-      INTEGER,               INTENT(in) :: kdim
-      INTEGER,               INTENT(in) :: itype
-      LOGICAL, DIMENSION(:), INTENT(in) :: in_use_list
-      !
-      INTEGER          ::   ji, icount
-      CHARACTER(LEN=7) ::   type_string
-      !!----------------------------------------------------------------------
-      !
-      IF(.NOT. llwp)   RETURN
-      !
-      SELECT CASE ( kdim )
-      !
-      CASE (1)
-         SELECT CASE (itype)
-         CASE (INTEGER_TYPE)   ;   icount = num_1d_iwrkspaces
-         CASE (LOGICAL_TYPE)   ;   icount = num_1d_lwrkspaces
-         CASE (REAL_TYPE   )   ;   icount = num_1d_wrkspaces
-         END SELECT
-         !
-      CASE (2)
-         SELECT CASE (itype)
-         CASE (INTEGER_TYPE)   ;   icount = num_2d_iwrkspaces
-         CASE (LOGICAL_TYPE)   ;   icount = num_2d_lwrkspaces
-         CASE (REAL_TYPE   )   ;   icount = num_2d_wrkspaces
-         END SELECT
-         !
-      CASE (3)
-         SELECT CASE (itype)
-         CASE (INTEGER_TYPE)   ;   icount = num_3d_iwrkspaces
-         CASE (LOGICAL_TYPE)   ;   icount = num_3d_lwrkspaces
-         CASE (REAL_TYPE   )   ;   icount = num_3d_wrkspaces
-         END SELECT
-         !
-      CASE (4)
-         SELECT CASE (itype)
-         CASE (INTEGER_TYPE)   ;   icount = num_4d_iwrkspaces
-         CASE (LOGICAL_TYPE)   ;   icount = num_4d_lwrkspaces
-         CASE (REAL_TYPE   )   ;   icount = num_4d_wrkspaces
-         END SELECT
-         !
-      CASE DEFAULT   ;   RETURN
-      !
-      END SELECT
-      !
-      ! Set character string with type of workspace
-      SELECT CASE (itype)
-      CASE (INTEGER_TYPE)   ;   type_string = "INTEGER" 
-      CASE (LOGICAL_TYPE)   ;   type_string = "LOGICAL"
-      CASE (REAL_TYPE   )   ;   type_string = "REAL" 
-      END SELECT
-      !
-      WRITE(kumout,*)
-      WRITE(kumout,"('------------------------------------------')")
-      WRITE(kumout,"('Table of ',I1,'D ',(A),' workspaces currently in use:')") kdim, TRIM(type_string)
-      WRITE(kumout,"('Workspace   In use')")
-      DO ji = 1, icount, 1
-         WRITE(kumout,"(4x,I2,8x,L1)") ji, in_use_list(ji)
+      ! find the branch with the matching shape, staring index and type or get the first "free" branch 
+      ii = 1                          
+      DO WHILE(       ( ANY( tree(ii)%ishape /= ishape ) .OR. ANY( tree(ii)%istart /= isrt ) .OR. tree(ii)%itype /= itype )   &
+         &      .AND. SUM( tree(ii)%ishape ) /= 0 )
+         ii = ii + 1
+         IF (ii > jparray) STOP   ! increase the value of jparray (should not be needed as already very big!)
       END DO
-      WRITE(kumout,"('------------------------------------------')")
-      WRITE(kumout,*)
-      !
-   END SUBROUTINE print_in_use_list
+      
+      IF( SUM( tree(ii)%ishape ) == 0 ) THEN                    ! create a new branch 
+         tree(ii)%itype = itype                                        ! define the type of this branch 
+         tree(ii)%ishape(:) = ishape(:)                                ! define the shape of this branch 
+         tree(ii)%istart(:) = isrt(:)                                  ! define the lower bounds of this branch 
+         ALLOCATE( tree(ii)%start )                                    ! allocate its start
+         ALLOCATE( tree(ii)%current)                                   ! allocate the current leaf (the first leaf)
+
+         tree(ii)%start%in_use = .FALSE.                               ! Never use the start as work array
+         tree(ii)%start%indic = 0
+         tree(ii)%start%prev => NULL()                                 ! nothing before the start
+         tree(ii)%start%next => tree(ii)%current                       ! first leaf link to the start
+         
+         tree(ii)%current%in_use = .FALSE.                             ! first leaf is not yet used
+         tree(ii)%current%indic = 1                                    ! first leaf
+         tree(ii)%current%prev => tree(ii)%start                       ! previous leaf is the start
+         tree(ii)%current%next => NULL()                               ! next leaf is not yet defined
+         ! allocate the array of the first leaf
+         IF( PRESENT(kwrk1d) ) ALLOCATE( tree(ii)%current%iwrk1d(isrt(1):iend(1)                                                ) )
+         IF( PRESENT(kwrk2d) ) ALLOCATE( tree(ii)%current%iwrk2d(isrt(1):iend(1),isrt(2):iend(2)                                ) )
+         IF( PRESENT(kwrk3d) ) ALLOCATE( tree(ii)%current%iwrk3d(isrt(1):iend(1),isrt(2):iend(2),isrt(3):iend(3)                ) )
+         IF( PRESENT(kwrk4d) ) ALLOCATE( tree(ii)%current%iwrk4d(isrt(1):iend(1),isrt(2):iend(2),isrt(3):iend(3),isrt(4):iend(4)) )
+         IF( PRESENT(pwrk1d) ) ALLOCATE( tree(ii)%current%zwrk1d(isrt(1):iend(1)                                                ) )
+         IF( PRESENT(pwrk2d) ) ALLOCATE( tree(ii)%current%zwrk2d(isrt(1):iend(1),isrt(2):iend(2)                                ) )
+         IF( PRESENT(pwrk3d) ) ALLOCATE( tree(ii)%current%zwrk3d(isrt(1):iend(1),isrt(2):iend(2),isrt(3):iend(3)                ) )
+         IF( PRESENT(pwrk4d) ) ALLOCATE( tree(ii)%current%zwrk4d(isrt(1):iend(1),isrt(2):iend(2),isrt(3):iend(3),isrt(4):iend(4)) )
+                  
+      ELSE IF( .NOT. ASSOCIATED(tree(ii)%current%next) ) THEN   ! all leafs used -> define a new one
+         ALLOCATE( tree(ii)%current%next )                             ! allocate the new leaf
+         tree(ii)%current%next%in_use = .FALSE.                        ! this leaf is not yet used
+         tree(ii)%current%next%indic = tree(ii)%current%indic + 1      ! number of this leaf
+         tree(ii)%current%next%prev => tree(ii)%current                ! previous leaf of the new leaf is the current leaf
+         tree(ii)%current%next%next => NULL()                          ! next leaf is not yet defined
+
+         tree(ii)%current => tree(ii)%current%next                     ! the current leaf becomes the new one 
+ 
+         ! allocate the array of the new leaf
+         IF( PRESENT(kwrk1d) ) ALLOCATE( tree(ii)%current%iwrk1d(isrt(1):iend(1)                                                ) )
+         IF( PRESENT(kwrk2d) ) ALLOCATE( tree(ii)%current%iwrk2d(isrt(1):iend(1),isrt(2):iend(2)                                ) )
+         IF( PRESENT(kwrk3d) ) ALLOCATE( tree(ii)%current%iwrk3d(isrt(1):iend(1),isrt(2):iend(2),isrt(3):iend(3)                ) )
+         IF( PRESENT(kwrk4d) ) ALLOCATE( tree(ii)%current%iwrk4d(isrt(1):iend(1),isrt(2):iend(2),isrt(3):iend(3),isrt(4):iend(4)) )
+         IF( PRESENT(pwrk1d) ) ALLOCATE( tree(ii)%current%zwrk1d(isrt(1):iend(1)                                                ) )
+         IF( PRESENT(pwrk2d) ) ALLOCATE( tree(ii)%current%zwrk2d(isrt(1):iend(1),isrt(2):iend(2)                                ) )
+         IF( PRESENT(pwrk3d) ) ALLOCATE( tree(ii)%current%zwrk3d(isrt(1):iend(1),isrt(2):iend(2),isrt(3):iend(3)                ) )
+         IF( PRESENT(pwrk4d) ) ALLOCATE( tree(ii)%current%zwrk4d(isrt(1):iend(1),isrt(2):iend(2),isrt(3):iend(3),isrt(4):iend(4)) )
+         
+      ELSE 
+         tree(ii)%current => tree(ii)%current%next                     ! the current leaf becomes the next one 
+      ENDIF   
+      !       
+      ! use the array of the current leaf as a work array
+      IF( PRESENT(kwrk1d) ) kwrk1d => tree(ii)%current%iwrk1d   
+      IF( PRESENT(kwrk2d) ) kwrk2d => tree(ii)%current%iwrk2d   
+      IF( PRESENT(kwrk3d) ) kwrk3d => tree(ii)%current%iwrk3d   
+      IF( PRESENT(kwrk4d) ) kwrk4d => tree(ii)%current%iwrk4d   
+      IF( PRESENT(pwrk1d) ) pwrk1d => tree(ii)%current%zwrk1d   
+      IF( PRESENT(pwrk2d) ) pwrk2d => tree(ii)%current%zwrk2d   
+      IF( PRESENT(pwrk3d) ) pwrk3d => tree(ii)%current%zwrk3d   
+      IF( PRESENT(pwrk4d) ) pwrk4d => tree(ii)%current%zwrk4d   
+      tree(ii)%current%in_use = .TRUE.   ! this leaf is now used
+      !      
+   END SUBROUTINE wrk_allocbase
 
 
-   SUBROUTINE get_next_arg( iargidx, iargval, index2,  index3,  index4,  &
-      &                     index5 , index6,  index7,  index8,  index9,  &
-      &                     index10, index11, index12, index13, index14, &
-      &                     index15, index16, index17, index18, index19, &
-      &                     index20, index21, index22, index23, index24, &
-      &                     index25, index26, index27 )
-      !!----------------------------------------------------------------------
-      INTEGER          , INTENT(inout) ::   iargidx   ! Index of current arg
-      INTEGER          , INTENT(inout) ::   iargval   ! Value of current arg
-      INTEGER, OPTIONAL, INTENT(in   ) ::            index2 , index3 , index4 , index5 , index6 , index7 , index8 , index9 , index10
-      INTEGER, OPTIONAL, INTENT(in   ) ::   index11, index12, index13, index14, index15, index16, index17, index18, index19, index20
-      INTEGER, OPTIONAL, INTENT(in   ) ::   index21, index22, index23, index24, index25, index26, index27
-      !!----------------------------------------------------------------------
+   SUBROUTINE wrk_deallocbase( ktype, kidim, kjdim, kkdim, kldim, kisrt, kjsrt, kksrt, klsrt )
+      INTEGER, INTENT(in   )           :: ktype
+      INTEGER, INTENT(in   )           :: kidim, kjdim, kkdim, kldim
+      INTEGER, INTENT(in   ), OPTIONAL :: kisrt, kjsrt, kksrt, klsrt
       !
-      SELECT CASE (iargidx)       ! Move on to next optional argument
-      CASE ( 1 )
-         IF( .NOT. PRESENT(index2 ) ) THEN   ;   iargidx = -1
-         ELSE                                ;   iargidx =  2   ;   iargval = index2
-         ENDIF
-      CASE ( 2 )
-         IF( .NOT. PRESENT(index3 ) ) THEN   ;   iargidx = -1
-         ELSE                                ;   iargidx =  3   ;   iargval = index3
-         ENDIF
-      CASE ( 3 )
-         IF( .NOT. PRESENT(index4 ) ) THEN   ;   iargidx = -1
-         ELSE                                ;   iargidx =  4   ;   iargval = index4
-         ENDIF
-      CASE ( 4 )
-         IF( .NOT. PRESENT(index5 ) ) THEN   ;   iargidx = -1
-         ELSE                                ;   iargidx =  5   ;   iargval = index5
-         ENDIF
-      CASE ( 5 )
-         IF( .NOT. PRESENT(index6 ) ) THEN   ;   iargidx = -1
-         ELSE                                ;   iargidx =  6   ;   iargval = index6
-         ENDIF
-      CASE ( 6 )
-         IF( .NOT. PRESENT(index7 ) ) THEN   ;   iargidx = -1
-         ELSE                                ;   iargidx =  7   ;   iargval = index7
-         ENDIF
-      CASE ( 7 )
-         IF( .NOT. PRESENT(index8 ) ) THEN   ;   iargidx = -1
-         ELSE                                ;   iargidx =  8   ;   iargval = index8
-         ENDIF
-      CASE ( 8 )
-         IF( .NOT. PRESENT(index9 ) ) THEN   ;   iargidx = -1
-         ELSE                                ;   iargidx =  9   ;   iargval = index9
-         ENDIF
-      CASE ( 9 )
-         IF( .NOT. PRESENT(index10) ) THEN   ;   iargidx = -1
-         ELSE                                ;   iargidx = 10   ;   iargval = index10
-         ENDIF
-      CASE ( 10 )
-         IF( .NOT. PRESENT(index11) ) THEN   ;   iargidx = -1
-         ELSE                                ;   iargidx = 11   ;   iargval = index11
-         ENDIF
-      CASE ( 11 )
-         IF( .NOT. PRESENT(index12) ) THEN   ;   iargidx = -1
-         ELSE                                ;   iargidx = 12   ;   iargval = index12
-         ENDIF
-      CASE ( 12 )
-         IF( .NOT. PRESENT(index13) ) THEN   ;   iargidx = -1
-         ELSE                                ;   iargidx =  13   ;   iargval = index13
-         ENDIF
-      CASE ( 13 )
-         IF( .NOT. PRESENT(index14) ) THEN   ;   iargidx = -1
-         ELSE                                ;   iargidx = 14   ;   iargval = index14
-         ENDIF
-      CASE ( 14 )
-         IF( .NOT. PRESENT(index15) ) THEN   ;   iargidx = -1
-         ELSE                                ;   iargidx = 15   ;   iargval = index15
-         ENDIF
-      CASE ( 15 )
-         IF( .NOT. PRESENT(index16) ) THEN   ;   iargidx = -1
-         ELSE                                ;   iargidx = 16   ;   iargval = index16
-         ENDIF
-      CASE ( 16 )
-         IF( .NOT. PRESENT(index17) ) THEN   ;   iargidx = -1
-         ELSE                                ;   iargidx = 17   ;   iargval = index17
-         ENDIF
-      CASE ( 17 )
-         IF( .NOT. PRESENT(index18) ) THEN   ;   iargidx = -1
-         ELSE                                ;   iargidx = 18   ;   iargval = index18
-         ENDIF
-      CASE ( 18 )
-         IF( .NOT. PRESENT(index19) ) THEN   ;   iargidx = -1
-         ELSE                                ;   iargidx = 19   ;   iargval = index19
-         ENDIF
-      CASE ( 19 )
-         IF( .NOT. PRESENT(index20) ) THEN   ;   iargidx = -1
-         ELSE                                ;   iargidx = 20   ;   iargval = index20
-         ENDIF
-      CASE ( 20 )
-         IF( .NOT. PRESENT(index21) ) THEN   ;   iargidx = -1
-         ELSE                                ;   iargidx = 21   ;   iargval = index21
-         ENDIF
-      CASE ( 21 )
-         IF( .NOT. PRESENT(index22) ) THEN   ;   iargidx = -1
-         ELSE                                ;   iargidx = 22   ;   iargval = index22
-         ENDIF
-      CASE ( 22 )
-         IF( .NOT. PRESENT(index23) ) THEN   ;   iargidx = -1
-         ELSE                                ;   iargidx = 23   ;   iargval = index23
-         ENDIF
-      CASE ( 23 )
-         IF( .NOT. PRESENT(index24) ) THEN   ;   iargidx = -1
-         ELSE                                ;   iargidx = 24   ;   iargval = index24
-         ENDIF
-      CASE ( 24 )
-         IF( .NOT. PRESENT(index25) ) THEN   ;   iargidx = -1
-         ELSE                                ;   iargidx = 25   ;   iargval = index25
-         ENDIF
-      CASE ( 25 )
-         IF( .NOT. PRESENT(index26) ) THEN   ;   iargidx = -1
-         ELSE                                ;   iargidx = 26   ;   iargval = index26
-         ENDIF
-      CASE ( 26 )
-         IF( .NOT. PRESENT(index27) ) THEN   ;   iargidx = -1
-         ELSE                                ;   iargidx = 27   ;   iargval = index27
-         ENDIF
-      CASE ( 27 )
-         iargidx = -1
-      CASE DEFAULT
-         ! BUG - iargidx shouldn't take any other values!
-         ! Flag error for calling routine
-         iargidx = -99
-      END SELECT
+      INTEGER, DIMENSION(jpmaxdim) :: ishape, istart
+      INTEGER :: ii
+
+      ishape(:) = (/ kidim, kjdim, kkdim, kldim /)
+      IF( PRESENT(kisrt) ) THEN   ;   istart(1) =  kisrt   ;   ELSE   ;   istart(1) = 1   ;   ENDIF 
+      IF( PRESENT(kjsrt) ) THEN   ;   istart(2) =  kjsrt   ;   ELSE   ;   istart(2) = 1   ;   ENDIF 
+      IF( PRESENT(kksrt) ) THEN   ;   istart(3) =  kksrt   ;   ELSE   ;   istart(3) = 1   ;   ENDIF 
+      IF( PRESENT(klsrt) ) THEN   ;   istart(4) =  klsrt   ;   ELSE   ;   istart(4) = 1   ;   ENDIF 
+
+      ! find the branch with the matcing shape and type or get the first "free" branch 
+      ii = 1                          
+      DO WHILE( ANY( tree(ii)%ishape /= ishape ) .OR. ANY( tree(ii)%istart /= istart ) .OR. tree(ii)%itype /= ktype )
+         ii = ii + 1
+      END DO
       !
-   END SUBROUTINE get_next_arg
+      tree(ii)%current%in_use = .FALSE.           ! current leaf is no more used
+      tree(ii)%current => tree(ii)%current%prev   ! move back toward previous leaf   
+      ! 
+   END SUBROUTINE wrk_deallocbase
 
 
    SUBROUTINE wrk_stop(cmsg)
@@ -856,11 +582,11 @@ CONTAINS
       CHARACTER(LEN=*), INTENT(in) :: cmsg
       !!----------------------------------------------------------------------
       !
-      WRITE(kumout, cform_err2)
-      WRITE(kumout,*) TRIM(cmsg)
-      ! ARPDBG - would like to call mppstop here to force a stop but that
-      ! introduces a dependency on lib_mpp. Could call mpi_abort() directly
-      ! but that's fairly brutal. Better to rely on calling routine to
+!      WRITE(kumout, cform_err2)
+      WRITE(*,*) TRIM(cmsg)
+      ! ARPDBG - would like to CALL mppstop here to force a stop but that
+      ! introduces a dependency on lib_mpp. Could CALL mpi_abort() directly
+      ! but that's fairly brutal. Better to rely on CALLing routine to
       ! deal with the error passed back from the wrk_X routine?
       !CALL mppstop
       !

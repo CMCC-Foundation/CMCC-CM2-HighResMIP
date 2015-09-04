@@ -30,7 +30,7 @@ MODULE sbcssm
 #  include "domzgr_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: sbcssm.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -63,8 +63,8 @@ CONTAINS
          !
          ssu_m(:,:) = ub(:,:,1)
          ssv_m(:,:) = vb(:,:,1)
-         sst_m(:,:) = tn(:,:,1)
-         sss_m(:,:) = sn(:,:,1)
+         sst_m(:,:) = tsn(:,:,1,jp_tem)
+         sss_m(:,:) = tsn(:,:,1,jp_sal)
          !                          ! removed inverse barometer ssh when Patm forcing is used (for sea-ice dynamics)
          IF( ln_apr_dyn ) THEN   ;   ssh_m(:,:) = sshn(:,:) - 0.5 * ( ssh_ib(:,:) + ssh_ibb(:,:) )
          ELSE                    ;   ssh_m(:,:) = sshn(:,:)
@@ -103,8 +103,8 @@ CONTAINS
                zcoef = REAL( nn_fsbc - 1, wp )
                ssu_m(:,:) = zcoef * ub(:,:,1)
                ssv_m(:,:) = zcoef * vb(:,:,1)
-               sst_m(:,:) = zcoef * tn(:,:,1)
-               sss_m(:,:) = zcoef * sn(:,:,1)
+               sst_m(:,:) = zcoef * tsn(:,:,1,jp_tem)
+               sss_m(:,:) = zcoef * tsn(:,:,1,jp_sal)
                !                          ! removed inverse barometer ssh when Patm forcing is used 
                IF( ln_apr_dyn ) THEN   ;   ssh_m(:,:) = zcoef * ( sshn(:,:) - 0.5 * ( ssh_ib(:,:) + ssh_ibb(:,:) ) )
                ELSE                    ;   ssh_m(:,:) = zcoef *   sshn(:,:)
@@ -125,8 +125,8 @@ CONTAINS
          !                                                ! ---------------------------------------- !
          ssu_m(:,:) = ssu_m(:,:) + ub(:,:,1)
          ssv_m(:,:) = ssv_m(:,:) + vb(:,:,1)
-         sst_m(:,:) = sst_m(:,:) + tn(:,:,1)
-         sss_m(:,:) = sss_m(:,:) + sn(:,:,1)
+         sst_m(:,:) = sst_m(:,:) + tsn(:,:,1,jp_tem)
+         sss_m(:,:) = sss_m(:,:) + tsn(:,:,1,jp_sal)
          !                          ! removed inverse barometer ssh when Patm forcing is used (for sea-ice dynamics)
          IF( ln_apr_dyn ) THEN   ;   ssh_m(:,:) = ssh_m(:,:) + sshn(:,:) - 0.5 *  ( ssh_ib(:,:) + ssh_ibb(:,:) )
          ELSE                    ;   ssh_m(:,:) = ssh_m(:,:) + sshn(:,:)

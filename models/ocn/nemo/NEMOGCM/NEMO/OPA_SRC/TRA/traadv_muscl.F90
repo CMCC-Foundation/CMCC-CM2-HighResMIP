@@ -24,7 +24,9 @@ MODULE traadv_muscl
    USE lbclnk          ! ocean lateral boundary condition (or mpp link) 
    USE diaptr          ! poleward transport diagnostics
    USE trc_oce         ! share passive tracers/Ocean variables
-
+   USE wrk_nemo        ! Memory Allocation
+   USE timing          ! Timing
+   USE lib_fortran    ! Fortran utilities (allows no signed zero when 'key_nosignedzero' defined)
 
    IMPLICIT NONE
    PRIVATE
@@ -38,12 +40,12 @@ MODULE traadv_muscl
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: traadv_muscl.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
 
-   SUBROUTINE tra_adv_muscl( kt, cdtype, p2dt, pun, pvn, pwn, &
+   SUBROUTINE tra_adv_muscl( kt, kit000, cdtype, p2dt, pun, pvn, pwn, &
       &                                        ptb, pta, kjpt )
       !!----------------------------------------------------------------------
       !!                    ***  ROUTINE tra_adv_muscl  ***
@@ -60,11 +62,10 @@ CONTAINS
       !! References : Estubier, A., and M. Levy, Notes Techn. Pole de Modelisation
       !!              IPSL, Sept. 2000 (http://www.lodyc.jussieu.fr/opa)
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE oce     , ONLY:   zwx   => ua       , zwy   => va          ! (ua,va) used as workspace
-      USE wrk_nemo, ONLY:   zslpx => wrk_3d_1 , zslpy => wrk_3d_2    ! 3D workspace
+      USE oce     , ONLY:   zwx   => ua    , zwy   => va          ! (ua,va) used as workspace
       !
       INTEGER                              , INTENT(in   ) ::   kt              ! ocean time-step index
+      INTEGER                              , INTENT(in   ) ::   kit000          ! first time step index
       CHARACTER(len=3)                     , INTENT(in   ) ::   cdtype          ! =TRA or TRC (tracer indicator)
       INTEGER                              , INTENT(in   ) ::   kjpt            ! number of tracers
       REAL(wp), DIMENSION(        jpk     ), INTENT(in   ) ::   p2dt            ! vertical profile of tracer time-step
@@ -76,25 +77,22 @@ CONTAINS
       REAL(wp) ::   zu, z0u, zzwx, zw         ! local scalars
       REAL(wp) ::   zv, z0v, zzwy, z0w        !   -      -
       REAL(wp) ::   ztra, zbtr, zdt, zalpha   !   -      -
+      REAL(wp), POINTER, DIMENSION(:,:,:) :: zslpx, zslpy
       !!----------------------------------------------------------------------
+      !
+      IF( nn_timing == 1 )  CALL timing_start('tra_adv_muscl')
+      !
+      CALL wrk_alloc( jpi, jpj, jpk, zslpx, zslpy )
+      !
 
-#if defined CCSMCOUPLED
-      IF( wrk_in_use(4, 1,2) ) THEN
-#else
-      IF( wrk_in_use(3, 1,2) ) THEN
-#endif
-         CALL ctl_stop('tra_adv_muscl: requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
-
-      IF( kt == nit000 )  THEN
+      IF( kt == kit000 )  THEN
          IF(lwp) WRITE(numout,*)
          IF(lwp) WRITE(numout,*) 'tra_adv : MUSCL advection scheme on ', cdtype
          IF(lwp) WRITE(numout,*) '~~~~~~~'
-         !
-         l_trd = .FALSE.
-         IF( ( cdtype == 'TRA' .AND. l_trdtra ) .OR. ( cdtype == 'TRC' .AND. l_trdtrc ) ) l_trd = .TRUE.
       ENDIF
-
+      !
+      l_trd = .FALSE.
+      IF( ( cdtype == 'TRA' .AND. l_trdtra ) .OR. ( cdtype == 'TRC' .AND. l_trdtrc ) ) l_trd = .TRUE.
       !                                                     ! ===========
       DO jn = 1, kjpt                                       ! tracer loop
          !                                                  ! ===========
@@ -255,11 +253,9 @@ CONTAINS
          !
       ENDDO
       !
-#if defined CCSMCOUPLED
-      IF( wrk_not_released(4, 1,2) )   CALL ctl_stop('tra_adv_muscl: requested workspace arrays unavailable')
-#else
-      IF( wrk_not_released(3, 1,2) )   CALL ctl_stop('tra_adv_muscl: requested workspace arrays unavailable')
-#endif
+      CALL wrk_dealloc( jpi, jpj, jpk, zslpx, zslpy )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('tra_adv_muscl')
       !
    END SUBROUTINE tra_adv_muscl
 

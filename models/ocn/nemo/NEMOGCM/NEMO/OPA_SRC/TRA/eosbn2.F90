@@ -2,7 +2,7 @@ MODULE eosbn2
    !!==============================================================================
    !!                       ***  MODULE  eosbn2  ***
    !! Ocean diagnostic variable : equation of state - in situ and potential density
-   !!                                               - Brunt-Vaisala frequency 
+   !!                                               - Brunt-Vaisala frequency
    !!==============================================================================
    !! History :  OPA  ! 1989-03  (O. Marti)  Original code
    !!            6.0  ! 1994-07  (G. Madec, M. Imbard)  add bn2
@@ -26,7 +26,7 @@ MODULE eosbn2
    !!                    volumic mass
    !!   eos_insitu_2d  : Compute the in situ density for 2d fields
    !!   eos_bn2        : Compute the Brunt-Vaisala frequency
-   !!   eos_alpbet     : calculates the in situ thermal and haline expansion coeff.
+   !!   eos_alpbet     : calculates the in situ thermal/haline expansion ratio
    !!   tfreez         : Compute the surface freezing temperature
    !!   eos_init       : set eos parameters (namelist)
    !!----------------------------------------------------------------------
@@ -36,17 +36,19 @@ MODULE eosbn2
    USE in_out_manager  ! I/O manager
    USE lib_mpp         ! MPP library
    USE prtctl          ! Print control
+   USE wrk_nemo        ! Memory Allocation
+   USE timing          ! Timing
 
    IMPLICIT NONE
    PRIVATE
 
-   !                   !! * Interface 
+   !                   !! * Interface
    INTERFACE eos
       MODULE PROCEDURE eos_insitu, eos_insitu_pot, eos_insitu_2d
-   END INTERFACE 
+   END INTERFACE
    INTERFACE bn2
       MODULE PROCEDURE eos_bn2
-   END INTERFACE 
+   END INTERFACE
 
    PUBLIC   eos        ! called by step, istate, tranpc and zpsgrd modules
    PUBLIC   eos_init   ! called by istate module
@@ -60,13 +62,13 @@ MODULE eosbn2
    REAL(wp), PUBLIC ::   rn_beta  = 7.7e-4_wp !: saline  expension coeff. (linear equation of state)
 
    REAL(wp), PUBLIC ::   ralpbet              !: alpha / beta ratio
-   
+
    !! * Substitutions
 #  include "domzgr_substitute.h90"
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: eosbn2.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -74,8 +76,8 @@ CONTAINS
    SUBROUTINE eos_insitu( pts, prd )
       !!----------------------------------------------------------------------
       !!                   ***  ROUTINE eos_insitu  ***
-      !! 
-      !! ** Purpose :   Compute the in situ density (ratio rho/rau0) from 
+      !!
+      !! ** Purpose :   Compute the in situ density (ratio rho/rau0) from
       !!       potential temperature and salinity using an equation of state
       !!       defined through the namelist parameter nn_eos.
       !!
@@ -107,12 +109,6 @@ CONTAINS
       !!
       !! References :   Jackett and McDougall, J. Atmos. Ocean. Tech., 1994
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-#ifdef key_diaar5
-      USE wrk_nemo, ONLY:   zws => wrk_3d_3   ! 3D workspace
-#else
-      USE wrk_nemo, ONLY:   zws => wrk_3d_1   ! 3D workspace
-#endif
       !!
       REAL(wp), DIMENSION(:,:,:,:), INTENT(in   ) ::   pts   ! 1 : potential temperature  [Celcius]
       !                                                      ! 2 : salinity               [psu]
@@ -125,23 +121,21 @@ CONTAINS
       REAL(wp) ::   zd , zc , zaw, za    !   -      -
       REAL(wp) ::   zb1, za1, zkw, zk0   !   -      -
       REAL(wp) ::   zrau0r               !   -      -
+      REAL(wp), POINTER, DIMENSION(:,:,:) :: zws
       !!----------------------------------------------------------------------
 
-#ifdef key_diaar5
-      IF( wrk_in_use(3, 3) ) THEN
-#else
-      IF( wrk_in_use(3, 1) ) THEN
-#endif
-         CALL ctl_stop('eos_insitu: requested workspace array unavailable')   ;   RETURN
-      ENDIF
-
+      !
+      IF( nn_timing == 1 ) CALL timing_start('eos')
+      !
+      CALL wrk_alloc( jpi, jpj, jpk, zws )
+      !
       SELECT CASE( nn_eos )
       !
       CASE( 0 )                !==  Jackett and McDougall (1994) formulation  ==!
          zrau0r = 1.e0 / rau0
 !CDIR NOVERRCHK
          zws(:,:,:) = SQRT( ABS( pts(:,:,:,jp_sal) ) )
-         !  
+         !
          DO jk = 1, jpkm1
             DO jj = 1, jpj
                DO ji = 1, jpi
@@ -198,11 +192,9 @@ CONTAINS
       !
       IF(ln_ctl)   CALL prt_ctl( tab3d_1=prd, clinfo1=' eos  : ', ovlap=1, kdim=jpk )
       !
-#ifdef key_diaar5
-      IF( wrk_not_released(3, 3) )   CALL ctl_stop('eos_insitu: failed to release workspace array')
-#else
-      IF( wrk_not_released(3, 1) )   CALL ctl_stop('eos_insitu: failed to release workspace array')
-#endif
+      CALL wrk_dealloc( jpi, jpj, jpk, zws )
+      !
+      IF( nn_timing == 1 ) CALL timing_stop('eos')
       !
    END SUBROUTINE eos_insitu
 
@@ -210,10 +202,10 @@ CONTAINS
    SUBROUTINE eos_insitu_pot( pts, prd, prhop )
       !!----------------------------------------------------------------------
       !!                  ***  ROUTINE eos_insitu_pot  ***
-      !!           
+      !!
       !! ** Purpose :   Compute the in situ density (ratio rho/rau0) and the
       !!      potential volumic mass (Kg/m3) from potential temperature and
-      !!      salinity fields using an equation of state defined through the 
+      !!      salinity fields using an equation of state defined through the
       !!     namelist parameter nn_eos.
       !!
       !! ** Method  :
@@ -241,7 +233,7 @@ CONTAINS
       !!
       !!      nn_eos = 2 : linear equation of state function of temperature and
       !!               salinity
-      !!              prd(t,s) = ( rho(t,s) - rau0 ) / rau0 
+      !!              prd(t,s) = ( rho(t,s) - rau0 ) / rau0
       !!                       = rn_beta * s - rn_alpha * tn - 1.
       !!              rhop(t,s)  = rho(t,s)
       !!      Note that no boundary condition problem occurs in this routine
@@ -253,12 +245,6 @@ CONTAINS
       !! References :   Jackett and McDougall, J. Atmos. Ocean. Tech., 1994
       !!                Brown and Campana, Mon. Weather Rev., 1978
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-#ifdef key_diaar5
-      USE wrk_nemo, ONLY:   zws => wrk_3d_3 ! 3D workspace
-#else
-      USE wrk_nemo, ONLY:   zws => wrk_3d_1 ! 3D workspace
-#endif
       !!
       REAL(wp), DIMENSION(jpi,jpj,jpk,jpts), INTENT(in   ) ::   pts    ! 1 : potential temperature  [Celcius]
       !                                                                ! 2 : salinity               [psu]
@@ -268,23 +254,20 @@ CONTAINS
       INTEGER  ::   ji, jj, jk   ! dummy loop indices
       REAL(wp) ::   zt, zs, zh, zsr, zr1, zr2, zr3, zr4, zrhop, ze, zbw   ! local scalars
       REAL(wp) ::   zb, zd, zc, zaw, za, zb1, za1, zkw, zk0, zrau0r       !   -      -
+      REAL(wp), POINTER, DIMENSION(:,:,:) :: zws
       !!----------------------------------------------------------------------
-
-#ifdef key_diaar5
-      IF( wrk_in_use(3, 3) ) THEN
-#else
-      IF( wrk_in_use(3, 1) ) THEN
-#endif
-         CALL ctl_stop('eos_insitu_pot: requested workspace array unavailable')   ;   RETURN
-      ENDIF
-
+      !
+      IF( nn_timing == 1 ) CALL timing_start('eos-p')
+      !
+      CALL wrk_alloc( jpi, jpj, jpk, zws )
+      !
       SELECT CASE ( nn_eos )
       !
       CASE( 0 )                !==  Jackett and McDougall (1994) formulation  ==!
          zrau0r = 1.e0 / rau0
 !CDIR NOVERRCHK
          zws(:,:,:) = SQRT( ABS( pts(:,:,:,jp_sal) ) )
-         !  
+         !
          DO jk = 1, jpkm1
             DO jj = 1, jpj
                DO ji = 1, jpi
@@ -346,11 +329,9 @@ CONTAINS
       !
       IF(ln_ctl)   CALL prt_ctl( tab3d_1=prd, clinfo1=' eos-p: ', tab3d_2=prhop, clinfo2=' pot : ', ovlap=1, kdim=jpk )
       !
-#ifdef key_diaar5
-      IF( wrk_not_released(3, 3) )   CALL ctl_stop('eos_insitu_pot: failed to release workspace array')
-#else
-      IF( wrk_not_released(3, 1) )   CALL ctl_stop('eos_insitu_pot: failed to release workspace array')
-#endif
+      CALL wrk_dealloc( jpi, jpj, jpk, zws )
+      !
+      IF( nn_timing == 1 ) CALL timing_stop('eos-p')
       !
    END SUBROUTINE eos_insitu_pot
 
@@ -359,7 +340,7 @@ CONTAINS
       !!----------------------------------------------------------------------
       !!                  ***  ROUTINE eos_insitu_2d  ***
       !!
-      !! ** Purpose :   Compute the in situ density (ratio rho/rau0) from 
+      !! ** Purpose :   Compute the in situ density (ratio rho/rau0) from
       !!      potential temperature and salinity using an equation of state
       !!      defined through the namelist parameter nn_eos. * 2D field case
       !!
@@ -391,22 +372,22 @@ CONTAINS
       !!
       !! References :   Jackett and McDougall, J. Atmos. Ocean. Tech., 1994
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zws => wrk_2d_5 ! 2D workspace
       !!
       REAL(wp), DIMENSION(jpi,jpj,jpts), INTENT(in   ) ::   pts   ! 1 : potential temperature  [Celcius]
       !                                                           ! 2 : salinity               [psu]
       REAL(wp), DIMENSION(jpi,jpj)     , INTENT(in   ) ::   pdep  ! depth                  [m]
-      REAL(wp), DIMENSION(jpi,jpj)     , INTENT(  out) ::   prd   ! in situ density 
+      REAL(wp), DIMENSION(jpi,jpj)     , INTENT(  out) ::   prd   ! in situ density
       !!
       INTEGER  ::   ji, jj                    ! dummy loop indices
       REAL(wp) ::   zt, zs, zh, zsr, zr1, zr2, zr3, zr4, zrhop, ze, zbw   ! temporary scalars
       REAL(wp) ::   zb, zd, zc, zaw, za, zb1, za1, zkw, zk0, zmask        !    -         -
+      REAL(wp), POINTER, DIMENSION(:,:) :: zws
       !!----------------------------------------------------------------------
-
-      IF( wrk_in_use(2, 5) ) THEN
-         CALL ctl_stop('eos_insitu_2d: requested workspace array unavailable')   ;   RETURN
-      ENDIF
+      !
+      IF( nn_timing == 1 ) CALL timing_start('eos2d')
+      !
+      CALL wrk_alloc( jpi, jpj, zws )
+      !
 
       prd(:,:) = 0._wp
 
@@ -472,7 +453,7 @@ CONTAINS
       CASE( 2 )                !==  Linear formulation = F( temperature , salinity )  ==!
          DO jj = 1, jpjm1
             DO ji = 1, fs_jpim1   ! vector opt.
-               prd(ji,jj) = ( rn_beta * pts(ji,jj,jp_sal) - rn_alpha * pts(ji,jj,jp_tem) ) * tmask(ji,jj,1) 
+               prd(ji,jj) = ( rn_beta * pts(ji,jj,jp_sal) - rn_alpha * pts(ji,jj,jp_tem) ) * tmask(ji,jj,1)
             END DO
          END DO
          !
@@ -480,7 +461,9 @@ CONTAINS
 
       IF(ln_ctl)   CALL prt_ctl( tab2d_1=prd, clinfo1=' eos2d: ' )
       !
-      IF( wrk_not_released(2, 5) )   CALL ctl_stop('eos_insitu_2d: failed to release workspace array')
+      CALL wrk_dealloc( jpi, jpj, zws )
+      !
+      IF( nn_timing == 1 ) CALL timing_stop('eos2d')
       !
    END SUBROUTINE eos_insitu_2d
 
@@ -491,7 +474,7 @@ CONTAINS
       !!
       !! ** Purpose :   Compute the local Brunt-Vaisala frequency at the time-
       !!      step of the input arguments
-      !!      
+      !!
       !! ** Method :
       !!       * nn_eos = 0  : UNESCO sea water properties
       !!         The brunt-vaisala frequency is computed using the polynomial
@@ -505,7 +488,7 @@ CONTAINS
       !!       * nn_eos = 2  : linear equation of state (temperature & salinity)
       !!            N^2 = grav * (rn_alpha * dk[ t ] - rn_beta * dk[ s ] ) / e3w
       !!      The use of potential density to compute N^2 introduces e r r o r
-      !!      in the sign of N^2 at great depths. We recommand the use of 
+      !!      in the sign of N^2 at great depths. We recommand the use of
       !!      nn_eos = 0, except for academical studies.
       !!        Macro-tasked on horizontal slab (jk-loop)
       !!      N.B. N^2 is set to zero at the first level (JK=1) in inidtr
@@ -520,14 +503,17 @@ CONTAINS
       REAL(wp), DIMENSION(jpi,jpj,jpk)     , INTENT(  out) ::   pn2   ! Brunt-Vaisala frequency    [s-1]
       !!
       INTEGER  ::   ji, jj, jk   ! dummy loop indices
-      REAL(wp) ::   zgde3w, zt, zs, zh, zalbet, zbeta   ! local scalars 
+      REAL(wp) ::   zgde3w, zt, zs, zh, zalbet, zbeta   ! local scalars
 #if defined key_zdfddm
       REAL(wp) ::   zds   ! local scalars
 #endif
       !!----------------------------------------------------------------------
 
+      !
+      IF( nn_timing == 1 ) CALL timing_start('bn2')
+      !
       ! pn2 : interior points only (2=< jk =< jpkm1 )
-      ! -------------------------- 
+      ! --------------------------
       !
       SELECT CASE( nn_eos )
       !
@@ -565,7 +551,7 @@ CONTAINS
                      &     + ( - 0.213127e-11_wp * zt + 0.192867e-09_wp ) * zt     &
                      &                                - 0.121555e-07_wp ) * zh
                      !
-                  pn2(ji,jj,jk) = zgde3w * zbeta * tmask(ji,jj,jk)           &   ! N^2 
+                  pn2(ji,jj,jk) = zgde3w * zbeta * tmask(ji,jj,jk)           &   ! N^2
                      &          * ( zalbet * ( pts(ji,jj,jk-1,jp_tem) - pts(ji,jj,jk,jp_tem) )   &
                      &                     - ( pts(ji,jj,jk-1,jp_sal) - pts(ji,jj,jk,jp_sal) ) )
 #if defined key_zdfddm
@@ -588,12 +574,12 @@ CONTAINS
             pn2(:,:,jk) = grav * (  rn_alpha * ( pts(:,:,jk-1,jp_tem) - pts(:,:,jk,jp_tem) )      &
                &                  - rn_beta  * ( pts(:,:,jk-1,jp_sal) - pts(:,:,jk,jp_sal) )  )   &
                &               / fse3w(:,:,jk) * tmask(:,:,jk)
-         END DO 
+         END DO
 #if defined key_zdfddm
          DO jk = 2, jpkm1                                 ! Rrau = (alpha / beta) (dk[t] / dk[s])
             DO jj = 1, jpj
                DO ji = 1, jpi
-                  zds = ( pts(ji,jj,jk-1,jp_sal) - pts(ji,jj,jk,jp_sal) )  
+                  zds = ( pts(ji,jj,jk-1,jp_sal) - pts(ji,jj,jk,jp_sal) )
                   IF ( ABS( zds ) <= 1.e-20_wp ) zds = 1.e-20_wp
                   rrau(ji,jj,jk) = ralpbet * ( pts(ji,jj,jk-1,jp_tem) - pts(ji,jj,jk,jp_tem) ) / zds
                END DO
@@ -607,37 +593,41 @@ CONTAINS
       IF(ln_ctl)   CALL prt_ctl( tab3d_1=rrau, clinfo1=' rrau : ', ovlap=1, kdim=jpk )
 #endif
       !
+      IF( nn_timing == 1 ) CALL timing_stop('bn2')
+      !
    END SUBROUTINE eos_bn2
 
 
-   SUBROUTINE eos_alpbet( pts, palph, pbeta )
+   SUBROUTINE eos_alpbet( pts, palpbet, beta0 )
       !!----------------------------------------------------------------------
-      !!                 ***  ROUTINE ldf_slp_grif  ***
+      !!                 ***  ROUTINE eos_alpbet  ***
       !!
-      !! ** Purpose :   Calculates the thermal and haline expansion coefficients at T-points. 
+      !! ** Purpose :   Calculates the in situ thermal/haline expansion ratio at T-points
       !!
-      !! ** Method  :   calculates alpha and beta at T-points 
+      !! ** Method  :   calculates alpha / beta ratio at T-points
       !!       * nn_eos = 0  : UNESCO sea water properties
-      !!         The brunt-vaisala frequency is computed using the polynomial
-      !!      polynomial expression of McDougall (1987):
-      !!            N^2 = grav * beta * ( alpha/beta*dk[ t ] - dk[ s ] )/e3w
-      !!      If lk_zdfddm=T, the heat/salt buoyancy flux ratio Rrau is
-      !!      computed and used in zdfddm module :
-      !!              Rrau = alpha/beta * ( dk[ t ] / dk[ s ] )
+      !!                       The alpha/beta ratio is returned as 3-D array palpbet using the polynomial
+      !!                       polynomial expression of McDougall (1987).
+      !!                       Scalar beta0 is returned = 1.
       !!       * nn_eos = 1  : linear equation of state (temperature only)
-      !!            N^2 = grav * rn_alpha * dk[ t ]/e3w
+      !!                       The ratio is undefined, so we return alpha as palpbet
+      !!                       Scalar beta0 is returned = 0.
       !!       * nn_eos = 2  : linear equation of state (temperature & salinity)
-      !!            N^2 = grav * (rn_alpha * dk[ t ] - rn_beta * dk[ s ] ) / e3w
-      !!       * nn_eos = 3  : Jackett JAOT 2003 ???
+      !!                       The alpha/beta ratio is returned as ralpbet
+      !!                       Scalar beta0 is returned = 1.
       !!
-      !! ** Action  : - palph, pbeta : thermal and haline expansion coeff. at T-point
+      !! ** Action  : - palpbet : thermal/haline expansion ratio at T-points
+      !!            :   beta0   : 1. or 0.
       !!----------------------------------------------------------------------
-      REAL(wp), DIMENSION(jpi,jpj,jpk,jpts), INTENT(in   ) ::   pts            ! pot. temperature & salinity
-      REAL(wp), DIMENSION(jpi,jpj,jpk)     , INTENT(  out) ::   palph, pbeta   ! thermal & haline expansion coeff.
-      !
+      REAL(wp), DIMENSION(jpi,jpj,jpk,jpts), INTENT(in   ) ::   pts       ! pot. temperature & salinity
+      REAL(wp), DIMENSION(jpi,jpj,jpk)     , INTENT(  out) ::   palpbet   ! thermal/haline expansion ratio
+      REAL(wp),                              INTENT(  out) ::   beta0     ! set = 1 except with case 1 eos, rho=rho(T)
+      !!
       INTEGER  ::   ji, jj, jk   ! dummy loop indices
-      REAL(wp) ::   zt, zs, zh   ! local scalars 
+      REAL(wp) ::   zt, zs, zh   ! local scalars
       !!----------------------------------------------------------------------
+      !
+      IF( nn_timing == 1 ) CALL timing_start('eos_alpbet')
       !
       SELECT CASE ( nn_eos )
       !
@@ -647,44 +637,33 @@ CONTAINS
                DO ji = 1, jpi
                   zt = pts(ji,jj,jk,jp_tem)           ! potential temperature
                   zs = pts(ji,jj,jk,jp_sal) - 35._wp  ! salinity anomaly (s-35)
-                  zh = fsdept(ji,jj,jk)              ! depth in meters 
+                  zh = fsdept(ji,jj,jk)               ! depth in meters
                   !
-                  pbeta(ji,jj,jk) = ( ( -0.415613e-09_wp * zt + 0.555579e-07_wp ) * zt   &
-                     &                                        - 0.301985e-05_wp ) * zt   &
-                     &           + 0.785567e-03_wp                                       &
-                     &           + (     0.515032e-08_wp * zs                            &
-                     &                 + 0.788212e-08_wp * zt - 0.356603e-06_wp ) * zs   &
-                     &           + ( (   0.121551e-17_wp * zh                            &
-                     &                 - 0.602281e-15_wp * zs                            &
-                     &                 - 0.175379e-14_wp * zt + 0.176621e-12_wp ) * zh   &
-                     &                                        + 0.408195e-10_wp   * zs   &
-                     &             + ( - 0.213127e-11_wp * zt + 0.192867e-09_wp ) * zt   &
-                     &                                        - 0.121555e-07_wp ) * zh
-                     !
-                  palph(ji,jj,jk) = - pbeta(ji,jj,jk) *                             &
-                      &     ((( ( - 0.255019e-07_wp * zt + 0.298357e-05_wp ) * zt   &
-                      &                                  - 0.203814e-03_wp ) * zt   &
-                      &                                  + 0.170907e-01_wp ) * zt   &
-                      &   + 0.665157e-01_wp                                         &
-                      &   +     ( - 0.678662e-05_wp * zs                            &
-                      &           - 0.846960e-04_wp * zt + 0.378110e-02_wp ) * zs   &
-                      &   +   ( ( - 0.302285e-13_wp * zh                            &
-                      &           - 0.251520e-11_wp * zs                            &
-                      &           + 0.512857e-12_wp * zt * zt              ) * zh   &
-                      &           - 0.164759e-06_wp * zs                            &
-                      &        +(   0.791325e-08_wp * zt - 0.933746e-06_wp ) * zt   &
-                      &                                  + 0.380374e-04_wp ) * zh)
+                  palpbet(ji,jj,jk) =                                              &
+                     &     ( ( ( - 0.255019e-07_wp * zt + 0.298357e-05_wp ) * zt   &
+                     &                                  - 0.203814e-03_wp ) * zt   &
+                     &                                  + 0.170907e-01_wp ) * zt   &
+                     &   + 0.665157e-01_wp                                         &
+                     &   +     ( - 0.678662e-05_wp * zs                            &
+                     &           - 0.846960e-04_wp * zt + 0.378110e-02_wp ) * zs   &
+                     &   +   ( ( - 0.302285e-13_wp * zh                            &
+                     &           - 0.251520e-11_wp * zs                            &
+                     &           + 0.512857e-12_wp * zt * zt              ) * zh   &
+                     &           - 0.164759e-06_wp * zs                            &
+                     &        +(   0.791325e-08_wp * zt - 0.933746e-06_wp ) * zt   &
+                     &                                  + 0.380374e-04_wp ) * zh
                END DO
             END DO
          END DO
+         beta0 = 1._wp
          !
-      CASE ( 1 )
-         palph(:,:,:) = - rn_alpha
-         pbeta(:,:,:) =   0._wp
+      CASE ( 1 )              !==  Linear formulation = F( temperature )  ==!
+         palpbet(:,:,:) = rn_alpha
+         beta0 = 0._wp
          !
-      CASE ( 2 )
-         palph(:,:,:) = - rn_alpha
-         pbeta(:,:,:) =   rn_beta
+      CASE ( 2 )              !==  Linear formulation = F( temperature , salinity )  ==!
+         palpbet(:,:,:) = ralpbet
+         beta0 = 1._wp
          !
       CASE DEFAULT
          IF(lwp) WRITE(numout,cform_err)
@@ -692,6 +671,8 @@ CONTAINS
          nstop = nstop + 1
          !
       END SELECT
+      !
+      IF( nn_timing == 1 ) CALL timing_stop('eos_alpbet')
       !
    END SUBROUTINE eos_alpbet
 
@@ -770,4 +751,4 @@ CONTAINS
    END SUBROUTINE eos_init
 
    !!======================================================================
-END MODULE eosbn2  
+END MODULE eosbn2

@@ -23,7 +23,9 @@ MODULE trdmod
    USE trdicp                  ! ocean bassin integral constraints properties
    USE trdmld                  ! ocean active mixed layer tracers trends 
    USE in_out_manager          ! I/O manager
-   USE lib_mpp         ! MPP library
+   USE lib_mpp                 ! MPP library
+   USE wrk_nemo                ! Memory allocation
+
 
    IMPLICIT NONE
    PRIVATE
@@ -38,7 +40,7 @@ MODULE trdmod
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: trdmod.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 
@@ -51,13 +53,6 @@ CONTAINS
       !! ** Purpose : Dispatch all trends computation, e.g. vorticity, mld or 
       !!              integral constraints
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY: wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY: ztswu => wrk_2d_1,  &
-                          ztswv => wrk_2d_2,  &
-                          ztbfu => wrk_2d_3,  &
-                          ztbfv => wrk_2d_4,  &
-                          z2dx  => wrk_2d_5,  &
-                          z2dy  => wrk_2d_6
       !
       REAL(wp), DIMENSION(:,:,:), INTENT(inout) ::   ptrdx   ! Temperature or U trend 
       REAL(wp), DIMENSION(:,:,:), INTENT(inout) ::   ptrdy   ! Salinity    or V trend
@@ -66,11 +61,10 @@ CONTAINS
       INTEGER                   , INTENT(in   ) ::   ktrd    ! tracer trend index
       !!
       INTEGER ::   ji, jj   ! dummy loop indices
+      REAL(wp), POINTER, DIMENSION(:,:)  :: ztswu, ztswv, ztbfu, ztbfv, z2dx, z2dy 
       !!----------------------------------------------------------------------
 
-      IF(wrk_in_use(2, 1,2,3,4,5,6))THEN
-         CALL ctl_warn('trd_mod: Requested workspace arrays already in use.')   ;   RETURN
-      END IF
+      CALL wrk_alloc( jpi, jpj, ztswu, ztswv, ztbfu, ztbfv, z2dx, z2dy )
 
       z2dx(:,:) = 0._wp   ;   z2dy(:,:) = 0._wp                            ! initialization of workspace arrays
 
@@ -100,9 +94,9 @@ CONTAINS
             CASE ( jptra_trd_yad )   ;   CALL trd_icp( ptrdx, ptrdy, jpicpt_yad, ctype )   ! y- horiz adv
             CASE ( jptra_trd_zad )   ;   CALL trd_icp( ptrdx, ptrdy, jpicpt_zad, ctype )   ! z- vertical adv 
                                          CALL trd_icp( ptrdx, ptrdy, jpicpt_zad, ctype )   
-                                         ! compute the surface flux condition wn(:,:,1)*tn(:,:,1)
-                                         z2dx(:,:) = wn(:,:,1)*tn(:,:,1)/fse3t(:,:,1)
-                                         z2dy(:,:) = wn(:,:,1)*sn(:,:,1)/fse3t(:,:,1)
+                                         ! compute the surface flux condition wn(:,:,1)*tsn(:,:,1,jp_tem)
+                                         z2dx(:,:) = wn(:,:,1)*tsn(:,:,1,jp_tem)/fse3t(:,:,1)
+                                         z2dy(:,:) = wn(:,:,1)*tsn(:,:,1,jp_sal)/fse3t(:,:,1)
                                          CALL trd_icp( z2dx , z2dy , jpicpt_zl1, ctype )   ! 1st z- vertical adv 
             END SELECT
          END IF
@@ -226,7 +220,7 @@ CONTAINS
 
       ENDIF
       !
-      IF( wrk_not_released(2, 1,2,3,4,5,6) )   CALL ctl_warn('trd_mod: Failed to release workspace arrays.')
+      CALL wrk_dealloc( jpi, jpj, ztswu, ztswv, ztbfu, ztbfv, z2dx, z2dy )
       !
    END SUBROUTINE trd_mod
 

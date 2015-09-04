@@ -21,6 +21,8 @@ MODULE trabbc
    USE trdtra          ! trends: active tracers 
    USE in_out_manager  ! I/O manager
    USE prtctl          ! Print control
+   USE wrk_nemo        ! Memory Allocation
+   USE timing          ! Timing
 
    IMPLICIT NONE
    PRIVATE
@@ -70,11 +72,14 @@ CONTAINS
       !!
       INTEGER  ::   ji, jj, ik    ! dummy loop indices
       REAL(wp) ::   zqgh_trd      ! geothermal heat flux trend
-      REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::   ztrdt
+      REAL(wp), POINTER, DIMENSION(:,:,:) ::   ztrdt
       !!----------------------------------------------------------------------
       !
+      IF( nn_timing == 1 )  CALL timing_start('tra_bbc')
+      !
       IF( l_trdtra )   THEN         ! Save ta and sa trends
-         ALLOCATE( ztrdt(jpi,jpj,jpk) )     ;   ztrdt(:,:,:) = tsa(:,:,:,jp_tem)
+         CALL wrk_alloc( jpi, jpj, jpk, ztrdt )
+         ztrdt(:,:,:) = tsa(:,:,:,jp_tem)
       ENDIF
       !
       !                             !  Add the geothermal heat flux trend on temperature
@@ -94,10 +99,12 @@ CONTAINS
       IF( l_trdtra ) THEN        ! Save the geothermal heat flux trend for diagnostics
          ztrdt(:,:,:) = tsa(:,:,:,jp_tem) - ztrdt(:,:,:)
          CALL trd_tra( kt, 'TRA', jp_tem, jptra_trd_bbc, ztrdt )
-         DEALLOCATE( ztrdt )
+         CALL wrk_dealloc( jpi, jpj, jpk, ztrdt )
       ENDIF
       !
       IF(ln_ctl)   CALL prt_ctl( tab3d_1=tsa(:,:,:,jp_tem), clinfo1=' bbc  - Ta: ', mask1=tmask, clinfo3='tra-ta' )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('tra_bbc')
       !
    END SUBROUTINE tra_bbc
 

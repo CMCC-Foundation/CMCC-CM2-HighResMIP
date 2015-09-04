@@ -81,28 +81,30 @@
     
     INTEGER :: inbsel, jk
     INTEGER :: iyear,imon,iday
+    INTEGER :: ialloc
     REAL(wp) :: zdtj
     CHARACTER(LEN=80) :: clname
     CHARACTER(LEN=80) :: cltext
     CHARACTER(LEN=80) :: clmode
     CHARACTER(LEN= 4) :: clver
     !!----------------------------------------------------------------------
+    IF( nn_timing == 1 )   CALL timing_start('dia_wri')
     !
     !  Initialization
     !  ---------------
     !
-    IF(.not.ALLOCATED(um))THEN
+    IF( .NOT. ALLOCATED(um) )THEN
        ALLOCATE(um(jpi,jpj,jpk), vm(jpi,jpj,jpk), &
                 wm(jpi,jpj,jpk),                  &
                 avtm(jpi,jpj,jpk),                &
                 tm(jpi,jpj,jpk), sm(jpi,jpj,jpk), &
                 fsel(jpi,jpj,jpk),                &
-                Stat=jk)
-       IF(jk /= 0)THEN
-          WRITE(*,*) 'ERROR: allocate failed in dia_wri (diawri_dimg.h90)'
-          CALL mppabort()
-       END IF
-    END IF
+                STAT=ialloc )
+       !
+       IF( lk_mpp      )   CALL mpp_sum ( ialloc  )
+       IF( ialloc /= 0 )   CALL ctl_warn('dia_wri( diawri_dimg.h90) : failed to allocate arrays')
+    ENDIF
+
 
     inbsel = 17
 
@@ -151,18 +153,20 @@
        vm(:,:,:)=vm(:,:,:) + vn (:,:,:)
        wm(:,:,:)=wm(:,:,:) + wn (:,:,:)
        avtm(:,:,:)=avtm(:,:,:) + avt (:,:,:)
-       tm(:,:,:)=tm(:,:,:) + tn (:,:,:)
-       sm(:,:,:)=sm(:,:,:) + sn (:,:,:)
+       tm(:,:,:)=tm(:,:,:) + tsn(:,:,:,jp_tem)
+       sm(:,:,:)=sm(:,:,:) + tsn(:,:,:,jp_sal)
        !
        fsel(:,:,1 ) = fsel(:,:,1 ) + utau(:,:) * umask(:,:,1)
        fsel(:,:,2 ) = fsel(:,:,2 ) + vtau(:,:) * vmask(:,:,1)
        fsel(:,:,3 ) = fsel(:,:,3 ) + qsr (:,:) + qns  (:,:) 
        fsel(:,:,4 ) = fsel(:,:,4 ) + ( emp(:,:)-rnf(:,:) ) 
-       !        fsel(:,:,5 ) = fsel(:,:,5 ) + tb  (:,:,1)  !RB not used
+       !        fsel(:,:,5 ) = fsel(:,:,5 ) + tsb(:,:,1,jp_tem)  !RB not used
        fsel(:,:,6 ) = fsel(:,:,6 ) + sshn(:,:) 
        fsel(:,:,7 ) = fsel(:,:,7 ) + qsr(:,:)
-       fsel(:,:,8 ) = fsel(:,:,8 ) + qrp (:,:)
-       fsel(:,:,9 ) = fsel(:,:,9 ) + erp (:,:)
+       IF( ln_ssr ) THEN
+          IF( nn_sstr /= 0 )   fsel(:,:,8 ) = fsel(:,:,8 ) + qrp (:,:)
+          IF( nn_sssr /= 0 )   fsel(:,:,9 ) = fsel(:,:,9 ) + erp (:,:)
+       ENDIF
        fsel(:,:,10) = fsel(:,:,10) + hmld(:,:)
        fsel(:,:,11) = fsel(:,:,11) + hmlp(:,:)
        fsel(:,:,12) = fsel(:,:,12) + fr_i(:,:)
@@ -225,12 +229,14 @@
           fsel(:,:,2 ) = vtau(:,:) * vmask(:,:,1)
           fsel(:,:,3 ) = (qsr (:,:) + qns (:,:)) * tmask(:,:,1)
           fsel(:,:,4 ) = ( emp(:,:)-rnf(:,:) ) * tmask(:,:,1) 
-          !         fsel(:,:,5 ) = (tb  (:,:,1) - sf_sst(1)%fnow(:,:) ) *tmask(:,:,1) !RB not used
+          !         fsel(:,:,5 ) = (tsb(:,:,1,jp_tem) - sf_sst(1)%fnow(:,:) ) *tmask(:,:,1) !RB not used
 
           fsel(:,:,6 ) = sshn(:,:)
           fsel(:,:,7 ) = qsr (:,:) * tmask(:,:,1)
-          fsel(:,:,8 ) = qrp (:,:) * tmask(:,:,1)
-          fsel(:,:,9 ) = erp (:,:) * tmask(:,:,1)
+          IF( ln_ssr ) THEN
+             IF( nn_sstr /= 0 )   fsel(:,:,8 ) = qrp (:,:) * tmask(:,:,1)
+             IF( nn_sssr /= 0 )   fsel(:,:,9 ) = erp (:,:) * tmask(:,:,1)
+          ENDIF
           fsel(:,:,10) = hmld(:,:) * tmask(:,:,1)
           fsel(:,:,11) = hmlp(:,:) * tmask(:,:,1)
           fsel(:,:,12) = fr_i(:,:) * tmask(:,:,1)
@@ -301,9 +307,9 @@
        cltext=TRIM(cexper)//' T (DegC) '//TRIM(clmode)
 
        IF( ll_dia_inst) THEN
-          CALL dia_wri_dimg(clname, cltext, tn, jpk, 'T')
+          CALL dia_wri_dimg(clname, cltext, tsn(:,:,:,jp_tem), jpk, 'T')
        ELSE
-          CALL dia_wri_dimg(clname, cltext, tm, jpk, 'T')
+          CALL dia_wri_dimg(clname, cltext, tm               , jpk, 'T')
        ENDIF
        !
 
@@ -313,9 +319,9 @@
        cltext=TRIM(cexper)//' S (PSU) '//TRIM(clmode)
 
        IF( ll_dia_inst) THEN
-          CALL dia_wri_dimg(clname, cltext, sn, jpk, 'T')
+          CALL dia_wri_dimg(clname, cltext, tsn(:,:,:,jp_sal), jpk, 'T')
        ELSE
-          CALL dia_wri_dimg(clname, cltext, sm, jpk, 'T')
+          CALL dia_wri_dimg(clname, cltext, sm               , jpk, 'T')
        ENDIF
        !
 
@@ -355,6 +361,8 @@
           avtm(:,:,:) = 0._wp
        ENDIF
     ENDIF
+    !
+    IF( nn_timing == 1 )   CALL timing_stop('dia_wri')
     !
 9000 FORMAT(a,"_",a,"_y",i4.4,"m",i2.2,"d",i2.2,".dimgproc")
     !

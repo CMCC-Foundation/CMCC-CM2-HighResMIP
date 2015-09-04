@@ -43,6 +43,7 @@
       !! 
       INTEGER :: ji, jj, jn, jproc, jarea     ! dummy loop indices
       INTEGER ::  inum                        ! temporary logical unit
+      INTEGER ::  idir                        ! temporary integers
       INTEGER ::   &
          ii, ij, ifreq, il1, il2,          &  ! temporary integers
          icont, ili, ilj,                  &  !    "          "
@@ -72,7 +73,7 @@
 
       !!----------------------------------------------------------------------
       !!  OPA 9.0 , LOCEAN-IPSL (2005) 
-      !! $Id: mppini_2.h90 2442 2010-11-27 18:05:38Z gm $
+      !! $Id$
       !! This software is governed by the CeCILL licence see modipsl/doc/NEMO_CeCILL.txt
       !!----------------------------------------------------------------------
       
@@ -266,14 +267,14 @@
             imil = ijm1+(jpni+1)/2
             IF( jarea > ijm1 ) ipolj(ii,ij) = 3
             IF( MOD(jpni,2) == 1 .AND. jarea == imil ) ipolj(ii,ij) = 4
-            IF( ipolj(ii,ij) == 3 ) iono(ii,ij) = jpni*jpnj-jarea+ijm1
+            IF( ipolj(ii,ij) == 3 ) iono(ii,ij) = jpni*jpnj-jarea+ijm1 - 1   ! MPI rank of northern neighbour
          ENDIF
          IF( jperio == 5 .OR. jperio == 6 ) THEN
             ijm1 = jpni*(jpnj-1)
             imil = ijm1+(jpni+1)/2
             IF( jarea > ijm1) ipolj(ii,ij) = 5
             IF( MOD(jpni,2) == 1 .AND. jarea == imil ) ipolj(ii,ij) = 6
-            IF( ipolj(ii,ij) == 5) iono(ii,ij) = jpni*jpnj-jarea+ijm1
+            IF( ipolj(ii,ij) == 5) iono(ii,ij) = jpni*jpnj-jarea+ijm1 - 1    ! MPI rank of northern neighbour
          ENDIF
 
          isurf = 0
@@ -337,8 +338,14 @@
             .AND. iono(ii,ij) <= jpni*jpnj-1 ) THEN
             iino = 1 + MOD(iono(ii,ij),jpni)
             ijno = 1 +    (iono(ii,ij))/jpni
-            IF( ibondj(iino,ijno) == 1 ) ibondj(iino,ijno)=2
-            IF( ibondj(iino,ijno) == 0 ) ibondj(iino,ijno) = -1
+              ! Need to reverse the logical direction of communication 
+              ! for northern neighbours of northern row processors (north-fold)
+              ! i.e. need to check that the northern neighbour only communicates
+              ! to the SOUTH (or not at all) if this area is land-only (#1057)
+            idir = 1
+            IF( ij .eq. jpnj .AND. ijno .eq. jpnj ) idir = -1    
+            IF( ibondj(iino,ijno) == idir ) ibondj(iino,ijno)=2
+            IF( ibondj(iino,ijno) == 0 ) ibondj(iino,ijno) = -idir
          ENDIF
          IF( ipproc(ii,ij) == -1 .AND. ioso(ii,ij) >= 0   &
             .AND. ioso(ii,ij) <= jpni*jpnj-1 ) THEN

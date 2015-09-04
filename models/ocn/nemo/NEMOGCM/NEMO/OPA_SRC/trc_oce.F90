@@ -24,6 +24,7 @@ MODULE trc_oce
 
    REAL(wp), PUBLIC                                      ::   r_si2   !: largest depth of extinction (blue & 0.01 mg.m-3)  (RGB)
    REAL(wp), PUBLIC, SAVE, ALLOCATABLE, DIMENSION(:,:,:) ::   etot3   !: light absortion coefficient
+   REAL(wp), PUBLIC, SAVE, ALLOCATABLE, DIMENSION(:,:,:) ::   facvol   !: volume for degraded regions
 
 #if defined key_top && defined key_pisces
    !!----------------------------------------------------------------------
@@ -48,12 +49,23 @@ MODULE trc_oce
    !!----------------------------------------------------------------------
    LOGICAL, PUBLIC, PARAMETER ::   lk_offline = .FALSE.   !: offline flag
 #endif
+#if defined key_degrad
+   !!----------------------------------------------------------------------
+   !!   'key_degrad'                                     Degradation mode          
+   !!----------------------------------------------------------------------
+   LOGICAL, PUBLIC, PARAMETER ::   lk_degrad = .TRUE.   !: degradation flag
+#else
+   !!----------------------------------------------------------------------
+   !!   Default option                                   NO  Degradation mode          
+   !!----------------------------------------------------------------------
+   LOGICAL, PUBLIC, PARAMETER ::   lk_degrad = .FALSE.   !: degradation flag
+#endif
 
    !! * Substitutions
 #  include "domzgr_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: trc_oce.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -62,7 +74,12 @@ CONTAINS
       !!----------------------------------------------------------------------
       !!                  ***  trc_oce_alloc  ***
       !!----------------------------------------------------------------------
-      ALLOCATE( etot3(jpi,jpj,jpk)   , STAT= trc_oce_alloc )
+      INTEGER ::   ierr(2)        ! Local variables
+      !!----------------------------------------------------------------------
+      ierr(:) = 0
+                     ALLOCATE( etot3 (jpi,jpj,jpk), STAT=ierr(1) )
+      IF( lk_degrad) ALLOCATE( facvol(jpi,jpj,jpk), STAT=ierr(2) )
+      trc_oce_alloc  = MAXVAL( ierr )
       !
       IF( trc_oce_alloc /= 0 )   CALL ctl_warn('trc_oce_alloc: failed to allocate etot3 array')
    END FUNCTION trc_oce_alloc

@@ -28,6 +28,8 @@ MODULE traldf_bilap
    USE diaptr          ! poleward transport diagnostics
    USE trc_oce         ! share passive tracers/Ocean variables
    USE lib_mpp         ! MPP library
+   USE wrk_nemo       ! Memory Allocation
+   USE timing         ! Timing
 
    IMPLICIT NONE
    PRIVATE
@@ -41,12 +43,12 @@ MODULE traldf_bilap
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: traldf_bilap.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
  
-   SUBROUTINE tra_ldf_bilap( kt, cdtype, pgu, pgv,      &
+   SUBROUTINE tra_ldf_bilap( kt, kit000, cdtype, pgu, pgv,      &
       &                                  ptb, pta, kjpt )  
       !!----------------------------------------------------------------------
       !!                  ***  ROUTINE tra_ldf_bilap  ***
@@ -73,11 +75,10 @@ CONTAINS
       !! ** Action : - Update pta arrays with the before iso-level
       !!               biharmonic mixing trend.
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
       USE oce     , ONLY:   ztu  => ua       , ztv  => va                           ! (ua,va) used as workspace
-      USE wrk_nemo, ONLY:   zeeu => wrk_2d_1 , zeev => wrk_2d_2 , zlt => wrk_2d_3   ! 2D workspace
       !!
       INTEGER                              , INTENT(in   ) ::   kt         ! ocean time-step index
+      INTEGER                              , INTENT(in   ) ::   kit000          ! first time step index
       CHARACTER(len=3)                     , INTENT(in   ) ::   cdtype     ! =TRA or TRC (tracer indicator)
       INTEGER                              , INTENT(in   ) ::   kjpt       ! number of tracers
       REAL(wp), DIMENSION(jpi,jpj,    kjpt), INTENT(in   ) ::   pgu, pgv   ! tracer gradient at pstep levels
@@ -86,13 +87,15 @@ CONTAINS
       !!
       INTEGER  ::  ji, jj, jk, jn   ! dummy loop indices
       REAL(wp) ::  zbtr, ztra       ! local scalars
+      REAL(wp), POINTER, DIMENSION(:,:) ::  zeeu, zeev, zlt
       !!----------------------------------------------------------------------
+      !
+      IF( nn_timing == 1 )  CALL timing_start( 'tra_ldf_bilap')
+      !
+      CALL wrk_alloc( jpi, jpj, zeeu, zeev, zlt ) 
+      !
 
-      IF( wrk_in_use(2, 1,2,3) ) THEN
-         CALL ctl_stop('tra_ldf_bilap: requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
-
-      IF( kt == nit000 )  THEN
+      IF( kt == kit000 )  THEN
          IF(lwp) WRITE(numout,*)
          IF(lwp) WRITE(numout,*) 'tra_ldf_bilap : iso-level biharmonic operator on ', cdtype
          IF(lwp) WRITE(numout,*) '~~~~~~~~~~~~~'
@@ -164,7 +167,9 @@ CONTAINS
          !                                                ! ===========
       END DO                                              ! tracer loop
       !                                                   ! ===========
-      IF( wrk_not_released(2, 1,2,3) )   CALL ctl_stop('tra_ldf_bilap: failed to release workspace arrays')
+      IF( nn_timing == 1 )  CALL timing_stop( 'tra_ldf_bilap')
+      !
+      CALL wrk_dealloc( jpi, jpj, zeeu, zeev, zlt ) 
       !
    END SUBROUTINE tra_ldf_bilap
 

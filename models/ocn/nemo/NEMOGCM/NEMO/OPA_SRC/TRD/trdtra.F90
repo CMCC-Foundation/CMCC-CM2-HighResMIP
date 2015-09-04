@@ -17,6 +17,8 @@ MODULE trdtra
    USE trdmod_trc       ! ocean passive mixed layer tracers trends 
    USE in_out_manager   ! I/O manager
    USE lib_mpp          ! MPP library
+   USE wrk_nemo        ! Memory allocation
+
 
    IMPLICIT NONE
    PRIVATE
@@ -30,7 +32,7 @@ MODULE trdtra
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 4.0 , NEMO Consortium (2011)
-   !! $Id: trdtra.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -60,8 +62,6 @@ CONTAINS
       !!        nn_ctls = 1  : read index from file 'ctlsurf_idx'
       !!        nn_ctls > 1  : use fixed level surface jk = nn_ctls
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   ztrds => wrk_3d_10   ! 3D workspace
       !
       INTEGER                         , INTENT(in)           ::  kt      ! time step
       CHARACTER(len=3)                , INTENT(in)           ::  ctype   ! tracers trends type 'TRA'/'TRC'
@@ -69,12 +69,12 @@ CONTAINS
       INTEGER                         , INTENT(in)           ::  ktrd    ! tracer trend index
       REAL(wp), DIMENSION(jpi,jpj,jpk), INTENT(in)           ::  ptrd    ! tracer trend  or flux
       REAL(wp), DIMENSION(jpi,jpj,jpk), INTENT(in), OPTIONAL ::  pun     ! velocity 
-      REAL(wp), DIMENSION(jpi,jpj,jpk), INTENT(in), OPTIONAL ::  ptra    ! Tracer variable 
+      REAL(wp), DIMENSION(jpi,jpj,jpk), INTENT(in), OPTIONAL ::  ptra    ! Tracer variablea
+      !
+      REAL(wp), POINTER, DIMENSION(:,:,:)  ::  ztrds
       !!----------------------------------------------------------------------
 
-      IF( wrk_in_use(3, 10) ) THEN
-         CALL ctl_stop('trd_tra: requested workspace array unavailable')   ;   RETURN
-      ENDIF
+      CALL wrk_alloc( jpi, jpj, jpk, ztrds )
 
       IF( .NOT. ALLOCATED( trdtx ) ) THEN       ! allocate trdtra arrays
          IF( trd_tra_alloc() /= 0 )   CALL ctl_stop( 'STOP', 'trd_tra : unable to allocate arrays' )
@@ -137,7 +137,7 @@ CONTAINS
          !
       ENDIF
       !
-      IF( wrk_not_released(3, 10) )   CALL ctl_stop('trd_tra: failed to release workspace array')
+      CALL wrk_dealloc( jpi, jpj, jpk, ztrds )
       !
    END SUBROUTINE trd_tra
 

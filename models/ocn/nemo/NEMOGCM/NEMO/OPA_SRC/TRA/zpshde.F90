@@ -20,6 +20,8 @@ MODULE zpshde
    USE in_out_manager  ! I/O manager
    USE lbclnk          ! lateral boundary conditions (or mpp link)
    USE lib_mpp         ! MPP library
+   USE wrk_nemo        ! Memory allocation
+   USE timing          ! Timing
 
    IMPLICIT NONE
    PRIVATE
@@ -31,7 +33,7 @@ MODULE zpshde
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: zpshde.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -80,9 +82,6 @@ CONTAINS
       !! ** Action  : - pgtu, pgtv: horizontal gradient of tracer at u- & v-points
       !!              - pgru, pgrv: horizontal gradient of rho (if present) at u- & v-points 
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zri => wrk_2d_1 , zrj => wrk_2d_2   ! interpolated value of rd
-      USE wrk_nemo, ONLY:   zhi => wrk_2d_3 , zhj => wrk_2d_4   ! depth of interpolation for eos2d
       !
       INTEGER                              , INTENT(in   )           ::  kt          ! ocean time-step index
       INTEGER                              , INTENT(in   )           ::  kjpt        ! number of tracers
@@ -94,17 +93,15 @@ CONTAINS
       INTEGER  ::   ji, jj, jn      ! Dummy loop indices
       INTEGER  ::   iku, ikv, ikum1, ikvm1   ! partial step level (ocean bottom level) at u- and v-points
       REAL(wp) ::  ze3wu, ze3wv, zmaxu, zmaxv  ! temporary scalars
-      REAL(wp), ALLOCATABLE, DIMENSION(:,:,:) ::   zti, ztj    ! interpolated value of tracer
+      REAL(wp), POINTER, DIMENSION(:,:  ) ::  zri, zrj, zhi, zhj
+      REAL(wp), POINTER, DIMENSION(:,:,:) ::  zti, ztj    ! interpolated value of tracer
       !!----------------------------------------------------------------------
-
-      IF( wrk_in_use(2, 1,2,3,4) ) THEN
-         CALL ctl_stop('zps_hde: requested workspace arrays unavailable')  ;  RETURN
-      END IF
-
-      ! Allocate workspaces whose dimension is > jpk
-      ALLOCATE( zti(jpi,jpj,kjpt) )
-      ALLOCATE( ztj(jpi,jpj,kjpt) )
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start( 'zps_hde')
+      !
+      CALL wrk_alloc( jpi, jpj,       zri, zrj, zhi, zhj ) 
+      CALL wrk_alloc( jpi, jpj, kjpt, zti, ztj           ) 
+      !
       DO jn = 1, kjpt      !==   Interpolation of tracers at the last ocean level   ==!
          !
 # if defined key_vectopt_loop
@@ -182,7 +179,8 @@ CONTAINS
 
          ! Compute interpolated rd from zti, ztj for the 2 cases at the depth of the partial
          ! step and store it in  zri, zrj for each  case
-         CALL eos( zti, zhi, zri )   ;   CALL eos( ztj, zhj, zrj )
+         CALL eos( zti, zhi, zri )  
+         CALL eos( ztj, zhj, zrj )
 
          ! Gradient of density at the last level 
 # if defined key_vectopt_loop
@@ -210,10 +208,10 @@ CONTAINS
          !
       END IF
       !
-      IF( wrk_not_released(2, 1,2,3,4) )   CALL ctl_stop('zps_hde: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi, jpj,       zri, zrj, zhi, zhj ) 
+      CALL wrk_dealloc( jpi, jpj, kjpt, zti, ztj           ) 
       !
-      DEALLOCATE( zti )
-      DEALLOCATE( ztj )
+      IF( nn_timing == 1 )  CALL timing_stop( 'zps_hde')
       !
    END SUBROUTINE zps_hde
 

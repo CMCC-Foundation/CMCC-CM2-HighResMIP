@@ -30,11 +30,12 @@ MODULE divcur
    USE sbc_oce, ONLY : ln_rnf   ! surface boundary condition: ocean
 #endif
    USE sbcrnf          ! river runoff 
-   USE obc_oce         ! ocean lateral open boundary condition
    USE cla             ! cross land advection             (cla_div routine)
    USE in_out_manager  ! I/O manager
    USE lbclnk          ! ocean lateral boundary conditions (or mpp link)
    USE lib_mpp         ! MPP library
+   USE wrk_nemo        ! Memory Allocation
+   USE timing          ! Timing
 
    IMPLICIT NONE
    PRIVATE
@@ -46,7 +47,7 @@ MODULE divcur
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: divcur.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -87,22 +88,22 @@ CONTAINS
       !!----------------------------------------------------------------------
       INTEGER, INTENT(in) ::   kt   ! ocean time-step index
       !
-      REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:) ::   zwu   ! specific 2D workspace
-      REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:) ::   zwv   ! specific 2D workspace
-      !
       INTEGER ::   ji, jj, jk, jl           ! dummy loop indices
       INTEGER ::   ii, ij, ijt, iju, ierr   ! local integer
       REAL(wp) ::  zraur, zdep              ! local scalar
+      REAL(wp), POINTER,  DIMENSION(:,:) ::   zwu   ! specific 2D workspace
+      REAL(wp), POINTER,  DIMENSION(:,:) ::   zwv   ! specific 2D workspace
       !!----------------------------------------------------------------------
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('div_cur')
+      !
+      CALL wrk_alloc( jpi  , jpj+2, zwu               )
+      CALL wrk_alloc( jpi+4, jpj  , zwv, kjstart = -1 )
+      !
       IF( kt == nit000 ) THEN
          IF(lwp) WRITE(numout,*)
          IF(lwp) WRITE(numout,*) 'div_cur : horizontal velocity divergence and relative vorticity'
          IF(lwp) WRITE(numout,*) '~~~~~~~   NOT optimal for auto-tasking case'
-         !
-         ALLOCATE( zwu( jpi, 1:jpj+2) , zwv(-1:jpi+2, jpj) , STAT=ierr )
-         IF( lk_mpp    )   CALL mpp_sum( ierr )
-         IF( ierr /= 0 )   CALL ctl_stop( 'STOP', 'div_cur : unable to allocate arrays' )
       ENDIF
 
       !                                                ! ===============
@@ -124,16 +125,6 @@ CONTAINS
             END DO
          END DO
 
-#if defined key_obc
-         IF( Agrif_Root() ) THEN
-            ! open boundaries (div must be zero behind the open boundary)
-            !  mpp remark: The zeroing of hdivn can probably be extended to 1->jpi/jpj for the correct row/column
-            IF( lp_obc_east  )   hdivn(nie0p1:nie1p1,nje0  :nje1  ,jk) = 0.e0      ! east
-            IF( lp_obc_west  )   hdivn(niw0  :niw1  ,njw0  :njw1  ,jk) = 0.e0      ! west
-            IF( lp_obc_north )   hdivn(nin0  :nin1  ,njn0p1:njn1p1,jk) = 0.e0      ! north
-            IF( lp_obc_south )   hdivn(nis0  :nis1  ,njs0  :njs1  ,jk) = 0.e0      ! south
-         ENDIF
-#endif         
          IF( .NOT. AGRIF_Root() ) THEN
             IF ((nbondi ==  1).OR.(nbondi == 2)) hdivn(nlci-1 , :     ,jk) = 0.e0      ! east
             IF ((nbondi == -1).OR.(nbondi == 2)) hdivn(2      , :     ,jk) = 0.e0      ! west
@@ -248,6 +239,11 @@ CONTAINS
       ! ---------------------------------=======---======
       CALL lbc_lnk( hdivn, 'T', 1. )   ;   CALL lbc_lnk( rotn , 'F', 1. )    ! lateral boundary cond. (no sign change)
       !
+      CALL wrk_dealloc( jpi  , jpj+2, zwu               )
+      CALL wrk_dealloc( jpi+4, jpj  , zwv, kjstart = -1 )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('div_cur')
+      !
    END SUBROUTINE div_cur
    
 #else
@@ -285,7 +281,9 @@ CONTAINS
       INTEGER  ::   ji, jj, jk    ! dummy loop indices
       REAL(wp) ::   zraur, zdep   ! local scalars
       !!----------------------------------------------------------------------
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('div_cur')
+      !
       IF( kt == nit000 ) THEN
          IF(lwp) WRITE(numout,*)
          IF(lwp) WRITE(numout,*) 'div_cur : horizontal velocity divergence and'
@@ -311,16 +309,6 @@ CONTAINS
             END DO  
          END DO  
 
-#if defined key_obc
-         IF( Agrif_Root() ) THEN
-            ! open boundaries (div must be zero behind the open boundary)
-            !  mpp remark: The zeroing of hdivn can probably be extended to 1->jpi/jpj for the correct row/column
-            IF( lp_obc_east  )   hdivn(nie0p1:nie1p1,nje0  :nje1  ,jk) = 0.e0      ! east
-            IF( lp_obc_west  )   hdivn(niw0  :niw1  ,njw0  :njw1  ,jk) = 0.e0      ! west
-            IF( lp_obc_north )   hdivn(nin0  :nin1  ,njn0p1:njn1p1,jk) = 0.e0      ! north
-            IF( lp_obc_south )   hdivn(nis0  :nis1  ,njs0  :njs1  ,jk) = 0.e0      ! south
-         ENDIF
-#endif         
          IF( .NOT. AGRIF_Root() ) THEN
             IF ((nbondi ==  1).OR.(nbondi == 2)) hdivn(nlci-1 , :     ,jk) = 0.e0      ! east
             IF ((nbondi == -1).OR.(nbondi == 2)) hdivn(2      , :     ,jk) = 0.e0      ! west
@@ -350,6 +338,8 @@ CONTAINS
       IF( nn_cla == 1 )   CALL cla_div    ( kt )             ! Cross Land Advection (update hdivn field)
       !
       CALL lbc_lnk( hdivn, 'T', 1. )   ;   CALL lbc_lnk( rotn , 'F', 1. )     ! lateral boundary cond. (no sign change)
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('div_cur')
       !
    END SUBROUTINE div_cur
    

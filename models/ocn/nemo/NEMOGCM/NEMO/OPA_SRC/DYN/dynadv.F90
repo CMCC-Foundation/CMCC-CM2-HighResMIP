@@ -18,6 +18,7 @@ MODULE dynadv
    USE dynzad          ! vertical advection               (dyn_zad      routine)
    USE in_out_manager  ! I/O manager
    USE lib_mpp         ! MPP library
+   USE timing          ! Timing
 
    IMPLICIT NONE
    PRIVATE
@@ -36,7 +37,7 @@ MODULE dynadv
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: dynadv.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -56,6 +57,8 @@ CONTAINS
       INTEGER, INTENT( in ) ::   kt   ! ocean time-step index
       !!----------------------------------------------------------------------
       !
+      IF( nn_timing == 1 )  CALL timing_start('dyn_adv')
+      !
       SELECT CASE ( nadv )                  ! compute advection trend and add it to general trend
       CASE ( 0 )     
                       CALL dyn_keg     ( kt )    ! vector form : horizontal gradient of kinetic energy
@@ -71,6 +74,8 @@ CONTAINS
                       CALL dyn_adv_cen2( kt )
                       CALL dyn_adv_ubs ( kt )
       END SELECT
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('dyn_adv')
       !
    END SUBROUTINE dyn_adv
 

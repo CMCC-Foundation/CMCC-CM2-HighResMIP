@@ -77,7 +77,7 @@ CONTAINS
 
       !!----------------------------------------------------------------------
       !!  OPA 9.0 , LOCEAN-IPSL (2005) 
-      !! $Id: obcdyn.F90 2528 2010-12-27 17:33:53Z rblod $ 
+      !! $Id: obcdyn.F90 1528 2009-07-23 14:38:47Z rblod $ 
       !! This software is governed by the CeCILL licence see modipsl/doc/NEMO_CeCILL.txt
       !!----------------------------------------------------------------------
 

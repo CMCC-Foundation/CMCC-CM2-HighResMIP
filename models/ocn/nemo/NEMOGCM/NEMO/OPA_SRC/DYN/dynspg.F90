@@ -14,7 +14,6 @@ MODULE dynspg
    USE oce            ! ocean dynamics and tracers variables
    USE dom_oce        ! ocean space and time domain variables
    USE phycst         ! physical constants
-   USE obc_oce        ! ocean open boundary conditions
    USE sbc_oce        ! surface boundary condition: ocean
    USE sbcapr         ! surface boundary condition: atmospheric pressure
    USE dynspg_oce     ! surface pressure gradient variables
@@ -28,6 +27,9 @@ MODULE dynspg
    USE in_out_manager ! I/O manager
    USE lib_mpp        ! MPP library
    USE solver          ! solver initialization
+   USE wrk_nemo        ! Memory Allocation
+   USE timing          ! Timing
+
 
    IMPLICIT NONE
    PRIVATE
@@ -42,7 +44,7 @@ MODULE dynspg
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.2 , LODYC-IPSL  (2009)
-   !! $Id: dynspg.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -73,19 +75,17 @@ CONTAINS
       !! N.B. : When key_esopa is used all the scheme are tested, regardless 
       !!        of the physical meaning of the results. 
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   ztrdu => wrk_3d_4 , ztrdv => wrk_3d_5    ! 3D workspace
       !
       INTEGER, INTENT(in   ) ::   kt       ! ocean time-step index
       INTEGER, INTENT(  out) ::   kindic   ! solver flag
       !
       INTEGER  ::   ji, jj, jk                             ! dummy loop indices
       REAL(wp) ::   z2dt, zg_2                             ! temporary scalar
+      REAL(wp), POINTER, DIMENSION(:,:,:) ::  ztrdu, ztrdv
       !!----------------------------------------------------------------------
-
-      IF( wrk_in_use(3, 4,5) ) THEN
-         CALL ctl_stop('dyn_spg: requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
+      !
+      IF( nn_timing == 1 )  CALL timing_start('dyn_spg')
+      !
 
 !!gm NOTA BENE : the dynspg_exp and dynspg_ts should be modified so that 
 !!gm             they return the after velocity, not the trends (as in trazdf_imp...)
@@ -93,6 +93,7 @@ CONTAINS
 
 
       IF( l_trddyn )   THEN                      ! temporary save of ta and sa trends
+         CALL wrk_alloc( jpi, jpj, jpk, ztrdu, ztrdv ) 
          ztrdu(:,:,:) = ua(:,:,:)
          ztrdv(:,:,:) = va(:,:,:)
       ENDIF
@@ -148,12 +149,14 @@ CONTAINS
             ztrdv(:,:,:) = ( va(:,:,:) - vb(:,:,:) ) / z2dt - ztrdv(:,:,:)
          END SELECT
          CALL trd_mod( ztrdu, ztrdv, jpdyn_trd_spg, 'DYN', kt )
+         !
+         CALL wrk_dealloc( jpi, jpj, jpk, ztrdu, ztrdv ) 
       ENDIF
       !                                          ! print mean trends (used for debugging)
       IF(ln_ctl)   CALL prt_ctl( tab3d_1=ua, clinfo1=' spg  - Ua: ', mask1=umask, &
          &                       tab3d_2=va, clinfo2=       ' Va: ', mask2=vmask, clinfo3='dyn' )
       !
-      IF( wrk_not_released(3, 4,5) )   CALL ctl_stop('dyn_spg: failed to release workspace arrays')
+      IF( nn_timing == 1 )  CALL timing_stop('dyn_spg')
       !
    END SUBROUTINE dyn_spg
 
@@ -167,7 +170,9 @@ CONTAINS
       !!----------------------------------------------------------------------
       INTEGER ::   ioptio
       !!----------------------------------------------------------------------
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('dyn_spg_init')
+      !
       IF(lwp) THEN             ! Control print
          WRITE(numout,*)
          WRITE(numout,*) 'dyn_spg_init : choice of the surface pressure gradient scheme'
@@ -220,16 +225,8 @@ CONTAINS
       IF( lk_dynspg_ts .AND. lk_vvl ) THEN
          IF( .NOT.ln_dynadv_vec )   CALL ctl_stop( 'Flux form not implemented for this free surface formulation' )
       ENDIF
-
-#if defined key_obc
-      !                        ! Conservation of ocean volume (key_dynspg_flt)
-      IF( lk_dynspg_flt )   ln_vol_cst = .true.
-
-      !                        ! Application of Flather's algorithm at open boundaries
-      IF( lk_dynspg_flt )   ln_obc_fla = .false.
-      IF( lk_dynspg_exp )   ln_obc_fla = .true.
-      IF( lk_dynspg_ts  )   ln_obc_fla = .true.
-#endif
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('dyn_spg_init')
       !
    END SUBROUTINE dyn_spg_init
 

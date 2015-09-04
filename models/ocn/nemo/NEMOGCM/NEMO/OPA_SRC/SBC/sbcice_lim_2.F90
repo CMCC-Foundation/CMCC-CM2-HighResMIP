@@ -43,6 +43,7 @@ MODULE sbcice_lim_2
 
    USE lbclnk           ! lateral boundary condition - MPP link
    USE lib_mpp          ! MPP library
+   USE wrk_nemo         ! work arrays
    USE iom              ! I/O manager library
    USE in_out_manager   ! I/O manager
    USE prtctl           ! Print control
@@ -57,7 +58,7 @@ MODULE sbcice_lim_2
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: sbcice_lim_2.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -82,26 +83,16 @@ CONTAINS
       !!              - update all sbc variables below sea-ice:
       !!                utau, vtau, taum, wndm, qns , qsr, emp , emps
       !!---------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   wrk_3d_1 , wrk_3d_2 , wrk_3d_3   ! 3D workspace
-      !!
       INTEGER, INTENT(in) ::   kt      ! ocean time step
       INTEGER, INTENT(in) ::   ksbc    ! type of sbc ( =3 CLIO bulk ; =4 CORE bulk ; =5 coupled )
       !!
       INTEGER  ::   ji, jj   ! dummy loop indices
-      ! Pointers into workspaces contained in the wrk_nemo module
       REAL(wp), DIMENSION(:,:,:), POINTER :: zalb_ice_os   ! albedo of the ice under overcast sky
       REAL(wp), DIMENSION(:,:,:), POINTER :: zalb_ice_cs   ! albedo of ice under clear sky
       REAL(wp), DIMENSION(:,:,:), POINTER :: zsist         ! surface ice temperature (K)
       !!----------------------------------------------------------------------
 
-      IF( wrk_in_use(3, 1,2,3) ) THEN
-         CALL ctl_stop('sbc_ice_lim_2: requested workspace arrays are unavailable')   ;   RETURN
-      ENDIF
-      ! Use pointers to access only sub-arrays of workspaces
-      zalb_ice_os => wrk_3d_1(:,:,1:1)
-      zalb_ice_cs => wrk_3d_2(:,:,1:1)
-      zsist       => wrk_3d_3(:,:,1:1)
+      CALL wrk_alloc( jpi,jpj,1, zalb_ice_os, zalb_ice_cs, zsist )
 
       IF( kt == nit000 ) THEN
          IF(lwp) WRITE(numout,*)
@@ -201,11 +192,13 @@ CONTAINS
          END IF
 #if defined key_coupled
          !                                             ! Ice surface fluxes in coupled mode 
-         IF( ksbc == 5 )   CALL sbc_cpl_ice_flx( reshape( frld, (/jpi,jpj,1/) ),                 &
-            &                                             qns_tot, qns_ice, qsr_tot , qsr_ice,   &
-            &                                             emp_tot, emp_ice, dqns_ice, sprecip,   &
+         IF( ksbc == 5 )   THEN
+            a_i(:,:,1)=fr_i
+            CALL sbc_cpl_ice_flx( frld,                                              &
             !                                optional arguments, used only in 'mixed oce-ice' case
             &                                             palbi = zalb_ice_cs, psst = sst_m, pist = zsist )
+            sprecip(:,:) = - emp_ice(:,:)   ! Ugly patch, WARNING, in coupled mode, sublimation included in snow (parsub = 0.)
+         ENDIF
 #endif
                            CALL lim_thd_2      ( kt )      ! Ice thermodynamics 
                            CALL lim_sbc_flx_2  ( kt )      ! update surface ocean mass, heat & salt fluxes 
@@ -227,7 +220,7 @@ CONTAINS
       !                                                   ! otherwise the atm.-ocean stresses are used everywhere
       IF( ln_limdyn    )   CALL lim_sbc_tau_2( kt, ub(:,:,1), vb(:,:,1) )  ! using before instantaneous surf. currents
       !
-      IF( wrk_not_released(3, 1,2,3) )   CALL ctl_stop('sbc_ice_lim_2: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi,jpj,1, zalb_ice_os, zalb_ice_cs, zsist )
       !
    END SUBROUTINE sbc_ice_lim_2
 

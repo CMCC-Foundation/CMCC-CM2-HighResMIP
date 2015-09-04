@@ -26,6 +26,8 @@ MODULE trdvor
    USE ioipsl          ! NetCDF library
    USE lbclnk          ! ocean lateral boundary conditions (or mpp link)
    USE lib_mpp         ! MPP library
+   USE wrk_nemo        ! Memory allocation
+
 
    IMPLICIT NONE
    PRIVATE
@@ -60,7 +62,7 @@ MODULE trdvor
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: trdvor.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -106,8 +108,6 @@ CONTAINS
       !!
       !!      trends output in netCDF format using ioipsl
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zudpvor => wrk_2d_1 , zvdpvor => wrk_2d_2   ! total cmulative trends
       !
       INTEGER                     , INTENT(in   ) ::   ktrd       ! ocean trend index
       REAL(wp), DIMENSION(jpi,jpj), INTENT(inout) ::   putrdvor   ! u vorticity trend 
@@ -115,14 +115,14 @@ CONTAINS
       !
       INTEGER ::   ji, jj       ! dummy loop indices
       INTEGER ::   ikbu, ikbv   ! local integers
+      REAL(wp), POINTER, DIMENSION(:,:) :: zudpvor, zvdpvor  ! total cmulative trends
       !!----------------------------------------------------------------------
 
-      IF( wrk_in_use(2, 1,2) ) THEN
-         CALL ctl_stop('trd_vor_zint_2d: requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
+      !
+      CALL wrk_alloc( jpi, jpj, zudpvor, zvdpvor )                                     ! Memory allocation
+      !
 
-      ! Initialization
-      zudpvor(:,:) = 0._wp                 ;   zvdpvor(:,:) = 0._wp
+      zudpvor(:,:) = 0._wp                 ;   zvdpvor(:,:) = 0._wp                    ! Initialisation
       CALL lbc_lnk( putrdvor, 'U', -1. )   ;   CALL lbc_lnk( pvtrdvor, 'V', -1. )      ! lateral boundary condition
       
 
@@ -166,7 +166,7 @@ CONTAINS
          CALL FLUSH(numout)
       ENDIF
       !
-      IF( wrk_not_released(2, 1,2) )   CALL ctl_stop('trd_vor_zint_2d : failed to release workspace arrays.')
+      CALL wrk_dealloc( jpi, jpj, zudpvor, zvdpvor )                                   
       !
    END SUBROUTINE trd_vor_zint_2d
 
@@ -198,20 +198,17 @@ CONTAINS
       !!
       !!      trends output in netCDF format using ioipsl
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zubet   => wrk_2d_1,   zvbet => wrk_2d_2   ! Beta.V 
-      USE wrk_nemo, ONLY:   zudpvor => wrk_2d_3, zvdpvor => wrk_2d_4   ! total cmulative trends
       !
       INTEGER                         , INTENT(in   ) ::   ktrd       ! ocean trend index
       REAL(wp), DIMENSION(jpi,jpj,jpk), INTENT(inout) ::   putrdvor   ! u vorticity trend 
       REAL(wp), DIMENSION(jpi,jpj,jpk), INTENT(inout) ::   pvtrdvor   ! v vorticity trend
       !
       INTEGER ::   ji, jj, jk   ! dummy loop indices
+      REAL(wp), POINTER, DIMENSION(:,:) :: zubet  , zvbet    ! Beta.V   
+      REAL(wp), POINTER, DIMENSION(:,:) :: zudpvor, zvdpvor  ! total cmulative trends
       !!----------------------------------------------------------------------
      
-      IF( wrk_in_use(2, 1,2,3,4) ) THEN
-         CALL ctl_stop('trd_vor_zint_3d: requested workspace arrays unavailable.')   ;   RETURN
-      ENDIF
+      CALL wrk_alloc( jpi,jpj, zubet, zvbet, zudpvor, zvdpvor )                                   
 
       ! Initialization
       zubet  (:,:) = 0._wp
@@ -275,7 +272,7 @@ CONTAINS
          CALL FLUSH(numout)
       ENDIF
       !
-      IF( wrk_not_released(2, 1,2,3,4) )   CALL ctl_stop('trd_vor_zint_3d: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi,jpj, zubet, zvbet, zudpvor, zvdpvor )                                   
       !
    END SUBROUTINE trd_vor_zint_3d
 
@@ -287,19 +284,16 @@ CONTAINS
       !! ** Purpose :  computation of cumulated trends over analysis period
       !!               and make outputs (NetCDF or DIMG format)
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zun => wrk_2d_1 , zvn => wrk_2d_2 ! 2D workspace
       !
       INTEGER, INTENT(in) ::   kt   ! ocean time-step index
       !
       INTEGER  ::   ji, jj, jk, jl   ! dummy loop indices
       INTEGER  ::   it, itmod        ! local integers
       REAL(wp) ::   zmean            ! local scalars
+      REAL(wp), POINTER, DIMENSION(:,:) :: zun, zvn
       !!----------------------------------------------------------------------
 
-      IF( wrk_in_use(2, 1,2) ) THEN
-         CALL ctl_stop('trd_vor: requested workspace arrays unavailable.')   ;   RETURN
-      ENDIF
+      CALL wrk_alloc( jpi, jpj, zun, zvn )                                   
 
       !  =================
       !  I. Initialization
@@ -466,7 +460,7 @@ CONTAINS
       !
       IF( kt == nitend )   CALL histclo( nidvor )
       !
-      IF( wrk_not_released(2, 1,2) )   CALL ctl_stop('trd_vor: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi, jpj, zun, zvn )                                   
       !
    END SUBROUTINE trd_vor
 

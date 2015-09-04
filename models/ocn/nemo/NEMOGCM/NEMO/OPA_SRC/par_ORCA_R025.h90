@@ -5,7 +5,7 @@
    !!---------------------------------------------------------------------
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: par_ORCA_R025.h90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
    CHARACTER (len=16)      &
@@ -101,11 +101,12 @@
       &     ppsur =  -8494.480000000000_wp  ,  &  !: ORCA r025 coefficients
       &     ppa0  =   257.6090000000000_wp  ,  &  !: (50 levels case)
       &     ppa1  =   256.8190000000000_wp  ,  &  !: 
+      !
       &     ppkth =   40.00000000000000_wp  ,  &  !: (non dimensional): gives the approximate
       !                                           !: layer number above which  stretching will
       !                                           !: be maximum. Usually of order jpk/2.
       &     ppacr =    10.00000000000_wp          !: (non dimensional): stretching factor
-      !                                           !: for the grid. The higher zacr, the smaller
+      !                                           !: for the grid. The highest zacr, the smallest
       !                                           !: the stretching.
    !!
    !!  If both ppa0 ppa1 and ppsur are specified to pp_to_be_computed, then

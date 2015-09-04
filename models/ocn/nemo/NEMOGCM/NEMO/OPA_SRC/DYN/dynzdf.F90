@@ -24,6 +24,8 @@ MODULE dynzdf
    USE in_out_manager  ! I/O manager
    USE lib_mpp         ! MPP library
    USE prtctl          ! Print control
+   USE wrk_nemo        ! Memory Allocation
+   USE timing          ! Timing
 
    IMPLICIT NONE
    PRIVATE
@@ -40,7 +42,7 @@ MODULE dynzdf
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: dynzdf.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 
@@ -52,21 +54,21 @@ CONTAINS
       !!
       !! ** Purpose :   compute the vertical ocean dynamics physics.
       !!---------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   ztrdu => wrk_3d_1 , ztrdv => wrk_3d_2    ! 3D workspace
       !!
       INTEGER, INTENT( in ) ::   kt      ! ocean time-step index
+      !
+      REAL(wp), POINTER, DIMENSION(:,:,:) ::  ztrdu, ztrdv
       !!---------------------------------------------------------------------
-
-      IF( wrk_in_use(3, 1,2) ) THEN
-         CALL ctl_stop('dyn_zdf: requested workspace arrays unavailable')   ;   RETURN
-      END IF
+      !
+      IF( nn_timing == 1 )  CALL timing_start('dyn_zdf')
+      !
       !                                          ! set time step
       IF( neuler == 0 .AND. kt == nit000     ) THEN   ;   r2dt =      rdt   ! = rdtra (restart with Euler time stepping)
       ELSEIF(               kt <= nit000 + 1 ) THEN   ;   r2dt = 2. * rdt   ! = 2 rdttra (leapfrog)
       ENDIF
 
       IF( l_trddyn )   THEN                      ! temporary save of ta and sa trends
+         CALL wrk_alloc( jpi, jpj, jpk, ztrdu, ztrdv ) 
          ztrdu(:,:,:) = ua(:,:,:)
          ztrdv(:,:,:) = va(:,:,:)
       ENDIF
@@ -89,12 +91,14 @@ CONTAINS
          ztrdu(:,:,:) = ua(:,:,:) - ztrdu(:,:,:)
          ztrdv(:,:,:) = va(:,:,:) - ztrdv(:,:,:)
          CALL trd_mod( ztrdu, ztrdv, jpdyn_trd_zdf, 'DYN', kt )
+         !
+         CALL wrk_dealloc( jpi, jpj, jpk, ztrdu, ztrdv ) 
       ENDIF
       !                                          ! print mean trends (used for debugging)
       IF(ln_ctl)   CALL prt_ctl( tab3d_1=ua, clinfo1=' zdf  - Ua: ', mask1=umask,               &
             &                    tab3d_2=va, clinfo2=       ' Va: ', mask2=vmask, clinfo3='dyn' )
       !
-      IF( wrk_not_released(3, 1,2) )   CALL ctl_stop('dyn_zdf: failed to release workspace arrays')
+      IF( nn_timing == 1 )  CALL timing_stop('dyn_zdf')
       !
    END SUBROUTINE dyn_zdf
 

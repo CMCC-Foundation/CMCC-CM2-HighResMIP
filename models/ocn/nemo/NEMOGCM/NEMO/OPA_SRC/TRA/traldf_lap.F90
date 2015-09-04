@@ -24,6 +24,7 @@ MODULE traldf_lap
    USE diaptr          ! poleward transport diagnostics
    USE trc_oce         ! share passive tracers/Ocean variables
    USE lib_mpp         ! MPP library
+   USE timing          ! Timing
 
    IMPLICIT NONE
    PRIVATE
@@ -38,12 +39,12 @@ MODULE traldf_lap
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: traldf_lap.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
 
-   SUBROUTINE tra_ldf_lap( kt, cdtype, pgu, pgv,      &
+   SUBROUTINE tra_ldf_lap( kt, kit000, cdtype, pgu, pgv,      &
       &                                ptb, pta, kjpt ) 
       !!----------------------------------------------------------------------
       !!                  ***  ROUTINE tra_ldf_lap  ***
@@ -65,6 +66,7 @@ CONTAINS
       USE oce, ONLY:   ztu => ua , ztv => va  ! (ua,va) used as workspace
       !
       INTEGER                              , INTENT(in   ) ::   kt         ! ocean time-step index
+      INTEGER                              , INTENT(in   ) ::   kit000          ! first time step index
       CHARACTER(len=3)                     , INTENT(in   ) ::   cdtype     ! =TRA or TRC (tracer indicator)
       INTEGER                              , INTENT(in   ) ::   kjpt       ! number of tracers
       REAL(wp), DIMENSION(jpi,jpj    ,kjpt), INTENT(in   ) ::   pgu, pgv   ! tracer gradient at pstep levels
@@ -75,18 +77,24 @@ CONTAINS
       INTEGER  ::   iku, ikv, ierr       ! local integers
       REAL(wp) ::   zabe1, zabe2, zbtr   ! local scalars
       !!----------------------------------------------------------------------
-      
-      IF( kt == nit000 )  THEN
+      !
+      CALL timing_start('tra_ldf_lap')
+      !
+      IF( kt == kit000 )  THEN
          IF(lwp) WRITE(numout,*)
          IF(lwp) WRITE(numout,*) 'tra_ldf_lap : iso-level laplacian diffusion on ', cdtype
          IF(lwp) WRITE(numout,*) '~~~~~~~~~~~ '
          !
-         ALLOCATE( e1ur(jpi,jpj), e2vr(jpi,jpj), STAT=ierr )
-         IF( lk_mpp    )   CALL mpp_sum( ierr )
-         IF( ierr /= 0 )   CALL ctl_stop( 'STOP', 'tra_ldf_lap : unable to allocate arrays' )
-         !
-         e1ur(:,:) = e2u(:,:) / e1u(:,:)
-         e2vr(:,:) = e1v(:,:) / e2v(:,:)
+         IF( .NOT. ALLOCATED( e1ur ) ) THEN
+            ! This routine may be called for both active and passive tracers. 
+            ! Allocate and set saved arrays on first call only.
+            ALLOCATE( e1ur(jpi,jpj), e2vr(jpi,jpj), STAT=ierr )
+            IF( lk_mpp    )   CALL mpp_sum( ierr )
+            IF( ierr /= 0 )   CALL ctl_stop( 'STOP', 'tra_ldf_lap : unable to allocate arrays' )
+            !
+            e1ur(:,:) = e2u(:,:) / e1u(:,:)
+            e2vr(:,:) = e1v(:,:) / e2v(:,:)
+         ENDIF
       ENDIF
 
       !                                                          ! =========== !
@@ -144,6 +152,8 @@ CONTAINS
          !                                                  ! ==================
       END DO                                                ! end of tracer loop
       !                                                     ! ==================
+      CALL timing_stop('tra_ldf_lap')
+      !
    END SUBROUTINE tra_ldf_lap
 
    !!==============================================================================

@@ -37,6 +37,7 @@ MODULE trdmld
    USE prtctl          ! Print control
    USE restart         ! for lrst_oce
    USE lib_mpp         ! MPP library
+   USE wrk_nemo        ! Memory allocation
 
    IMPLICIT NONE
    PRIVATE
@@ -58,7 +59,7 @@ MODULE trdmld
 #  include "zdfddm_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: trdmld.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -92,8 +93,6 @@ CONTAINS
       !!      Note: in the remainder of the routine, the volume between the 
       !!            surface and the control surface is called "mixed-layer"
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zvlmsk => wrk_2d_10     ! 2D workspace
       !
       INTEGER                         , INTENT( in ) ::   ktrd       ! ocean trend index
       CHARACTER(len=2)                , INTENT( in ) ::   ctype      ! 2D surface/bottom or 3D interior physics
@@ -101,11 +100,10 @@ CONTAINS
       REAL(wp), DIMENSION(jpi,jpj,jpk), INTENT( in ) ::   pstrdmld   ! salinity trend 
       !
       INTEGER ::   ji, jj, jk, isum
+      REAL(wp), POINTER, DIMENSION(:,:)  :: zvlmsk 
       !!----------------------------------------------------------------------
 
-      IF( wrk_in_use(2, 10) ) THEN
-         CALL ctl_stop('trd_mld_zint : requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
+      CALL wrk_alloc( jpi, jpj, zvlmsk ) 
 
       ! I. Definition of control surface and associated fields
       ! ------------------------------------------------------
@@ -194,7 +192,7 @@ CONTAINS
          smltrd(:,:,ktrd) = smltrd(:,:,ktrd) + pstrdmld(:,:,1) * wkx(:,:,1)            
       END SELECT
       !
-      IF( wrk_not_released(2, 10) )   CALL ctl_stop('trd_mld_zint: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi, jpj, zvlmsk ) 
       !
    END SUBROUTINE trd_mld_zint
     
@@ -246,39 +244,26 @@ CONTAINS
       !!       - Vialard & al.
       !!       - See NEMO documentation (in preparation)
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY: wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY: ztmltot => wrk_2d_1,  zsmltot => wrk_2d_2 ! dT/dt over the anlysis window (including Asselin)
-      USE wrk_nemo, ONLY: ztmlres => wrk_2d_3,  zsmlres => wrk_2d_4 ! residual = dh/dt entrainment term
-      USE wrk_nemo, ONLY: ztmlatf => wrk_2d_5,  zsmlatf => wrk_2d_6 ! needed for storage only
-      USE wrk_nemo, ONLY: ztmltot2 => wrk_2d_7, ztmlres2 => wrk_2d_8, ztmltrdm2 => wrk_2d_9    ! \  working arrays to diagnose the trends
-      USE wrk_nemo, ONLY: zsmltot2 => wrk_2d_10, zsmlres2 => wrk_2d_11, zsmltrdm2 => wrk_2d_12 !  > associated with the time meaned ML T & S
-      USE wrk_nemo, ONLY: ztmlatf2 => wrk_2d_13, zsmlatf2 => wrk_2d_14    
-      USE wrk_nemo, ONLY: wrk_3d_1, wrk_3d_2                     ! /
       !
       INTEGER, INTENT( in ) ::   kt   ! ocean time-step index
       !
       INTEGER :: ji, jj, jk, jl, ik, it, itmod
       LOGICAL :: lldebug = .TRUE.
       REAL(wp) :: zavt, zfn, zfn2
+      !                                              ! z(ts)mltot : dT/dt over the anlysis window (including Asselin)
+      !                                              ! z(ts)mlres : residual = dh/dt entrainment term
+      REAL(wp), POINTER, DIMENSION(:,:  ) ::  ztmltot , zsmltot , ztmlres , zsmlres , ztmlatf , zsmlatf
+      REAL(wp), POINTER, DIMENSION(:,:  ) ::  ztmltot2, zsmltot2, ztmlres2, zsmlres2, ztmlatf2, zsmlatf2, ztmltrdm2, zsmltrdm2  
       REAL(wp), POINTER, DIMENSION(:,:,:) ::  ztmltrd2, zsmltrd2   ! only needed for mean diagnostics
 #if defined key_dimgout
       INTEGER ::  iyear,imon,iday
       CHARACTER(LEN=80) :: cltext, clmode
 #endif
       !!----------------------------------------------------------------------
-      
-      ! Check that the workspace arrays are all OK to be used
-      IF( wrk_in_use(2, 1,2,3,4,5,6,7,8,9,10,11,12,13,14)  .OR. &
-          wrk_in_use(3, 1,2)                                 ) THEN
-         CALL ctl_stop('trd_mld : requested workspace arrays unavailable')   ;   RETURN
-      ELSE IF(jpltrd > jpk) THEN
-         ! ARPDBG, is this reasonable or will this cause trouble in the future?
-         CALL ctl_stop('trd_mld : no. of mixed-layer trends (jpltrd) exceeds no. of model levels so cannot use 3D workspaces.')
-         RETURN         
-      END IF
-      ! Set-up pointers into sub-arrays of 3d-workspaces
-      ztmltrd2 => wrk_3d_1(1:,:,1:jpltrd)
-      zsmltrd2 => wrk_3d_2(1:,:,1:jpltrd)
+  
+      CALL wrk_alloc( jpi, jpj,         ztmltot , zsmltot , ztmlres , zsmlres , ztmlatf , zsmlatf                        )
+      CALL wrk_alloc( jpi, jpj,         ztmltot2, zsmltot2, ztmlres2, zsmlres2, ztmlatf2, zsmlatf2, ztmltrdm2, zsmltrdm2 )  
+      CALL wrk_alloc( jpi, jpj, jpltrd, ztmltrd2, zsmltrd2                                                               )
 
       ! ======================================================================
       ! I. Diagnose the purely vertical (K_z) diffusion trend
@@ -292,11 +277,11 @@ CONTAINS
                ik = nmld(ji,jj)
                zavt = avt(ji,jj,ik)
                tmltrd(ji,jj,jpmld_zdf) = - zavt / fse3w(ji,jj,ik) * tmask(ji,jj,ik)  &
-                  &                      * ( tn(ji,jj,ik-1) - tn(ji,jj,ik) )         &
+                  &                      * ( tsn(ji,jj,ik-1,jp_tem) - tsn(ji,jj,ik,jp_tem) )         &
                   &                      / MAX( 1., rmld(ji,jj) ) * tmask(ji,jj,1)
                zavt = fsavs(ji,jj,ik)
                smltrd(ji,jj,jpmld_zdf) = - zavt / fse3w(ji,jj,ik) * tmask(ji,jj,ik)  &
-                  &                      * ( sn(ji,jj,ik-1) - sn(ji,jj,ik) )         &
+                  &                      * ( tsn(ji,jj,ik-1,jp_sal) - tsn(ji,jj,ik,jp_sal) )         &
                   &                      / MAX( 1., rmld(ji,jj) ) * tmask(ji,jj,1)
             END DO
          END DO
@@ -333,8 +318,8 @@ CONTAINS
       ! --------------------------------
       tml(:,:) = 0.e0   ;   sml(:,:) = 0.e0
       DO jk = 1, jpktrd - 1
-         tml(:,:) = tml(:,:) + wkx(:,:,jk) * tn(:,:,jk)
-         sml(:,:) = sml(:,:) + wkx(:,:,jk) * sn(:,:,jk) 
+         tml(:,:) = tml(:,:) + wkx(:,:,jk) * tsn(:,:,jk,jp_tem)
+         sml(:,:) = sml(:,:) + wkx(:,:,jk) * tsn(:,:,jk,jp_sal)
       END DO
 
       ! II.3 Initialize mixed-layer "before" arrays for the 1rst analysis window    
@@ -739,9 +724,9 @@ CONTAINS
 
       IF( lrst_oce )   CALL trd_mld_rst_write( kt ) 
 
-      IF( wrk_not_released(2, 1,2,3,4,5,6,7,8,9,10,11,12,13,14)  .OR. &
-          wrk_not_released(3, 1,2)                                )   &
-          CALL ctl_stop('trd_mld : failed to release workspace arrays.')
+      CALL wrk_dealloc( jpi, jpj,         ztmltot , zsmltot , ztmlres , zsmlres , ztmlatf , zsmlatf                        )
+      CALL wrk_dealloc( jpi, jpj,         ztmltot2, zsmltot2, ztmlres2, zsmlres2, ztmlatf2, zsmlatf2, ztmltrdm2, zsmltrdm2 )  
+      CALL wrk_dealloc( jpi, jpj, jpltrd, ztmltrd2, zsmltrd2                                                               )
       !
    END SUBROUTINE trd_mld
 

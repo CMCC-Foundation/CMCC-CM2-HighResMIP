@@ -28,10 +28,13 @@ MODULE zdfkpp
    USE zdfddm          ! double diffusion mixing
    USE in_out_manager  ! I/O manager
    USE lib_mpp         ! MPP library
+   USE wrk_nemo        ! work arrays
    USE lbclnk          ! ocean lateral boundary conditions (or mpp link)
    USE prtctl          ! Print control
    USE trdmod_oce      ! ocean trends definition
    USE trdtra          ! tracers trends
+   USE timing          ! Timing
+   USE lib_fortran     ! Fortran utilities (allows no signed zero when 'key_nosignedzero' defined)
 
    IMPLICIT NONE
    PRIVATE
@@ -144,7 +147,7 @@ MODULE zdfkpp
 #  include  "zdfddm_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 4.0 , NEMO Consortium (2011)
-   !! $Id: zdfkpp.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -205,31 +208,8 @@ CONTAINS
       !!         Comments in the code refer to this paper, particularly 
       !!         the equation number. (LMD94, here after)
       !!----------------------------------------------------------------------
-#if defined  key_zdfddm
       USE oce     , zviscos => ua   ! temp. array for viscosities use ua as workspace
-      USE oce     , zdiffut => ta   ! temp. array for diffusivities use sa as workspace
-      USE oce     , zdiffus => sa   ! temp. array for diffusivities use sa as workspace
-#else
-      USE oce     , zviscos => ua   ! temp. array for viscosities use ua as workspace
-      USE oce     , zdiffut => ta   ! temp. array for diffusivities use sa as workspace
-#endif
-      USE wrk_nemo, ONLY: wrk_in_use, wrk_not_released, wrk_in_use_xz, wrk_not_released_xz
-      USE wrk_nemo, ONLY: zBo    => wrk_2d_1, &  ! Surface buoyancy forcing,
-                          zBosol => wrk_2d_2, &  ! friction velocity
-                          zustar => wrk_2d_3
-      USE wrk_nemo, ONLY: zmask  => wrk_2d_4
-!gm      USE wrk_nemo, ONLY: wrk_2d_5, wrk_2d_6, wrk_2d_7, wrk_2d_8, wrk_2d_9, &
-      USE wrk_nemo, ONLY:           wrk_2d_6, wrk_2d_7, wrk_2d_8, wrk_2d_9, &
-                          wrk_2d_10,wrk_2d_11
-      USE wrk_nemo, ONLY: wrk_1d_1,  wrk_1d_2,  wrk_1d_3,  wrk_1d_4,  &
-                          wrk_1d_5,  wrk_1d_6,  wrk_1d_7,  wrk_1d_8,  &
-                          wrk_1d_9,  wrk_1d_10, wrk_1d_11, wrk_1d_12, &
-                          wrk_1d_13, wrk_1d_14
-      USE wrk_nemo, ONLY: zblcm => wrk_xz_1, &   ! Boundary layer 
-                          zblct => wrk_xz_2      !  diffusivities/viscosities
-#if defined key_zdfddm
-      USE wrk_nemo, ONLY: zblcs => wrk_xz_3
-#endif
+      USE oce     , zdiffut => va   ! temp. array for diffusivities use sa as workspace
       !!
       INTEGER, INTENT( in  ) ::   kt   ! ocean time step
       !!
@@ -254,8 +234,7 @@ CONTAINS
 #endif
       REAL(wp) ::   zflag, ztemp, zrn2, zdep21, zdep32, zdep43
       REAL(wp) ::   zdku2, zdkv2, ze3sqr, zsh2, zri, zfri          ! Interior richardson mixing
-!gm      REAL(wp), POINTER, DIMENSION(:,:) ::   zmoek                 ! Moning-Obukov limitation
-      REAL(wp), DIMENSION(jpi,0:2) ::   zmoek                 ! Moning-Obukov limitation
+      REAL(wp), POINTER, DIMENSION(:,:) ::   zmoek                 ! Moning-Obukov limitation
       REAL(wp), POINTER, DIMENSION(:)   ::   zmoa, zekman                
       REAL(wp)                          ::   zmob, zek
       REAL(wp), POINTER, DIMENSION(:,:) ::   zdepw, zdift, zvisc   ! The pipe 
@@ -267,41 +246,31 @@ CONTAINS
       REAL(wp) ::   zdelta, zdelta2, zdzup, zdzdn, zdzh, zvath, zgat1, zdat1, zkm1m, zkm1t
 #if defined key_zdfddm
       REAL(wp) ::   zrrau, zds, zavdds, zavddt,zinr   ! double diffusion mixing
-      REAL(wp), POINTER, DIMENSION(:,:) ::     zdifs
-      REAL(wp), POINTER, DIMENSION(:)   ::   za2s, za3s, zkmps
-      REAL(wp) ::                       zkm1s
+      REAL(wp), POINTER, DIMENSION(:,:)   ::     zdifs
+      REAL(wp), POINTER, DIMENSION(:)     ::   za2s, za3s, zkmps
+      REAL(wp) ::                            zkm1s
+      REAL(wp), POINTER, DIMENSION(:,:)   ::   zblcs
+      REAL(wp), POINTER, DIMENSION(:,:,:) ::   zdiffus
 #endif
+      REAL(wp), POINTER, DIMENSION(:,:) ::   zBo, zBosol, zustar         ! Surface buoyancy forcing, friction velocity
+      REAL(wp), POINTER, DIMENSION(:,:) ::   zmask, zblcm, zblct
       !!--------------------------------------------------------------------
-     
-      IF( wrk_in_use(1, 1,2,3,4,5,6,7,8,9,10,11,12,13,14) .OR.   &
-          wrk_in_use(2, 1,2,3,4,5,6,7,8,9,10,11)          .OR.   &
-          wrk_in_use_xz(1,2,3)                              ) THEN
-         CALL ctl_stop('zdf_kpp : requested workspace arrays unavailable.')   ;   RETURN
-      ENDIF
-      ! Set-up pointers to 2D spaces
-!gm      zmoek(1:jpi,0:2) => wrk_2d_5(1:jpi,1:3)
-      zdepw => wrk_2d_6(:,1:4)
-      zdift => wrk_2d_7(:,1:4)
-      zvisc => wrk_2d_8(:,1:4)
-      zdept => wrk_2d_9(:,1:3)
-      zriblk => wrk_2d_10(:,1:2)
-      ! 1D spaces
-      zmoa   => wrk_1d_1(1:jpi)
-      zekman => wrk_1d_2(1:jpi)
-      zhmax  => wrk_1d_3(1:jpi)
-      zria   => wrk_1d_4(1:jpi)
-      zhbl   => wrk_1d_5(1:jpi)
-      za2m   => wrk_1d_6(1:jpi)
-      za3m   => wrk_1d_7(1:jpi)
-      zkmpm  => wrk_1d_8(1:jpi)
-      za2t   => wrk_1d_9(1:jpi)
-      za3t   => wrk_1d_10(1:jpi)
-      zkmpt  => wrk_1d_11(1:jpi)
+      !
+      IF( nn_timing == 1 )  CALL timing_start('zdf_kpp')
+      !
+      CALL wrk_alloc( jpi, zmoa, zekman, zhmax, zria, zhbl )
+      CALL wrk_alloc( jpi, za2m, za3m, zkmpm, za2t, za3t, zkmpt )
+      CALL wrk_alloc( jpi,2, zriblk )
+      CALL wrk_alloc( jpi,3, zmoek, kjstart = 0 )
+      CALL wrk_alloc( jpi,3, zdept )
+      CALL wrk_alloc( jpi,4, zdepw, zdift, zvisc )
+      CALL wrk_alloc( jpi,jpj, zBo, zBosol, zustar )
+      CALL wrk_alloc( jpi,jpk, zmask, zblcm, zblct )
 #if defined key_zdfddm
-      zdifs => wrk_2d_11(:,1:4)
-      za2s  => wrk_1d_12(1:jpi)
-      za3s  => wrk_1d_13(1:jpi)
-      zkmps => wrk_1d_14(1:jpi)
+      CALL wrk_alloc( jpi,4, zdifs )
+      CALL wrk_alloc( jpi, zmoa, za2s, za3s, zkmps )
+      CALL wrk_alloc( jpi,jpk, zblcs )
+      CALL wrk_alloc( jpi,jpi,jpk, zdiffus )
 #endif
 
       zviscos(:,:,:) = 0.
@@ -368,7 +337,7 @@ CONTAINS
                ! ------------------------------------------------------------------
                ! only retains positive value of rrau
                zrrau = MAX( rrau(ji,jj,jk), epsln )
-               zds   = sn(ji,jj,jk-1) - sn(ji,jj,jk)
+               zds   = tsn(ji,jj,jk-1,jp_sal) - tsn(ji,jj,jk,jp_sal)
                IF( zrrau > 1. .AND. zds > 0.) THEN
                   !
                   ! Salt fingering case.
@@ -417,8 +386,8 @@ CONTAINS
       DO jj = 2, jpjm1
          DO ji = fs_2, fs_jpim1     
             IF( nn_eos < 1) THEN   
-               zt     = tn(ji,jj,1)
-               zs     = sn(ji,jj,1) - 35.0
+               zt     = tsn(ji,jj,1,jp_tem)
+               zs     = tsn(ji,jj,1,jp_sal) - 35.0
                zh     = fsdept(ji,jj,1)
                !  potential volumic mass
                zrhos  = rhop(ji,jj,1)
@@ -448,11 +417,11 @@ CONTAINS
                   &                             - 0.121555e-07 ) * zh
 
                zthermal = zbeta * zalbet / ( rcp * zrhos + epsln )
-               zhalin   = zbeta * sn(ji,jj,1) * rcs
+               zhalin   = zbeta * tsn(ji,jj,1,jp_sal) * rcs
             ELSE
                zrhos    = rhop(ji,jj,1) + rau0 * ( 1. - tmask(ji,jj,1) )
                zthermal = rn_alpha / ( rcp * zrhos + epsln )
-               zhalin   = rn_beta * sn(ji,jj,1) * rcs
+               zhalin   = rn_beta * tsn(ji,jj,1,jp_sal) * rcs
             ENDIF
             ! Radiative surface buoyancy force
             zBosol(ji,jj) = grav * zthermal * qsr(ji,jj)
@@ -461,7 +430,7 @@ CONTAINS
             ! Surface Temperature flux for non-local term
             wt0(ji,jj) = - ( qsr(ji,jj) + qns(ji,jj) )* ro0cpr * tmask(ji,jj,1)
             ! Surface salinity flux for non-local term
-            ws0(ji,jj) = - ( ( emps(ji,jj)-rnf(ji,jj) ) * sn(ji,jj,1) * rcs ) * tmask(ji,jj,1) 
+            ws0(ji,jj) = - ( ( emps(ji,jj)-rnf(ji,jj) ) * tsn(ji,jj,1,jp_sal) * rcs ) * tmask(ji,jj,1) 
          ENDDO
       ENDDO
 
@@ -542,8 +511,8 @@ CONTAINS
 #if defined key_kppcustom
                ! zref = gdept(1)
                zref = fsdept(ji,jj,1)
-               zt   = tn(ji,jj,1)
-               zs   = sn(ji,jj,1)
+               zt   = tsn(ji,jj,1,jp_tem)
+               zs   = tsn(ji,jj,1,jp_sal)
                zrh  = rhop(ji,jj,1)
                zu   = ( ub(ji,jj,1) + ub(ji - 1,jj    ,1) ) / MAX( 1. , umask(ji,jj,1) + umask(ji - 1,jj   ,1) )
                zv   = ( vb(ji,jj,1) + vb(ji    ,jj - 1,1) ) / MAX( 1. , vmask(ji,jj,1) + vmask(ji   ,jj - 1,1) )
@@ -555,8 +524,8 @@ CONTAINS
                zrh  = 0.
                ! vertically integration over the upper epsilon*gdept(jk) ; del () array is computed once in zdf_kpp_init
                DO jm = 1, jpkm1
-                  zt   = zt  + del(jk,jm) * tn(ji,jj,jm)
-                  zs   = zs  + del(jk,jm) * sn(ji,jj,jm)
+                  zt   = zt  + del(jk,jm) * tsn(ji,jj,jm,jp_tem)
+                  zs   = zs  + del(jk,jm) * tsn(ji,jj,jm,jp_sal)
                   zu   = zu  + 0.5 * del(jk,jm) &
                      &            * ( ub(ji,jj,jm) + ub(ji - 1,jj,jm) ) &
                      &            / MAX( 1. , umask(ji,jj,jm) + umask(ji - 1,jj,jm) )
@@ -566,7 +535,7 @@ CONTAINS
                   zrh  = zrh + del(jk,jm) * rhop(ji,jj,jm)
                END DO
 #endif
-               zsr = SQRT( ABS( sn(ji,jj,jk) ) )
+               zsr = SQRT( ABS( tsn(ji,jj,jk,jp_sal) ) )
                ! depth
                zh = fsdept(ji,jj,jk)
                ! compute compression terms on density
@@ -1109,10 +1078,9 @@ CONTAINS
                        
                zdiffut(ji,jj,jk) = zdiffut(ji,jj,jk) * tmask(ji,jj,jk) 
 #if defined key_zdfddm
-               zdiffus(ji,jj,jk) = ( 1.0 - zmask(ji,jk) )          * avs (ji,jj,jk) & ! interior diffusivities 
+               zdiffus(ji,jj,jk) = ( 1.0 - zmask(ji,jk) )         * avs (ji,jj,jk) & ! interior diffusivities 
                   &              +                        zflag   * zblcs(ji,jk   ) & ! boundary layer diffusivities
                   &              + zmask(ji,jk) * ( 1.0 - zflag ) * zkmps(ji      )   ! diffusivity enhancement at W_level near zhbl
-                       
                zdiffus(ji,jj,jk) = zdiffus(ji,jj,jk) * tmask(ji,jj,jk) 
 #endif               
                ! Non local flux in the boundary layer only
@@ -1233,10 +1201,22 @@ CONTAINS
                &         tab3d_2=avmv, clinfo2=      ' v: ', mask2=vmask, ovlap=1, kdim=jpk)
          ENDIF
 
-      IF( wrk_not_released(1, 1,2,3,4,5,6,7,8,9,10,11,12,13,14) .OR.   &
-          wrk_not_released(2, 1,2,3,4,5,6,7,8,9,10,11)          .OR.   &
-          wrk_not_released_xz(1,2,3)                               )   &
-          CALL ctl_stop('zdf_kpp : failed to release workspace arrays')
+      CALL wrk_dealloc( jpi, zmoa, zekman, zhmax, zria, zhbl )
+      CALL wrk_dealloc( jpi, za2m, za3m, zkmpm, za2t, za3t, zkmpt )
+      CALL wrk_dealloc( jpi,2, zriblk )
+      CALL wrk_dealloc( jpi,3, zmoek, kjstart = 0 )
+      CALL wrk_dealloc( jpi,3, zdept )
+      CALL wrk_dealloc( jpi,4, zdepw, zdift, zvisc )
+      CALL wrk_dealloc( jpi,jpj, zBo, zBosol, zustar )
+      CALL wrk_dealloc( jpi,jpk, zmask, zblcm, zblct )
+#if defined key_zdfddm
+      CALL wrk_dealloc( jpi,4, zdifs )
+      CALL wrk_dealloc( jpi, zmoa, za2s, za3s, zkmps )
+      CALL wrk_dealloc( jpi,jpk, zblcs )
+      CALL wrk_dealloc( jpi,jpi,jpk, zdiffus )
+#endif
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('zdf_kpp')
       !
    END SUBROUTINE zdf_kpp
 
@@ -1253,7 +1233,9 @@ CONTAINS
       !!----------------------------------------------------------------------
       INTEGER, INTENT(in) :: kt
       INTEGER :: ji, jj, jk
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('tra_kpp')
+      !
       IF( kt == nit000 ) THEN
          IF(lwp) WRITE(numout,*) 
          IF(lwp) WRITE(numout,*) 'tra_kpp : KPP non-local tracer fluxes'
@@ -1293,7 +1275,9 @@ CONTAINS
          CALL prt_ctl( tab3d_1=tsa(:,:,:,jp_tem), clinfo1=' kpp  - Ta: ', mask1=tmask,   &
          &             tab3d_2=tsa(:,:,:,jp_sal), clinfo2=       ' Sa: ', mask2=tmask, clinfo3='tra' )
       ENDIF
-
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('tra_kpp')
+      !
    END SUBROUTINE tra_kpp
 
 #if defined key_top
@@ -1319,6 +1303,7 @@ CONTAINS
       INTEGER, INTENT(in) ::   kt   ! ocean time-step index
       !
       INTEGER  ::   ji, jj, jk, jn      ! Dummy loop indices
+      CHARACTER (len=35) :: charout
       REAL(wp) ::   ztra, zflx
       REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::   ztrtrd
       !!----------------------------------------------------------------------
@@ -1348,15 +1333,17 @@ CONTAINS
                END DO
             END DO
          END DO
-         ! save the non-local tracer flux trends for diagnostic
-         IF( l_trdtrc )  ztrtrd(:,:,:)  = tra(:,:,:,jn) - ztrtrd(:,:,:)
-         CALL trd_tra( kt, 'TRC', jn, jptra_trd_zdf, ztrtrd(:,:,:,jn) )
+         !
+         IF( l_trdtrc ) THEN         ! save the non-local tracer flux trends for diagnostic
+            ztrtrd(:,:,:) = tra(:,:,:,jn) - ztrtrd(:,:,:)
+            CALL trd_tra( kt, 'TRC', jn, jptra_trd_zdf, ztrtrd(:,:,:) )
+         ENDIF
          !
       END DO
       IF( l_trdtrc )  DEALLOCATE( ztrtrd )
       IF( ln_ctl )   THEN
          WRITE(charout, FMT="(' kpp')")  ;  CALL prt_ctl_trc_info(charout)
-         CALL prt_ctl_trc( tab4d=tra, mask=tmask, clinfo=clname, clinfo2='trd' )
+         CALL prt_ctl_trc( tab4d=tra, mask=tmask, clinfo=ctrcnm, clinfo2='trd' )
       ENDIF
       !
    END SUBROUTINE trc_kpp
@@ -1397,7 +1384,9 @@ CONTAINS
       !!
       NAMELIST/namzdf_kpp/ ln_kpprimix, rn_difmiw, rn_difsiw, rn_riinfty, rn_difri, rn_bvsqcon, rn_difcon, nn_ave
       !!----------------------------------------------------------------------
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('zdf_kpp_init')
+      !
       REWIND ( numnam )               ! Read Namelist namkpp : K-Profile Parameterisation
       READ   ( numnam, namzdf_kpp )
 
@@ -1594,6 +1583,8 @@ CONTAINS
          END DO
       END DO
 #endif
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('zdf_kpp_init')
       !
    END SUBROUTINE zdf_kpp_init
 

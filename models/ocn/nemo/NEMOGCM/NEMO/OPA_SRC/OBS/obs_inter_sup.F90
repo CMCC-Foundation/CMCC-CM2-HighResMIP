@@ -9,6 +9,7 @@ MODULE obs_inter_sup
    !!   obs_int_comm_2d : Get 2D interpolation stencil
    !!---------------------------------------------------------------------
    !! * Modules used
+   USE wrk_nemo        ! Memory Allocation
    USE par_kind        ! Precision variables
    USE dom_oce         ! Domain variables
    USE mpp_map         ! Map of processor points
@@ -27,7 +28,7 @@ MODULE obs_inter_sup
    
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: obs_inter_sup.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 
@@ -104,8 +105,6 @@ CONTAINS
       !! History :
       !!        !  08-02  (K. Mogensen)  Original code
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY: wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY: wrk_3d_1
       !!
       !! * Arguments
       INTEGER, INTENT(IN) :: kptsi        ! Number of i horizontal points per stencil
@@ -121,17 +120,12 @@ CONTAINS
       REAL(KIND=wp), DIMENSION(kptsi,kptsj,kobs), INTENT(OUT) ::&
          & pgval            ! Stencil at each point
       !! * Local declarations
-      REAL(KIND=wp), POINTER, DIMENSION(:,:,:) :: &
-         & zval
+      REAL(KIND=wp), POINTER, DIMENSION(:,:,:) ::   zval
       REAL(KIND=wp), DIMENSION(kptsi,kptsj,1,kobs) ::&
          & zgval 
 
       ! Check workspace array and set-up pointer
-      IF(wrk_in_use(3, 1))THEN
-         CALL ctl_stop('obs_int_comm_2d : requested workspace array unavailable.')
-         RETURN
-      END IF
-      zval => wrk_3d_1(:,:,1:1)
+      CALL wrk_alloc(jpi,jpj,1,zval) 
 
       ! Set up local "3D" buffer
 
@@ -155,9 +149,7 @@ CONTAINS
       pgval(:,:,:) = zgval(:,:,1,:)
 
       ! 'Release' workspace array back to pool
-      IF(wrk_not_released(3, 1))THEN
-         CALL ctl_stop('obs_int_comm_2d : failed to release workspace array.')
-      END IF
+      CALL wrk_dealloc(jpi,jpj,1,zval) 
 
    END SUBROUTINE obs_int_comm_2d
 

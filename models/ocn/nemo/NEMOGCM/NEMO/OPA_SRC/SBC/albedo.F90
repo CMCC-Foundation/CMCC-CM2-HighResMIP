@@ -18,6 +18,8 @@ MODULE albedo
    USE phycst          ! physical constants
    USE in_out_manager  ! I/O manager
    USE lib_mpp         ! MPP library
+   USE wrk_nemo        ! work arrays
+   USE lib_fortran     ! Fortran utilities (allows no signed zero when 'key_nosignedzero' defined)
 
    IMPLICIT NONE
    PRIVATE
@@ -46,7 +48,7 @@ MODULE albedo
 
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: albedo.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -64,9 +66,6 @@ CONTAINS
       !!
       !! References :   Shine and Hendersson-Sellers 1985, JGR, 90(D1), 2243-2250.
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   wrk_3d_6 , wrk_3d_7    ! 3D workspace
-      !!
       REAL(wp), INTENT(in   ), DIMENSION(:,:,:) ::   pt_ice      !  ice surface temperature (Kelvin)
       REAL(wp), INTENT(in   ), DIMENSION(:,:,:) ::   ph_ice      !  sea-ice thickness
       REAL(wp), INTENT(in   ), DIMENSION(:,:,:) ::   ph_snw      !  snow thickness
@@ -90,12 +89,7 @@ CONTAINS
       
       ijpl = SIZE( pt_ice, 3 )                     ! number of ice categories
 
-      IF( wrk_in_use(3, 6,7) ) THEN
-         CALL ctl_stop('albedo_ice: requested workspace arrays are unavailable')   ;   RETURN
-      ENDIF
-      ! Associate pointers with sub-arrays of workspace arrays
-      zalbfz  =>   wrk_3d_6(:,:,1:ijpl)
-      zficeth =>   wrk_3d_7(:,:,1:ijpl)
+      CALL wrk_alloc( jpi,jpj,ijpl, zalbfz, zficeth )
 
       IF( albd_init == 0 )   CALL albedo_init      ! initialization 
 
@@ -172,7 +166,7 @@ CONTAINS
       !----------------------------------------------  
       pa_ice_os(:,:,:) = pa_ice_cs(:,:,:) + rn_cloud       ! Oberhuber correction
       !
-      IF( wrk_not_released(3, 6,7) )   CALL ctl_stop('albedo_ice: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi,jpj,ijpl, zalbfz, zficeth )
       !
    END SUBROUTINE albedo_ice
 

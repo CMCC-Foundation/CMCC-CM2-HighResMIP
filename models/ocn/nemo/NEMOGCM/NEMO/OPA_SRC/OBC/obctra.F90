@@ -46,7 +46,7 @@ MODULE obctra
 #  include "obc_vectopt_loop_substitute.h90"
    !!---------------------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: obctra.F90 2528 2010-12-27 17:33:53Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence (NEMOGCM/NEMO_CeCILL.txt)
    !!---------------------------------------------------------------------------------
 
@@ -57,7 +57,7 @@ CONTAINS
       !!                 ***  SUBROUTINE obc_tra  ***
       !!                    
       !! ** Purpose :   Compute tracer fields (t,s) along the open boundaries.
-      !!      This routine is called by the tranxt.F routine and updates ta,sa
+      !!      This routine is called by the tranxt.F routine and updates tsa
       !!      which are the actual temperature and salinity fields.
       !!        The logical variable lp_obc_east, and/or lp_obc_west, and/or lp_obc_north,
       !!      and/or lp_obc_south allow the user to determine which boundary is an
@@ -100,11 +100,11 @@ CONTAINS
 
       IF( lk_mpp ) THEN                  !!bug ???
          IF( kt >= nit000+3 .AND. ln_rstart ) THEN
-            CALL lbc_lnk( tb, 'T', 1. )
-            CALL lbc_lnk( sb, 'T', 1. )
+            CALL lbc_lnk( tsb(:,:,:,jp_tem), 'T', 1. )
+            CALL lbc_lnk( tsb(:,:,:,jp_sal), 'T', 1. )
          END IF
-         CALL lbc_lnk( ta, 'T', 1. )
-         CALL lbc_lnk( sa, 'T', 1. )
+         CALL lbc_lnk( tsa(:,:,:,jp_tem), 'T', 1. )
+         CALL lbc_lnk( tsa(:,:,:,jp_sal), 'T', 1. )
       ENDIF
 
    END SUBROUTINE obc_tra
@@ -115,7 +115,7 @@ CONTAINS
       !!                ***  SUBROUTINE obc_tra_east  ***
       !!                  
       !! ** Purpose :
-      !!      Apply the radiation algorithm on east OBC tracers ta, sa using the 
+      !!      Apply the radiation algorithm on east OBC tracers tsa using the 
       !!      phase velocities calculated in obc_rad_east subroutine in obcrad.F90 module
       !!      If the logical lfbceast is .TRUE., there is no radiation but only fixed OBC
       !!
@@ -142,10 +142,10 @@ CONTAINS
          DO ji = fs_nie0+1, fs_nie1+1 ! Vector opt.
             DO jk = 1, jpkm1
                DO jj = 1, jpj
-                  ta(ji,jj,jk) = ta(ji,jj,jk) * (1. - temsk(jj,jk)) + &
-                                 tfoe(jj,jk)*temsk(jj,jk)
-                  sa(ji,jj,jk) = sa(ji,jj,jk) * (1. - temsk(jj,jk)) + &
-                                 sfoe(jj,jk)*temsk(jj,jk)
+                  tsa(ji,jj,jk,jp_tem) = tsa(ji,jj,jk,jp_tem) * (1. - temsk(jj,jk)) + &
+                                         tfoe(jj,jk)*temsk(jj,jk)
+                  tsa(ji,jj,jk,jp_sal) = tsa(ji,jj,jk,jp_sal) * (1. - temsk(jj,jk)) + &
+                                         sfoe(jj,jk)*temsk(jj,jk)
                END DO
             END DO
          END DO
@@ -190,13 +190,13 @@ CONTAINS
          ! ... for inflow rtauein is used for relaxation coefficient else rtaue
                   ztau = (1.-zin ) * rtauein  + zin * rtaue
                   z05cx = z05cx * zin
-         ! ... update ( ta, sa ) with radiative or climatological (t, s)
-                  ta(ji,jj,jk) = ta(ji,jj,jk) * (1. - temsk(jj,jk)) +           & 
+         ! ... update tsa with radiative or climatological ts
+                  tsa(ji,jj,jk,jp_tem) = tsa(ji,jj,jk,jp_tem) * (1. - temsk(jj,jk)) +           &
                                  temsk(jj,jk) * ( ( 1. - z05cx - ztau )         &
                                  * tebnd(jj,jk,nib ,nitm) + 2.*z05cx              &
                                  * tebnd(jj,jk,nibm,nit ) + ztau * tfoe (jj,jk) ) &
                                  / (1. + z05cx)
-                  sa(ji,jj,jk) = sa(ji,jj,jk) * (1. - temsk(jj,jk)) +           & 
+                  tsa(ji,jj,jk,jp_sal) = tsa(ji,jj,jk,jp_sal) * (1. - temsk(jj,jk)) +           &
                                  temsk(jj,jk) * ( ( 1. - z05cx - ztau )         &
                                  * sebnd(jj,jk,nib ,nitm) + 2.*z05cx              &
                                  * sebnd(jj,jk,nibm,nit ) + ztau * sfoe (jj,jk) ) &
@@ -215,7 +215,7 @@ CONTAINS
       !!                 ***  SUBROUTINE obc_tra_west  ***
       !!           
       !! ** Purpose :
-      !!      Apply the radiation algorithm on west OBC tracers ta, sa using the 
+      !!      Apply the radiation algorithm on west OBC tracers tsa using the 
       !!      phase velocities calculated in obc_rad_west subroutine in obcrad.F90 module
       !!      If the logical lfbcwest is .TRUE., there is no radiation but only fixed OBC
       !!
@@ -243,10 +243,10 @@ CONTAINS
          DO ji = fs_niw0, fs_niw1 ! Vector opt.
             DO jk = 1, jpkm1
                DO jj = 1, jpj
-                  ta(ji,jj,jk) = ta(ji,jj,jk) * (1. - twmsk(jj,jk)) + &
-                                 tfow(jj,jk)*twmsk(jj,jk)
-                  sa(ji,jj,jk) = sa(ji,jj,jk) * (1. - twmsk(jj,jk)) + &
-                                 sfow(jj,jk)*twmsk(jj,jk)
+                  tsa(ji,jj,jk,jp_tem) = tsa(ji,jj,jk,jp_tem) * (1. - twmsk(jj,jk)) + &
+                                         tfow(jj,jk)*twmsk(jj,jk)
+                  tsa(ji,jj,jk,jp_sal) = tsa(ji,jj,jk,jp_sal) * (1. - twmsk(jj,jk)) + &
+                                         sfow(jj,jk)*twmsk(jj,jk)
                END DO
             END DO
          END DO
@@ -289,13 +289,13 @@ CONTAINS
                   zin = 0.5*( zin + abs(zin) )
                   ztau = (1.-zin )*rtauwin + zin * rtauw
                   z05cx = z05cx * zin
-         ! ... update (ta,sa) with radiative or climatological (t, s)
-                  ta(ji,jj,jk) = ta(ji,jj,jk) * (1. - twmsk(jj,jk)) +           &
+         ! ... update tsa with radiative or climatological (ts)
+                  tsa(ji,jj,jk,jp_tem) = tsa(ji,jj,jk,jp_tem) * (1. - twmsk(jj,jk)) +           &
                                  twmsk(jj,jk) * ( ( 1. + z05cx - ztau )         &
                                  * twbnd(jj,jk,nib ,nitm) - 2.*z05cx              &
                                  * twbnd(jj,jk,nibm,nit ) + ztau * tfow (jj,jk) ) &
                                  / (1. - z05cx)
-                  sa(ji,jj,jk) = sa(ji,jj,jk) * (1. - twmsk(jj,jk)) +           &
+                  tsa(ji,jj,jk,jp_sal) = tsa(ji,jj,jk,jp_sal) * (1. - twmsk(jj,jk)) +           &
                                  twmsk(jj,jk) * ( ( 1. + z05cx - ztau )         &
                                  * swbnd(jj,jk,nib ,nitm) - 2.*z05cx              &
                                  * swbnd(jj,jk,nibm,nit ) + ztau * sfow (jj,jk) ) &
@@ -342,10 +342,10 @@ CONTAINS
          DO jj = fs_njn0+1, fs_njn1+1  ! Vector opt.
             DO jk = 1, jpkm1
                DO ji = 1, jpi
-                  ta(ji,jj,jk)= ta(ji,jj,jk) * (1.-tnmsk(ji,jk)) + &
-                                tnmsk(ji,jk) * tfon(ji,jk)
-                  sa(ji,jj,jk)= sa(ji,jj,jk) * (1.-tnmsk(ji,jk)) + &
-                                tnmsk(ji,jk) * sfon(ji,jk)
+                  tsa(ji,jj,jk,jp_tem)= tsa(ji,jj,jk,jp_tem) * (1.-tnmsk(ji,jk)) + &
+                                        tnmsk(ji,jk) * tfon(ji,jk)
+                  tsa(ji,jj,jk,jp_sal)= tsa(ji,jj,jk,jp_sal) * (1.-tnmsk(ji,jk)) + &
+                                        tnmsk(ji,jk) * sfon(ji,jk)
                END DO
             END DO
          END DO
@@ -391,13 +391,13 @@ CONTAINS
          ! ... for inflow rtaunin is used for relaxation coefficient else rtaun
                   ztau = (1.-zin ) * rtaunin + zin * rtaun
                   z05cx = z05cx * zin
-         ! ... update (ta,sa) with radiative or climatological (t, s)
-                  ta(ji,jj,jk) = ta(ji,jj,jk) * (1.-tnmsk(ji,jk)) +             &
+         ! ... update tsa with radiative or climatological (t, s)
+                  tsa(ji,jj,jk,jp_tem) = tsa(ji,jj,jk,jp_tem) * (1.-tnmsk(ji,jk)) +             &
                                  tnmsk(ji,jk) * ( ( 1. - z05cx - ztau )         &
                                  * tnbnd(ji,jk,nib ,nitm) + 2.*z05cx              &
                                  * tnbnd(ji,jk,nibm,nit ) + ztau * tfon (ji,jk) ) &
                                  / (1. + z05cx)
-                  sa(ji,jj,jk) = sa(ji,jj,jk) * (1.-tnmsk(ji,jk)) +             &
+                  tsa(ji,jj,jk,jp_sal) = tsa(ji,jj,jk,jp_sal) * (1.-tnmsk(ji,jk)) +             &
                                  tnmsk(ji,jk) * ( ( 1. - z05cx - ztau )         &
                                  * snbnd(ji,jk,nib ,nitm) + 2.*z05cx              &
                                  * snbnd(ji,jk,nibm,nit ) + ztau * sfon (ji,jk) ) &
@@ -416,7 +416,7 @@ CONTAINS
       !!                ***  SUBROUTINE obc_tra_south  ***
       !!     
       !! ** Purpose :
-      !!      Apply the radiation algorithm on south OBC tracers ta, sa using the 
+      !!      Apply the radiation algorithm on south OBC tracers tsa using the 
       !!      phase velocities calculated in obc_rad_south subroutine in obcrad.F90 module
       !!      If the logical lfbcsouth is .TRUE., there is no radiation but only fixed OBC
       !!
@@ -444,10 +444,10 @@ CONTAINS
          DO jj = fs_njs0, fs_njs1  ! Vector opt.
             DO jk = 1, jpkm1
                DO ji = 1, jpi
-                  ta(ji,jj,jk)= ta(ji,jj,jk) * (1.-tsmsk(ji,jk)) + &
-                                tsmsk(ji,jk) * tfos(ji,jk)
-                  sa(ji,jj,jk)= sa(ji,jj,jk) * (1.-tsmsk(ji,jk)) + &
-                                tsmsk(ji,jk) * sfos(ji,jk)
+                  tsa(ji,jj,jk,jp_tem)= tsa(ji,jj,jk,jp_tem) * (1.-tsmsk(ji,jk)) + &
+                                        tsmsk(ji,jk) * tfos(ji,jk)
+                  tsa(ji,jj,jk,jp_sal)= tsa(ji,jj,jk,jp_sal) * (1.-tsmsk(ji,jk)) + &
+                                        tsmsk(ji,jk) * sfos(ji,jk)
                END DO
             END DO
          END DO
@@ -492,13 +492,13 @@ CONTAINS
                   ztau = (1.-zin ) * rtausin + zin * rtaus
                   z05cx = z05cx * zin
 
-         !... update (ta,sa) with radiative or climatological (t, s)
-                  ta(ji,jj,jk) = ta(ji,jj,jk) * (1.-tsmsk(ji,jk)) +             &
+         !... update tsa with radiative or climatological (t, s)
+                  tsa(ji,jj,jk,jp_tem) = tsa(ji,jj,jk,jp_tem) * (1.-tsmsk(ji,jk)) +             &
                                  tsmsk(ji,jk) * ( ( 1. + z05cx - ztau )         &
                                  * tsbnd(ji,jk,nib ,nitm) - 2.*z05cx              &
                                  * tsbnd(ji,jk,nibm,nit ) + ztau * tfos (ji,jk) ) &
                                  / (1. - z05cx)
-                  sa(ji,jj,jk) = sa(ji,jj,jk) * (1.-tsmsk(ji,jk)) +             &
+                  tsa(ji,jj,jk,jp_sal) = tsa(ji,jj,jk,jp_sal) * (1.-tsmsk(ji,jk)) +             &
                                  tsmsk(ji,jk) * (  ( 1. + z05cx - ztau )        &
                                  * ssbnd(ji,jk,nib ,nitm) - 2.*z05cx              &
                                  * ssbnd(ji,jk,nibm,nit ) + ztau * sfos (ji,jk) ) &

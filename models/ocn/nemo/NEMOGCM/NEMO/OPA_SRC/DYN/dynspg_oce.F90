@@ -33,15 +33,15 @@ MODULE dynspg_oce
 #endif
 
   !                                                                         !!! Time splitting scheme (key_dynspg_ts) 
-   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:) ::   sshn_e, ssha_e   ! sea surface heigth (now, after, average)
-   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:) ::   ua_e  , va_e     ! barotropic velocities (after)
-   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:) ::   hu_e  , hv_e     ! now ocean depth ( = Ho+sshn_e )
-   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:) ::   hur_e , hvr_e    ! inverse of hu_e and hv_e
-   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:) ::   sshn_b       ! before field without time-filter
+   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:), TARGET ::   sshn_e, ssha_e   ! sea surface heigth (now, after, average)
+   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:), TARGET ::   ua_e  , va_e     ! barotropic velocities (after)
+   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:)         ::   hu_e  , hv_e     ! now ocean depth ( = Ho+sshn_e )
+   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:), TARGET ::   hur_e , hvr_e    ! inverse of hu_e and hv_e
+   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:), TARGET ::   sshn_b           ! before field without time-filter
 
    !!----------------------------------------------------------------------
    !! NEMO/OPA 4.0 , NEMO Consortium (2011)
-   !! $Id: dynspg_oce.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS

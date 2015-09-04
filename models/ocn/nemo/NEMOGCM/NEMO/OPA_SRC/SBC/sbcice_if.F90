@@ -15,10 +15,12 @@ MODULE sbcice_if
    USE phycst          ! physical constants
    USE eosbn2          ! equation of state
    USE sbc_oce         ! surface boundary condition: ocean fields
+   USE sbccpl
    USE fldread         ! read input field
    USE iom             ! I/O manager library
    USE in_out_manager  ! I/O manager
    USE lib_mpp         ! MPP library
+   USE lib_fortran     ! Fortran utilities (allows no signed zero when 'key_nosignedzero' defined)
 
    IMPLICIT NONE
    PRIVATE
@@ -31,7 +33,7 @@ MODULE sbcice_if
 #  include "domzgr_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: sbcice_if.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -96,6 +98,9 @@ CONTAINS
                                  ! ( d rho / dt ) / ( d rho / ds )      ( s = 34, t = -1.8 )
          
          fr_i(:,:) = tfreez( sss_m ) * tmask(:,:,1)      ! sea surface freezing temperature [Celcius]
+#if defined key_coupled 
+         a_i(:,:,1) = fr_i(:,:)         
+#endif
 
          ! Flux and ice fraction computation
 !CDIR COLLAPSE
@@ -109,15 +114,15 @@ CONTAINS
                ELSE                                ;   fr_i(ji,jj) = 0.e0
                ENDIF
 
-               tn(ji,jj,1) = MAX( tn(ji,jj,1), zt_fzp )     ! avoid over-freezing point temperature
+               tsn(ji,jj,1,jp_tem) = MAX( tsn(ji,jj,1,jp_tem), zt_fzp )     ! avoid over-freezing point temperature
 
                qsr(ji,jj) = ( 1. - zfr_obs ) * qsr(ji,jj)   ! solar heat flux : zero below observed ice cover
 
                !                                            ! non solar heat flux : add a damping term 
                !      # ztrp*(t-(tgel-1.))  if observed ice and no opa ice   (zfr_obs=1 fr_i=0)
                !      # ztrp*min(0,t-tgel)  if observed ice and opa ice      (zfr_obs=1 fr_i=1)
-               zqri = ztrp * ( tb(ji,jj,1) - ( zt_fzp - 1.) )
-               zqrj = ztrp * MIN( 0., tb(ji,jj,1) - zt_fzp )
+               zqri = ztrp * ( tsb(ji,jj,1,jp_tem) - ( zt_fzp - 1.) )
+               zqrj = ztrp * MIN( 0., tsb(ji,jj,1,jp_tem) - zt_fzp )
                zqrp = ( zfr_obs * ( (1. - fr_i(ji,jj) ) * zqri    &
                  &                 +      fr_i(ji,jj)   * zqrj ) ) * tmask(ji,jj,1)
 

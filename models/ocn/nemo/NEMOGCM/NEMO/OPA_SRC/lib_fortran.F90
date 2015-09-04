@@ -7,133 +7,177 @@ MODULE lib_fortran
    !!----------------------------------------------------------------------
 
    !!----------------------------------------------------------------------
-   !!   glob_sum    : generic interface for global masked summation over 
+   !!   glob_sum    : generic interface for global masked summation over
    !!                 the interior domain for 1 or 2 2D or 3D arrays
-   !!                 it works only for T points   
+   !!                 it works only for T points
    !!   SIGN        : generic interface for SIGN to overwrite f95 behaviour
    !!                 of intrinsinc sign function
    !!----------------------------------------------------------------------
-   USE par_oce          ! Ocean parameter
-   USE lib_mpp          ! distributed memory computing
-   USE dom_oce          ! ocean domain
-   USE in_out_manager   ! I/O manager
+   USE par_oce         ! Ocean parameter
+   USE dom_oce         ! ocean domain
+   USE in_out_manager  ! I/O manager
+   USE lib_mpp         ! distributed memory computing
 
    IMPLICIT NONE
    PRIVATE
 
-   PUBLIC glob_sum, DDPDD
+   PUBLIC   glob_sum   ! used in many places
+   PUBLIC   DDPDD      ! also used in closea module
 #if defined key_nosignedzero
    PUBLIC SIGN
 #endif
 
    INTERFACE glob_sum
-      MODULE PROCEDURE glob_sum_2d, glob_sum_3d,glob_sum_2d_a, glob_sum_3d_a 
+      MODULE PROCEDURE glob_sum_1d, glob_sum_2d, glob_sum_3d, &
+         &             glob_sum_2d_a, glob_sum_3d_a
    END INTERFACE
 
-#if defined key_nosignedzero   
+#if defined key_nosignedzero
    INTERFACE SIGN
       MODULE PROCEDURE SIGN_SCALAR, SIGN_ARRAY_1D, SIGN_ARRAY_2D, SIGN_ARRAY_3D,   &
-         &             SIGN_ARRAY_1D_A, SIGN_ARRAY_2D_A, SIGN_ARRAY_3D_A,          & 
-         &             SIGN_ARRAY_1D_B, SIGN_ARRAY_2D_B, SIGN_ARRAY_3D_B 
+         &             SIGN_ARRAY_1D_A, SIGN_ARRAY_2D_A, SIGN_ARRAY_3D_A,          &
+         &             SIGN_ARRAY_1D_B, SIGN_ARRAY_2D_B, SIGN_ARRAY_3D_B
    END INTERFACE
 #endif
 
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: lib_fortran.F90 2528 2010-12-27 17:33:53Z rblod $ 
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
-CONTAINS 
+CONTAINS
 
 #if ! defined key_mpp_rep
-   FUNCTION glob_sum_2d( ptab ) RESULT( glob_sum )
+   FUNCTION glob_sum_1d( ptab, kdim )
+      !!-----------------------------------------------------------------------
+      !!                  ***  FUNCTION  glob_sum_1D  ***
+      !!
+      !! ** Purpose : perform a masked sum on the inner global domain of a 1D array
+      !!-----------------------------------------------------------------------
+      INTEGER :: kdim
+      REAL(wp), INTENT(in), DIMENSION(kdim) ::   ptab        ! input 1D array
+      REAL(wp)                              ::   glob_sum_1d ! global sum
+      !!-----------------------------------------------------------------------
+      !
+      glob_sum_1d = SUM( ptab(:) )
+      IF( lk_mpp )   CALL mpp_sum( glob_sum_1d )
+      !
+   END FUNCTION glob_sum_1d
+
+   FUNCTION glob_sum_2d( ptab )
       !!-----------------------------------------------------------------------
       !!                  ***  FUNCTION  glob_sum_2D  ***
       !!
       !! ** Purpose : perform a masked sum on the inner global domain of a 2D array
       !!-----------------------------------------------------------------------
-      REAL(wp), INTENT(in), DIMENSION(:,:) ::   ptab       ! input 2D array
-      REAL(wp)                             ::   glob_sum   ! global masked sum
+      REAL(wp), INTENT(in), DIMENSION(:,:) ::   ptab          ! input 2D array
+      REAL(wp)                             ::   glob_sum_2d   ! global masked sum
       !!-----------------------------------------------------------------------
       !
-      glob_sum = SUM( ptab(:,:)*tmask_i(:,:) )
-      IF( lk_mpp )   CALL mpp_sum( glob_sum )
+      glob_sum_2d = SUM( ptab(:,:)*tmask_i(:,:) )
+      IF( lk_mpp )   CALL mpp_sum( glob_sum_2d )
       !
    END FUNCTION glob_sum_2d
-   
-   
-   FUNCTION glob_sum_3d( ptab ) RESULT( glob_sum )
+
+
+   FUNCTION glob_sum_3d( ptab )
       !!-----------------------------------------------------------------------
       !!                  ***  FUNCTION  glob_sum_3D  ***
       !!
       !! ** Purpose : perform a masked sum on the inner global domain of a 3D array
       !!-----------------------------------------------------------------------
-      REAL(wp), INTENT(in), DIMENSION(:,:,:) ::   ptab       ! input 3D array
-      REAL(wp)                               ::   glob_sum   ! global masked sum
+      REAL(wp), INTENT(in), DIMENSION(:,:,:) ::   ptab          ! input 3D array
+      REAL(wp)                               ::   glob_sum_3d   ! global masked sum
       !!
       INTEGER :: jk
       !!-----------------------------------------------------------------------
       !
-      glob_sum = 0.e0
+      glob_sum_3d = 0.e0
       DO jk = 1, jpk
-         glob_sum = glob_sum + SUM( ptab(:,:,jk)*tmask_i(:,:) )
+         glob_sum_3d = glob_sum_3d + SUM( ptab(:,:,jk)*tmask_i(:,:) )
       END DO
-      IF( lk_mpp )   CALL mpp_sum( glob_sum )
+      IF( lk_mpp )   CALL mpp_sum( glob_sum_3d )
       !
    END FUNCTION glob_sum_3d
 
 
-   FUNCTION glob_sum_2d_a( ptab1, ptab2 ) RESULT( glob_sum )
+   FUNCTION glob_sum_2d_a( ptab1, ptab2 )
       !!-----------------------------------------------------------------------
       !!                  ***  FUNCTION  glob_sum_2D _a ***
       !!
       !! ** Purpose : perform a masked sum on the inner global domain of two 2D array
       !!-----------------------------------------------------------------------
-      REAL(wp), INTENT(in), DIMENSION(:,:) ::   ptab1, ptab2   ! input 2D array
-      REAL(wp)            , DIMENSION(2)   ::   glob_sum       ! global masked sum
+      REAL(wp), INTENT(in), DIMENSION(:,:) ::   ptab1, ptab2    ! input 2D array
+      REAL(wp)            , DIMENSION(2)   ::   glob_sum_2d_a   ! global masked sum
       !!-----------------------------------------------------------------------
-      !             
-      glob_sum(1) = SUM( ptab1(:,:)*tmask_i(:,:) )
-      glob_sum(2) = SUM( ptab2(:,:)*tmask_i(:,:) )
-      IF( lk_mpp )   CALL mpp_sum( glob_sum, 2 )
+      !
+      glob_sum_2d_a(1) = SUM( ptab1(:,:)*tmask_i(:,:) )
+      glob_sum_2d_a(2) = SUM( ptab2(:,:)*tmask_i(:,:) )
+      IF( lk_mpp )   CALL mpp_sum( glob_sum_2d_a, 2 )
       !
    END FUNCTION glob_sum_2d_a
- 
- 
-   FUNCTION glob_sum_3d_a( ptab1, ptab2 ) RESULT( glob_sum )
+
+
+   FUNCTION glob_sum_3d_a( ptab1, ptab2 )
       !!-----------------------------------------------------------------------
       !!                  ***  FUNCTION  glob_sum_3D_a ***
       !!
       !! ** Purpose : perform a masked sum on the inner global domain of two 3D array
       !!-----------------------------------------------------------------------
-      REAL(wp), INTENT(in), DIMENSION(:,:,:) ::   ptab1, ptab2   ! input 3D array
-      REAL(wp)            , DIMENSION(2)     ::   glob_sum       ! global masked sum
+      REAL(wp), INTENT(in), DIMENSION(:,:,:) ::   ptab1, ptab2    ! input 3D array
+      REAL(wp)            , DIMENSION(2)     ::   glob_sum_3d_a   ! global masked sum
       !!
       INTEGER :: jk
       !!-----------------------------------------------------------------------
       !
-      glob_sum(:) = 0.e0
+      glob_sum_3d_a(:) = 0.e0
       DO jk = 1, jpk
-         glob_sum(1) = glob_sum(1) + SUM( ptab1(:,:,jk)*tmask_i(:,:) )
-         glob_sum(2) = glob_sum(2) + SUM( ptab2(:,:,jk)*tmask_i(:,:) )
+         glob_sum_3d_a(1) = glob_sum_3d_a(1) + SUM( ptab1(:,:,jk)*tmask_i(:,:) )
+         glob_sum_3d_a(2) = glob_sum_3d_a(2) + SUM( ptab2(:,:,jk)*tmask_i(:,:) )
       END DO
-      IF( lk_mpp )   CALL mpp_sum( glob_sum, 2 )
+      IF( lk_mpp )   CALL mpp_sum( glob_sum_3d_a, 2 )
       !
    END FUNCTION glob_sum_3d_a
 
-#else  
+#else
    !!----------------------------------------------------------------------
    !!   'key_mpp_rep'                                   MPP reproducibility
    !!----------------------------------------------------------------------
-   
-   FUNCTION glob_sum_2d( ptab ) RESULT( glob_sum )
+
+   FUNCTION glob_sum_1d( ptab, kdim )
+      !!----------------------------------------------------------------------
+      !!                  ***  FUNCTION  glob_sum_1d ***
+      !!
+      !! ** Purpose : perform a sum in calling DDPDD routine
+      !!----------------------------------------------------------------------
+      INTEGER , INTENT(in) :: kdim
+      REAL(wp), INTENT(in), DIMENSION(kdim) ::   ptab
+      REAL(wp)                              ::   glob_sum_1d   ! global sum
+      !!
+      COMPLEX(wp)::   ctmp
+      REAL(wp)   ::   ztmp
+      INTEGER    ::   ji   ! dummy loop indices
+      !!-----------------------------------------------------------------------
+      !
+      ztmp = 0.e0
+      ctmp = CMPLX( 0.e0, 0.e0, wp )
+      DO ji = 1, kdim
+         ztmp =  ptab(ji)
+         CALL DDPDD( CMPLX( ztmp, 0.e0, wp ), ctmp )
+         END DO
+      IF( lk_mpp )   CALL mpp_sum( ctmp )   ! sum over the global domain
+      glob_sum_1d = REAL(ctmp,wp)
+      !
+   END FUNCTION glob_sum_1d
+
+   FUNCTION glob_sum_2d( ptab )
       !!----------------------------------------------------------------------
       !!                  ***  FUNCTION  glob_sum_2d ***
       !!
       !! ** Purpose : perform a sum in calling DDPDD routine
       !!----------------------------------------------------------------------
       REAL(wp), INTENT(in), DIMENSION(jpi,jpj) ::   ptab
-      REAL(wp)                                 ::   glob_sum   ! global masked sum
+      REAL(wp)                                 ::   glob_sum_2d   ! global masked sum
       !!
       COMPLEX(wp)::   ctmp
       REAL(wp)   ::   ztmp
@@ -149,19 +193,19 @@ CONTAINS
          END DO
       END DO
       IF( lk_mpp )   CALL mpp_sum( ctmp )   ! sum over the global domain
-      glob_sum = REAL(ctmp,wp)
+      glob_sum_2d = REAL(ctmp,wp)
       !
-   END FUNCTION glob_sum_2d   
+   END FUNCTION glob_sum_2d
 
 
-   FUNCTION glob_sum_3d( ptab ) RESULT( glob_sum )
+   FUNCTION glob_sum_3d( ptab )
       !!----------------------------------------------------------------------
       !!                  ***  FUNCTION  glob_sum_3d ***
       !!
       !! ** Purpose : perform a sum on a 3D array in calling DDPDD routine
       !!----------------------------------------------------------------------
       REAL(wp), INTENT(in), DIMENSION(jpi,jpj,jpk) ::   ptab
-      REAL(wp)                                     ::   glob_sum   ! global masked sum
+      REAL(wp)                                     ::   glob_sum_3d   ! global masked sum
       !!
       COMPLEX(wp)::   ctmp
       REAL(wp)   ::   ztmp
@@ -176,22 +220,22 @@ CONTAINS
             ztmp =  ptab(ji,jj,jk) * tmask_i(ji,jj)
             CALL DDPDD( CMPLX( ztmp, 0.e0, wp ), ctmp )
             END DO
-         END DO    
+         END DO
       END DO
       IF( lk_mpp )   CALL mpp_sum( ctmp )   ! sum over the global domain
-      glob_sum = REAL(ctmp,wp)
+      glob_sum_3d = REAL(ctmp,wp)
       !
-   END FUNCTION glob_sum_3d   
+   END FUNCTION glob_sum_3d
 
 
-   FUNCTION glob_sum_2d_a( ptab1, ptab2 ) RESULT( glob_sum )
+   FUNCTION glob_sum_2d_a( ptab1, ptab2 )
       !!----------------------------------------------------------------------
       !!                  ***  FUNCTION  glob_sum_2d_a ***
       !!
       !! ** Purpose : perform a sum on two 2D arrays in calling DDPDD routine
       !!----------------------------------------------------------------------
       REAL(wp), INTENT(in), DIMENSION(jpi,jpj) ::   ptab1, ptab2
-      REAL(wp)                                 ::   glob_sum   ! global masked sum
+      REAL(wp)                                 ::   glob_sum_2d_a   ! global masked sum
       !!
       COMPLEX(wp)::   ctmp
       REAL(wp)   ::   ztmp
@@ -209,19 +253,19 @@ CONTAINS
          END DO
       END DO
       IF( lk_mpp )   CALL mpp_sum( ctmp )   ! sum over the global domain
-      glob_sum = REAL(ctmp,wp)
+      glob_sum_2d_a = REAL(ctmp,wp)
       !
-   END FUNCTION glob_sum_2d_a   
+   END FUNCTION glob_sum_2d_a
 
 
-   FUNCTION glob_sum_3d_a( ptab1, ptab2 ) RESULT( glob_sum )
+   FUNCTION glob_sum_3d_a( ptab1, ptab2 )
       !!----------------------------------------------------------------------
       !!                  ***  FUNCTION  glob_sum_3d_a ***
       !!
       !! ** Purpose : perform a sum on two 3D array in calling DDPDD routine
       !!----------------------------------------------------------------------
       REAL(wp), INTENT(in), DIMENSION(jpi,jpj,jpk) ::   ptab1, ptab2
-      REAL(wp)                                     ::   glob_sum   ! global masked sum
+      REAL(wp)                                     ::   glob_sum_3d_a   ! global masked sum
       !!
       COMPLEX(wp)::   ctmp
       REAL(wp)   ::   ztmp
@@ -238,30 +282,31 @@ CONTAINS
             ztmp =  ptab2(ji,jj,jk) * tmask_i(ji,jj)
             CALL DDPDD( CMPLX( ztmp, 0.e0, wp ), ctmp )
             END DO
-         END DO    
+         END DO
       END DO
       IF( lk_mpp )   CALL mpp_sum( ctmp )   ! sum over the global domain
-      glob_sum = REAL(ctmp,wp)
+      glob_sum_3d_a = REAL(ctmp,wp)
       !
-   END FUNCTION glob_sum_3d_a   
+   END FUNCTION glob_sum_3d_a
+
 #endif
 
    SUBROUTINE DDPDD( ydda, yddb )
       !!----------------------------------------------------------------------
       !!               ***  ROUTINE DDPDD ***
-      !!          
-      !! ** Purpose : Add a scalar element to a sum
-      !!             
       !!
-      !! ** Method  : The code uses the compensated summation with doublet 
+      !! ** Purpose : Add a scalar element to a sum
+      !!
+      !!
+      !! ** Method  : The code uses the compensated summation with doublet
       !!              (sum,error) emulated useing complex numbers. ydda is the
-      !!               scalar to add to the summ yddb 
-      !! 
-      !! ** Action  : This does only work for MPI. 
+      !!               scalar to add to the summ yddb
+      !!
+      !! ** Action  : This does only work for MPI.
       !!
       !! References : Using Acurate Arithmetics to Improve Numerical
       !!              Reproducibility and Sability in Parallel Applications
-      !!              Yun HE and Chris H. Q. DING, Journal of Supercomputing 18, 259-277, 2001 
+      !!              Yun HE and Chris H. Q. DING, Journal of Supercomputing 18, 259-277, 2001
       !!----------------------------------------------------------------------
       COMPLEX(wp), INTENT(in   ) ::   ydda
       COMPLEX(wp), INTENT(inout) ::   yddb
@@ -284,7 +329,7 @@ CONTAINS
    !!----------------------------------------------------------------------
    !!   'key_nosignedzero'                                         F90 SIGN
    !!----------------------------------------------------------------------
-   
+
    FUNCTION SIGN_SCALAR( pa, pb )
       !!-----------------------------------------------------------------------
       !!                  ***  FUNCTION SIGN_SCALAR  ***
@@ -300,7 +345,7 @@ CONTAINS
    END FUNCTION SIGN_SCALAR
 
 
-   FUNCTION SIGN_ARRAY_1D( pa, pb ) 
+   FUNCTION SIGN_ARRAY_1D( pa, pb )
       !!-----------------------------------------------------------------------
       !!                  ***  FUNCTION SIGN_ARRAY_1D  ***
       !!
@@ -315,7 +360,7 @@ CONTAINS
    END FUNCTION SIGN_ARRAY_1D
 
 
-   FUNCTION SIGN_ARRAY_2D(pa,pb) 
+   FUNCTION SIGN_ARRAY_2D(pa,pb)
       !!-----------------------------------------------------------------------
       !!                  ***  FUNCTION SIGN_ARRAY_2D  ***
       !!
@@ -329,7 +374,7 @@ CONTAINS
       END WHERE
    END FUNCTION SIGN_ARRAY_2D
 
-   FUNCTION SIGN_ARRAY_3D(pa,pb) 
+   FUNCTION SIGN_ARRAY_3D(pa,pb)
       !!-----------------------------------------------------------------------
       !!                  ***  FUNCTION SIGN_ARRAY_3D  ***
       !!
@@ -344,7 +389,7 @@ CONTAINS
    END FUNCTION SIGN_ARRAY_3D
 
 
-   FUNCTION SIGN_ARRAY_1D_A(pa,pb) 
+   FUNCTION SIGN_ARRAY_1D_A(pa,pb)
       !!-----------------------------------------------------------------------
       !!                  ***  FUNCTION SIGN_ARRAY_1D_A  ***
       !!
@@ -359,7 +404,7 @@ CONTAINS
    END FUNCTION SIGN_ARRAY_1D_A
 
 
-   FUNCTION SIGN_ARRAY_2D_A(pa,pb) 
+   FUNCTION SIGN_ARRAY_2D_A(pa,pb)
       !!-----------------------------------------------------------------------
       !!                  ***  FUNCTION SIGN_ARRAY_2D_A  ***
       !!
@@ -374,7 +419,7 @@ CONTAINS
    END FUNCTION SIGN_ARRAY_2D_A
 
 
-   FUNCTION SIGN_ARRAY_3D_A(pa,pb) 
+   FUNCTION SIGN_ARRAY_3D_A(pa,pb)
       !!-----------------------------------------------------------------------
       !!                  ***  FUNCTION SIGN_ARRAY_3D_A  ***
       !!
@@ -389,7 +434,7 @@ CONTAINS
    END FUNCTION SIGN_ARRAY_3D_A
 
 
-   FUNCTION SIGN_ARRAY_1D_B(pa,pb) 
+   FUNCTION SIGN_ARRAY_1D_B(pa,pb)
       !!-----------------------------------------------------------------------
       !!                  ***  FUNCTION SIGN_ARRAY_1D_B  ***
       !!
@@ -404,7 +449,7 @@ CONTAINS
    END FUNCTION SIGN_ARRAY_1D_B
 
 
-   FUNCTION SIGN_ARRAY_2D_B(pa,pb) 
+   FUNCTION SIGN_ARRAY_2D_B(pa,pb)
       !!-----------------------------------------------------------------------
       !!                  ***  FUNCTION SIGN_ARRAY_2D_B  ***
       !!
@@ -419,7 +464,7 @@ CONTAINS
    END FUNCTION SIGN_ARRAY_2D_B
 
 
-   FUNCTION SIGN_ARRAY_3D_B(pa,pb) 
+   FUNCTION SIGN_ARRAY_3D_B(pa,pb)
       !!-----------------------------------------------------------------------
       !!                  ***  FUNCTION SIGN_ARRAY_3D_B  ***
       !!

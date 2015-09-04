@@ -15,6 +15,7 @@ MODULE diaobs
    !!   fin_date     : Compute the final date YYYYMMDD.HHMMSS
    !!----------------------------------------------------------------------
    !! * Modules used   
+   USE wrk_nemo                 ! Memory Allocation
    USE par_kind                 ! Precision variables
    USE in_out_manager           ! I/O manager
    USE par_oce
@@ -107,7 +108,7 @@ MODULE diaobs
 
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: diaobs.F90 2733 2011-04-08 15:55:31Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 
@@ -1010,17 +1011,16 @@ CONTAINS
       USE phycst, ONLY : &              ! Physical constants
          & rday                         
       USE oce, ONLY : &                 ! Ocean dynamics and tracers variables
-         & tn,  &             
-         & sn,  &
+         & tsn,  &             
          & un, vn,  &
          & sshn
-#if defined key_ice_lim
+#if defined  key_lim3
       USE ice, ONLY : &                     ! LIM Ice model variables
          & frld
 #endif
-      USE wrk_nemo, ONLY: wrk_in_use, wrk_not_released
-#if ! defined key_ice_lim
-      USE wrk_nemo, ONLY: frld => wrk_2d_1
+#if defined key_lim2
+      USE ice_2, ONLY : &                     ! LIM Ice model variables
+         & frld
 #endif
       IMPLICIT NONE
 
@@ -1034,13 +1034,13 @@ CONTAINS
       INTEGER :: jseaiceset             ! sea ice data set loop variable
       INTEGER :: jveloset               ! velocity profile data loop variable
       INTEGER :: jvar                   ! Variable number    
+#if ! defined key_lim2 && ! defined key_lim3
+      REAL(wp), POINTER, DIMENSION(:,:) :: frld   
+#endif
       CHARACTER(LEN=20) :: datestr=" ",timestr=" "
  
-#if ! defined key_ice_lim
-      IF(wrk_in_use(2, 1))THEN
-         CALL ctl_stop('dia_obs : requested workspace array unavailable.')
-         RETURN
-      END IF
+#if ! defined key_lim2 && ! defined key_lim3
+      CALL wrk_alloc(jpi,jpj,frld) 
 #endif
 
       IF(lwp) THEN
@@ -1054,7 +1054,7 @@ CONTAINS
       !-----------------------------------------------------------------------
       ! No LIM => frld == 0.0_wp
       !-----------------------------------------------------------------------
-#if ! defined key_ice_lim
+#if ! defined key_lim2 && ! defined key_lim3
       frld(:,:) = 0.0_wp
 #endif
       !-----------------------------------------------------------------------
@@ -1065,13 +1065,15 @@ CONTAINS
       IF ( ln_t3d .OR. ln_s3d ) THEN
          DO jprofset = 1, nprofsets
             IF ( ld_enact(jprofset) ) THEN
-               CALL obs_pro_opt( prodatqc(jprofset),                          &
-                  &              kstp, jpi, jpj, jpk, nit000, idaystp, tn, sn,&
-                  &              gdept_0, tmask, n1dint, n2dint,              &
+               CALL obs_pro_opt( prodatqc(jprofset),                     &
+                  &              kstp, jpi, jpj, jpk, nit000, idaystp,   &
+                  &              tsn(:,:,:,jp_tem), tsn(:,:,:,jp_sal),   &
+                  &              gdept_0, tmask, n1dint, n2dint,         &
                   &              kdailyavtypes = endailyavtypes )
             ELSE
-               CALL obs_pro_opt( prodatqc(jprofset),                          &
-                  &              kstp, jpi, jpj, jpk, nit000, idaystp, tn, sn,&
+               CALL obs_pro_opt( prodatqc(jprofset),                     &
+                  &              kstp, jpi, jpj, jpk, nit000, idaystp,   &
+                  &              tsn(:,:,:,jp_tem), tsn(:,:,:,jp_sal),   &
                   &              gdept_0, tmask, n1dint, n2dint               )
             ENDIF
          END DO
@@ -1090,7 +1092,7 @@ CONTAINS
       IF ( ln_sst ) THEN
          DO jsstset = 1, nsstsets
             CALL obs_sst_opt( sstdatqc(jsstset),                 &
-               &              kstp, jpi, jpj, nit000, tn(:,:,1), &
+               &              kstp, jpi, jpj, nit000, tsn(:,:,1,jp_tem), &
                &              tmask(:,:,1), n2dint )
          END DO
       ENDIF
@@ -1100,7 +1102,7 @@ CONTAINS
          IF(lwp) WRITE(numout,*) ' SSS currently not available'
       ENDIF
 
-#if defined key_ice_lim
+#if defined key_lim2 || defined key_lim3
       IF ( ln_seaice ) THEN
          DO jseaiceset = 1, nseaicesets
             CALL obs_seaice_opt( seaicedatqc(jseaiceset),      &
@@ -1120,10 +1122,8 @@ CONTAINS
          END DO
       ENDIF
 
-#if ! defined key_ice_lim
-      IF(wrk_not_released(2, 1))THEN
-         CALL ctl_stop('dia_obs : failed to release workspace array.')
-      END IF
+#if ! defined key_lim2 && ! defined key_lim3
+      CALL wrk_dealloc(jpi,jpj,frld) 
 #endif
 
    END SUBROUTINE dia_obs

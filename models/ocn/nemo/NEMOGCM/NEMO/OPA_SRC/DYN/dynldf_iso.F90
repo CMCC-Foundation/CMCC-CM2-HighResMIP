@@ -28,6 +28,8 @@ MODULE dynldf_iso
    USE in_out_manager  ! I/O manager
    USE lib_mpp         ! MPP library
    USE prtctl          ! Print control
+   USE wrk_nemo        ! Memory Allocation
+   USE timing          ! Timing
 
    IMPLICIT NONE
    PRIVATE
@@ -44,7 +46,7 @@ MODULE dynldf_iso
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2011)
-   !! $Id: dynldf_iso.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -104,10 +106,6 @@ CONTAINS
       !!        Update (avmu,avmv) to accompt for the diagonal vertical component
       !!      of the rotated operator in dynzdf module
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   ziut  => wrk_2d_1 , zjuf  => wrk_2d_2 , zjvt => wrk_2d_3    ! 2D workspace
-      USE wrk_nemo, ONLY:   zivf  => wrk_2d_4 , zdku  => wrk_2d_5 , zdkv => wrk_2d_6    ! 2D workspace
-      USE wrk_nemo, ONLY:   zdk1u => wrk_2d_7 , zdk1v => wrk_2d_8
       !
       INTEGER, INTENT( in ) ::   kt   ! ocean time-step index
       !
@@ -116,12 +114,14 @@ CONTAINS
       REAL(wp) ::   zmskt, zmskf, zbu, zbv, zuah, zvah               !   -      -
       REAL(wp) ::   zcoef0, zcoef3, zcoef4, zmkt, zmkf               !   -      -
       REAL(wp) ::   zuav, zvav, zuwslpi, zuwslpj, zvwslpi, zvwslpj   !   -      -
+      !
+      REAL(wp), POINTER, DIMENSION(:,:) :: ziut, zjuf, zjvt, zivf, zdku, zdk1u, zdkv, zdk1v
       !!----------------------------------------------------------------------
-
-      IF( wrk_in_use(2, 1,2,3,4,5,6,7,8) ) THEN
-         CALL ctl_stop('dyn_ldf_iso: requested workspace arrays unavailable')   ;   RETURN
-      END IF
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('dyn_ldf_iso')
+      !
+      CALL wrk_alloc( jpi, jpj, ziut, zjuf, zjvt, zivf, zdku, zdk1u, zdkv, zdk1v ) 
+      !
       IF( kt == nit000 ) THEN
          IF(lwp) WRITE(numout,*)
          IF(lwp) WRITE(numout,*) 'dyn_ldf_iso : iso-neutral laplacian diffusive operator or '
@@ -426,8 +426,9 @@ CONTAINS
          !                                             ! ===============
       END DO                                           !   End of slab
       !                                                ! ===============
-
-      IF( wrk_not_released(2, 1,2,3,4,5,6,7,8) )   CALL ctl_stop('dyn_ldf_iso: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi, jpj, ziut, zjuf, zjvt, zivf, zdku, zdk1u, zdkv, zdk1v ) 
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('dyn_ldf_iso')
       !
    END SUBROUTINE dyn_ldf_iso
 

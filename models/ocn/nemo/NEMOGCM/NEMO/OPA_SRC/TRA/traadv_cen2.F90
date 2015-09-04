@@ -31,6 +31,8 @@ MODULE traadv_cen2
    USE restart         ! ocean restart
    USE trc_oce         ! share passive tracers/Ocean variables
    USE lib_mpp         ! MPP library
+   USE wrk_nemo        ! Memory Allocation
+   USE timing          ! Timing
 
    IMPLICIT NONE
    PRIVATE
@@ -47,12 +49,12 @@ MODULE traadv_cen2
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: traadv_cen2.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
 
-   SUBROUTINE tra_adv_cen2( kt, cdtype, pun, pvn, pwn,        &
+   SUBROUTINE tra_adv_cen2( kt, kit000, cdtype, pun, pvn, pwn,     &
       &                                 ptb, ptn, pta, kjpt   ) 
       !!----------------------------------------------------------------------
       !!                  ***  ROUTINE tra_adv_cen2  ***
@@ -109,12 +111,10 @@ CONTAINS
       !! ** Action :  - update pta  with the now advective tracer trends
       !!              - save trends if needed
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY: wrk_in_use, wrk_not_released
-      USE oce     , ONLY:   zwx => ua       , zwy  => va         ! (ua,va) used as 3D workspace
-      USE wrk_nemo, ONLY:   zwz => wrk_3d_1 , zind => wrk_3d_2   ! 3D workspace
-      USE wrk_nemo, ONLY:   ztfreez => wrk_2d_1                  ! 2D     -
+      USE oce     , ONLY:   zwx => ua        , zwy  => va          ! (ua,va) used as 3D workspace
       !
       INTEGER                              , INTENT(in   ) ::   kt              ! ocean time-step index
+      INTEGER                              , INTENT(in   ) ::   kit000          ! first time step index
       CHARACTER(len=3)                     , INTENT(in   ) ::   cdtype          ! =TRA or TRC (tracer indicator)
       INTEGER                              , INTENT(in   ) ::   kjpt            ! number of tracers
       REAL(wp), DIMENSION(jpi,jpj,jpk     ), INTENT(in   ) ::   pun, pvn, pwn   ! 3 ocean velocity components
@@ -128,20 +128,27 @@ CONTAINS
       REAL(wp) ::   zfm_ui, zfm_vj, zfm_w, zcofj, zcofk   !   -      -
       REAL(wp) ::   zupsut, zcenut, zupst                 !   -      -
       REAL(wp) ::   zupsvt, zcenvt, zcent, zice           !   -      -
+      REAL(wp), POINTER, DIMENSION(:,:  ) :: ztfreez 
+      REAL(wp), POINTER, DIMENSION(:,:,:) :: zwz, zind
       !!----------------------------------------------------------------------
+      !
+      IF( nn_timing == 1 )  CALL timing_start('tra_adv_cen2')
+      !
+      CALL wrk_alloc( jpi, jpj, ztfreez )
+      CALL wrk_alloc( jpi, jpj, jpk, zwz, zind )
+      !
 
-      IF( wrk_in_use(2, 1) .OR. wrk_in_use(3, 1,2) ) THEN
-         CALL ctl_stop('tra_adv_cen2: requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
-
-      IF( kt == nit000 )  THEN
+      IF( kt == kit000 )  THEN
          IF(lwp) WRITE(numout,*)
          IF(lwp) WRITE(numout,*) 'tra_adv_cen2 : 2nd order centered advection scheme on ', cdtype
          IF(lwp) WRITE(numout,*) '~~~~~~~~~~~~ '
          IF(lwp) WRITE(numout,*)
          !
-         ALLOCATE( upsmsk(jpi,jpj), STAT=ierr )
-         IF( ierr /= 0 )   CALL ctl_stop('STOP', 'tra_adv_cen2: unable to allocate array')
+         IF (.not. ALLOCATED(upsmsk))THEN
+             ALLOCATE( upsmsk(jpi,jpj), STAT=ierr )
+             IF( ierr /= 0 )   CALL ctl_stop('STOP', 'tra_adv_cen2: unable to allocate array')
+         ENDIF
+
          !
          upsmsk(:,:) = 0._wp                             ! not upstream by default
          ! 
@@ -153,10 +160,10 @@ CONTAINS
             avmb(3) =  5.  * avmb(3)      ;      avtb(3) =  5.  * avtb(3)
             avmb(4) =  2.5 * avmb(4)      ;      avtb(4) =  2.5 * avtb(4)
          ENDIF
-         !
-         l_trd = .FALSE.
-         IF( ( cdtype == 'TRA' .AND. l_trdtra ) .OR. ( cdtype == 'TRC' .AND. l_trdtrc ) )   l_trd = .TRUE.
       ENDIF
+      !
+      l_trd = .FALSE.
+      IF( ( cdtype == 'TRA' .AND. l_trdtra ) .OR. ( cdtype == 'TRC' .AND. l_trdtrc ) )   l_trd = .TRUE.
       !
       ! Upstream / centered scheme indicator
       ! ------------------------------------
@@ -274,8 +281,10 @@ CONTAINS
          CALL iom_rstput( kt, nitrst, numrow, 'avtb', avtb )
       ENDIF
       !
-      IF( wrk_not_released(2, 1)   .OR.   &
-          wrk_not_released(3, 1,2) )   CALL ctl_stop('tra_adv_cen2: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi, jpj, ztfreez )
+      CALL wrk_dealloc( jpi, jpj, jpk, zwz, zind )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('tra_adv_cen2')
       !
    END SUBROUTINE tra_adv_cen2
    
@@ -295,6 +304,9 @@ CONTAINS
       INTEGER  ::   ii0, ii1, ij0, ij1      ! temporary integers
       !!----------------------------------------------------------------------
       
+      !
+      IF( nn_timing == 1 )  CALL timing_start('ups_orca_set')
+      !
       ! mixed upstream/centered scheme near river mouths
       ! ------------------------------------------------
       SELECT CASE ( jp_cfg )
@@ -337,6 +349,8 @@ CONTAINS
       ! mixed upstream/centered scheme over closed seas
       ! -----------------------------------------------
       CALL clo_ups( upsmsk(:,:) )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('ups_orca_set')
       !
    END SUBROUTINE ups_orca_set
 

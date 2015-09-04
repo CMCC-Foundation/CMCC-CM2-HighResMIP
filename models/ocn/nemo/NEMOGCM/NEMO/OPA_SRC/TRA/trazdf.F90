@@ -29,6 +29,8 @@ MODULE trazdf
    USE prtctl          ! Print control
    USE lbclnk          ! ocean lateral boundary conditions (or mpp link)
    USE lib_mpp         ! MPP library
+   USE wrk_nemo        ! Memory allocation
+   USE timing          ! Timing
 
 
    IMPLICIT NONE
@@ -45,7 +47,7 @@ MODULE trazdf
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: trazdf.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -59,10 +61,11 @@ CONTAINS
       INTEGER, INTENT( in ) ::   kt      ! ocean time-step index
       !!
       INTEGER  ::   jk                   ! Dummy loop indices
-      REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::   ztrdt, ztrds   ! 3D workspace
+      REAL(wp), POINTER, DIMENSION(:,:,:) ::   ztrdt, ztrds   ! 3D workspace
       !!---------------------------------------------------------------------
-
-      !                                          ! set time step
+      !
+      IF( nn_timing == 1 )  CALL timing_start('tra_zdf')
+      !
       IF( neuler == 0 .AND. kt == nit000 ) THEN     ! at nit000
          r2dtra(:) =  rdttra(:)                          ! = rdtra (restarting with Euler time stepping)
       ELSEIF( kt <= nit000 + 1) THEN                ! at nit000 or nit000+1
@@ -70,18 +73,19 @@ CONTAINS
       ENDIF
 
       IF( l_trdtra )   THEN                    !* Save ta and sa trends
-         ALLOCATE( ztrdt(jpi,jpj,jpk) )   ;    ztrdt(:,:,:) = tsa(:,:,:,jp_tem)
-         ALLOCATE( ztrds(jpi,jpj,jpk) )   ;    ztrds(:,:,:) = tsa(:,:,:,jp_sal)
+         CALL wrk_alloc( jpi, jpj, jpk, ztrdt, ztrds )
+         ztrdt(:,:,:) = tsa(:,:,:,jp_tem)
+         ztrds(:,:,:) = tsa(:,:,:,jp_sal)
       ENDIF
 
       SELECT CASE ( nzdf )                       ! compute lateral mixing trend and add it to the general trend
-      CASE ( 0 )    ;    CALL tra_zdf_exp( kt, 'TRA', r2dtra, nn_zdfexp, tsb, tsa, jpts )  !   explicit scheme 
-      CASE ( 1 )    ;    CALL tra_zdf_imp( kt, 'TRA', r2dtra,            tsb, tsa, jpts )  !   implicit scheme 
+      CASE ( 0 )    ;    CALL tra_zdf_exp( kt, nit000, 'TRA', r2dtra, nn_zdfexp, tsb, tsa, jpts )  !   explicit scheme 
+      CASE ( 1 )    ;    CALL tra_zdf_imp( kt, nit000, 'TRA', r2dtra,            tsb, tsa, jpts )  !   implicit scheme 
       CASE ( -1 )                                       ! esopa: test all possibility with control print
-         CALL tra_zdf_exp( kt, 'TRA', r2dtra, nn_zdfexp, tsb, tsa, jpts )
+         CALL tra_zdf_exp( kt, nit000, 'TRA', r2dtra, nn_zdfexp, tsb, tsa, jpts )
          CALL prt_ctl( tab3d_1=tsa(:,:,:,jp_tem), clinfo1=' zdf0 - Ta: ', mask1=tmask,               &
          &             tab3d_2=tsa(:,:,:,jp_sal), clinfo2=       ' Sa: ', mask2=tmask, clinfo3='tra' )
-         CALL tra_zdf_imp( kt, 'TRA', r2dtra,            tsb, tsa, jpts ) 
+         CALL tra_zdf_imp( kt, nit000, 'TRA', r2dtra,            tsb, tsa, jpts ) 
          CALL prt_ctl( tab3d_1=tsa(:,:,:,jp_tem), clinfo1=' zdf1 - Ta: ', mask1=tmask,               &
          &             tab3d_2=tsa(:,:,:,jp_sal), clinfo2=       ' Sa: ', mask2=tmask, clinfo3='tra' )
       END SELECT
@@ -93,12 +97,14 @@ CONTAINS
          END DO
          CALL trd_tra( kt, 'TRA', jp_tem, jptra_trd_zdf, ztrdt )
          CALL trd_tra( kt, 'TRA', jp_sal, jptra_trd_zdf, ztrds )
-         DEALLOCATE( ztrdt )      ;     DEALLOCATE( ztrds ) 
+         CALL wrk_dealloc( jpi, jpj, jpk, ztrdt, ztrds )
       ENDIF
 
       !                                          ! print mean trends (used for debugging)
       IF(ln_ctl)   CALL prt_ctl( tab3d_1=tsa(:,:,:,jp_tem), clinfo1=' zdf  - Ta: ', mask1=tmask,               &
          &                       tab3d_2=tsa(:,:,:,jp_sal), clinfo2=       ' Sa: ', mask2=tmask, clinfo3='tra' )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('tra_zdf')
       !
    END SUBROUTINE tra_zdf
 

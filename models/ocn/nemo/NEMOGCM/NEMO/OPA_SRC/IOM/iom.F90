@@ -3,11 +3,11 @@ MODULE iom
    !!                    ***  MODULE  iom ***
    !! Input/Output manager :  Library to read input files
    !!====================================================================
-   !! History :  9.0  ! 05 12  (J. Belier) Original code
-   !!            9.0  ! 06 02  (S. Masson) Adaptation to NEMO
-   !!             "   ! 07 07  (D. Storkey) Changes to iom_gettime
+   !! History :  2.0  ! 2005-12  (J. Belier) Original code
+   !!            2.0  ! 2006-02  (S. Masson) Adaptation to NEMO
+   !!            3.0  ! 2007-07  (D. Storkey) Changes to iom_gettime
+   !!            3.4  ! 2012-12  (R. Bourdalle-Badie and G. Reffray)  add C1D case  
    !!--------------------------------------------------------------------
-   !!gm  caution add !DIR nec: improved performance to be checked as well as no result changes
 
    !!--------------------------------------------------------------------
    !!   iom_open       : open a file read only
@@ -18,6 +18,8 @@ MODULE iom
    !!   iom_rstput     : write a field in a restart file (interfaced to several routines)
    !!--------------------------------------------------------------------
    USE dom_oce         ! ocean space and time domain
+   USE c1d             ! 1D vertical configuration
+   USE flo_oce         ! floats module declarations
    USE lbclnk          ! lateal boundary condition / mpp exchanges
    USE iom_def         ! iom variables definitions
    USE iom_ioipsl      ! NetCDF format with IOIPSL library
@@ -47,7 +49,7 @@ MODULE iom
 
    PRIVATE iom_rp0d, iom_rp1d, iom_rp2d, iom_rp3d
    PRIVATE iom_g0d, iom_g1d, iom_g2d, iom_g3d, iom_get_123d
-   PRIVATE iom_p2d, iom_p3d
+   PRIVATE iom_p1d, iom_p2d, iom_p3d
 #if defined key_iomput
    PRIVATE set_grid
 # endif
@@ -62,7 +64,7 @@ MODULE iom
       MODULE PROCEDURE iom_rp0d, iom_rp1d, iom_rp2d, iom_rp3d
    END INTERFACE
   INTERFACE iom_put
-     MODULE PROCEDURE iom_p0d, iom_p2d, iom_p3d
+     MODULE PROCEDURE iom_p0d, iom_p1d, iom_p2d, iom_p3d
   END INTERFACE
 #if defined key_iomput
    INTERFACE iom_setkt
@@ -72,7 +74,7 @@ MODULE iom
 
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: iom.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 
@@ -116,6 +118,9 @@ CONTAINS
       CALL event__set_vert_axis( "depthu", gdept_0 )
       CALL event__set_vert_axis( "depthv", gdept_0 )
       CALL event__set_vert_axis( "depthw", gdepw_0 )
+# if defined key_floats
+      CALL event__set_vert_axis( "nfloat", REAL(nfloat,wp)  )
+# endif
       
       ! automatic definitions of some of the xml attributs
       CALL set_xmlatt
@@ -748,6 +753,10 @@ CONTAINS
                ENDIF
             ENDIF
             
+            ! C1D case : always call lbc_lnk to replicate the central value over the whole 3X3 domain
+            IF( lk_c1d .AND. PRESENT(pv_r2d) )   CALL lbc_lnk( pv_r2d,'Z',1. )
+            IF( lk_c1d .AND. PRESENT(pv_r3d) )   CALL lbc_lnk( pv_r3d,'Z',1. )
+    
             !--- Apply scale_factor and offset
             zscf = iom_file(kiomid)%scf(idvar)      ! scale factor
             zofs = iom_file(kiomid)%ofs(idvar)      ! offset
@@ -962,6 +971,18 @@ CONTAINS
       IF( .FALSE. )   WRITE(numout,*) cdname, pfield0d   ! useless test to avoid compilation warnings
 #endif
    END SUBROUTINE iom_p0d
+
+   SUBROUTINE iom_p1d( cdname, pfield1d )
+      CHARACTER(LEN=*)          , INTENT(in) ::   cdname
+      REAL(wp),     DIMENSION(:), INTENT(in) ::   pfield1d
+      INTEGER :: jpz
+#if defined key_iomput
+      jpz=SIZE(pfield1d)
+      CALL event__write_field3D( cdname, RESHAPE( (/pfield1d/), (/1,1,jpz/) ) )
+#else
+      IF( .FALSE. )   WRITE(numout,*) cdname, pfield1d   ! useless test to avoid compilation warnings
+#endif
+   END SUBROUTINE iom_p1d
 
    SUBROUTINE iom_p2d( cdname, pfield2d )
       CHARACTER(LEN=*)            , INTENT(in) ::   cdname

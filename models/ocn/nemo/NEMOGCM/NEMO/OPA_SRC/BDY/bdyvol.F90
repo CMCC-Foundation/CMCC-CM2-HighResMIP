@@ -2,17 +2,19 @@ MODULE bdyvol
    !!======================================================================
    !!                       ***  MODULE  bdyvol  ***
    !! Ocean dynamic :  Volume constraint when unstructured boundary 
-   !!                  and Free surface are used
+   !!                  and filtered free surface are used
    !!======================================================================
    !! History :  1.0  !  2005-01  (J. Chanut, A. Sellar)  Original code
    !!             -   !  2006-01  (J. Chanut) Bug correction
    !!            3.0  !  2008-04  (NEMO team)  add in the reference version
+   !!            3.4  !  2011     (D. Storkey) rewrite in preparation for OBC-BDY merge
    !!----------------------------------------------------------------------
 #if   defined key_bdy   &&   defined key_dynspg_flt
    !!----------------------------------------------------------------------
    !!   'key_bdy'            AND      unstructured open boundary conditions
    !!   'key_dynspg_flt'                              filtered free surface
    !!----------------------------------------------------------------------
+   USE timing          ! Timing
    USE oce             ! ocean dynamics and tracers 
    USE dom_oce         ! ocean space and time domain 
    USE phycst          ! physical constants
@@ -30,7 +32,7 @@ MODULE bdyvol
 #  include "domzgr_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: bdyvol.F90 2528 2010-12-27 17:33:53Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -70,9 +72,12 @@ CONTAINS
       INTEGER, INTENT( in ) ::   kt   ! ocean time-step index
       !!
       INTEGER  ::   ji, jj, jk, jb, jgrd
-      INTEGER  ::   ii, ij
+      INTEGER  ::   ib_bdy, ii, ij
       REAL(wp) ::   zubtpecor, z_cflxemp, ztranst
+      TYPE(OBC_INDEX), POINTER :: idx
       !!-----------------------------------------------------------------------------
+
+      IF( nn_timing == 1 ) CALL timing_start('bdy_vol')
 
       IF( ln_vol ) THEN
 
@@ -90,21 +95,26 @@ CONTAINS
       ! Transport through the unstructured open boundary
       ! ------------------------------------------------
       zubtpecor = 0.e0
-      jgrd = 2                               ! cumulate u component contribution first 
-      DO jb = 1, nblenrim(jgrd)
-         DO jk = 1, jpkm1
-            ii = nbi(jb,jgrd)
-            ij = nbj(jb,jgrd)
-            zubtpecor = zubtpecor + flagu(jb) * ua(ii,ij, jk) * e2u(ii,ij) * fse3u(ii,ij,jk)
+      DO ib_bdy = 1, nb_bdy
+         idx => idx_bdy(ib_bdy)
+
+         jgrd = 2                               ! cumulate u component contribution first 
+         DO jb = 1, idx%nblenrim(jgrd)
+            DO jk = 1, jpkm1
+               ii = idx%nbi(jb,jgrd)
+               ij = idx%nbj(jb,jgrd)
+               zubtpecor = zubtpecor + idx%flagu(jb) * ua(ii,ij, jk) * e2u(ii,ij) * fse3u(ii,ij,jk)
+            END DO
          END DO
-      END DO
-      jgrd = 3                               ! then add v component contribution
-      DO jb = 1, nblenrim(jgrd)
-         DO jk = 1, jpkm1
-            ii = nbi(jb,jgrd)
-            ij = nbj(jb,jgrd)
-            zubtpecor = zubtpecor + flagv(jb) * va(ii,ij, jk) * e1v(ii,ij) * fse3v(ii,ij,jk) 
+         jgrd = 3                               ! then add v component contribution
+         DO jb = 1, idx%nblenrim(jgrd)
+            DO jk = 1, jpkm1
+               ii = idx%nbi(jb,jgrd)
+               ij = idx%nbj(jb,jgrd)
+               zubtpecor = zubtpecor + idx%flagv(jb) * va(ii,ij, jk) * e1v(ii,ij) * fse3v(ii,ij,jk) 
+            END DO
          END DO
+
       END DO
       IF( lk_mpp )   CALL mpp_sum( zubtpecor )   ! sum over the global domain
 
@@ -117,23 +127,28 @@ CONTAINS
       ! Correction of the total velocity on the unstructured boundary to respect the mass flux conservation
       ! -------------------------------------------------------------
       ztranst = 0.e0
-      jgrd = 2                               ! correct u component
-      DO jb = 1, nblenrim(jgrd)
-         DO jk = 1, jpkm1
-            ii = nbi(jb,jgrd)
-            ij = nbj(jb,jgrd)
-            ua(ii,ij,jk) = ua(ii,ij,jk) - flagu(jb) * zubtpecor * umask(ii,ij,jk)
-            ztranst = ztranst + flagu(jb) * ua(ii,ij,jk) * e2u(ii,ij) * fse3u(ii,ij,jk)
+      DO ib_bdy = 1, nb_bdy
+         idx => idx_bdy(ib_bdy)
+
+         jgrd = 2                               ! correct u component
+         DO jb = 1, idx%nblenrim(jgrd)
+            DO jk = 1, jpkm1
+               ii = idx%nbi(jb,jgrd)
+               ij = idx%nbj(jb,jgrd)
+               ua(ii,ij,jk) = ua(ii,ij,jk) - idx%flagu(jb) * zubtpecor * umask(ii,ij,jk)
+               ztranst = ztranst + idx%flagu(jb) * ua(ii,ij,jk) * e2u(ii,ij) * fse3u(ii,ij,jk)
+            END DO
          END DO
-      END DO
-      jgrd = 3                              ! correct v component
-      DO jb = 1, nblenrim(jgrd)
-         DO jk = 1, jpkm1
-            ii = nbi(jb,jgrd)
-            ij = nbj(jb,jgrd)
-            va(ii,ij,jk) = va(ii,ij,jk) -flagv(jb) * zubtpecor * vmask(ii,ij,jk)
-            ztranst = ztranst + flagv(jb) * va(ii,ij,jk) * e1v(ii,ij) * fse3v(ii,ij,jk)
+         jgrd = 3                              ! correct v component
+         DO jb = 1, idx%nblenrim(jgrd)
+            DO jk = 1, jpkm1
+               ii = idx%nbi(jb,jgrd)
+               ij = idx%nbj(jb,jgrd)
+               va(ii,ij,jk) = va(ii,ij,jk) -idx%flagv(jb) * zubtpecor * vmask(ii,ij,jk)
+               ztranst = ztranst + idx%flagv(jb) * va(ii,ij,jk) * e1v(ii,ij) * fse3v(ii,ij,jk)
+            END DO
          END DO
+
       END DO
       IF( lk_mpp )   CALL mpp_sum( ztranst )   ! sum over the global domain
  
@@ -148,6 +163,8 @@ CONTAINS
          IF(lwp) WRITE(numout,*)'          correction velocity zubtpecor =', zubtpecor , '(m/s)'
          IF(lwp) WRITE(numout,*)'          cumulated transport ztranst   =', ztranst   , '(m3/s)'
       END IF 
+      !
+      IF( nn_timing == 1 ) CALL timing_stop('bdy_vol')
       !
       END IF ! ln_vol
 

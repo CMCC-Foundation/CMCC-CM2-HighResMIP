@@ -25,9 +25,12 @@ MODULE zdfgls
    USE restart        ! only for lrst_oce
    USE lbclnk         ! ocean lateral boundary conditions (or mpp link)
    USE lib_mpp        ! MPP manager
+   USE wrk_nemo       ! work arrays
    USE prtctl         ! Print control
    USE in_out_manager ! I/O manager
    USE iom            ! I/O manager library
+   USE timing         ! Timing
+   USE lib_fortran    ! Fortran utilities (allows no signed zero when 'key_nosignedzero' defined)
 
    IMPLICIT NONE
    PRIVATE
@@ -41,6 +44,10 @@ MODULE zdfgls
    REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   en      !: now turbulent kinetic energy
    REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   mxln    !: now mixing length
    REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   zwall   !: wall function
+   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   avt_k   ! not enhanced Kz
+   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   avm_k   ! not enhanced Kz
+   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   avmu_k  ! not enhanced Kz
+   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   avmv_k  ! not enhanced Kz
    REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:)   ::   ustars2 !: Squared surface velocity scale at T-points
    REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:)   ::   ustarb2 !: Squared bottom  velocity scale at T-points
 
@@ -106,7 +113,7 @@ MODULE zdfgls
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: zdfgls.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -116,6 +123,8 @@ CONTAINS
       !!                ***  FUNCTION zdf_gls_alloc  ***
       !!----------------------------------------------------------------------
       ALLOCATE( en(jpi,jpj,jpk),  mxln(jpi,jpj,jpk), zwall(jpi,jpj,jpk) ,     &
+         &      avt_k (jpi,jpj,jpk) , avm_k (jpi,jpj,jpk),                    &
+         &      avmu_k(jpi,jpj,jpk) , avmv_k(jpi,jpj,jpk),                    &
          &      ustars2(jpi,jpj), ustarb2(jpi,jpj)                      , STAT= zdf_gls_alloc )
          !
       IF( lk_mpp             )   CALL mpp_sum ( zdf_gls_alloc )
@@ -130,20 +139,6 @@ CONTAINS
       !! ** Purpose :   Compute the vertical eddy viscosity and diffusivity
       !!              coefficients using the GLS turbulent closure scheme.
       !!----------------------------------------------------------------------
-      USE oce,     z_elem_a  =>   ua   ! use ua as workspace
-      USE oce,     z_elem_b  =>   va   ! use va as workspace
-      USE oce,     z_elem_c  =>   ta   ! use ta as workspace
-      USE oce,     psi       =>   sa   ! use sa as workspace
-      USE wrk_nemo, ONLY: wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY: zdep  => wrk_2d_1
-      USE wrk_nemo, ONLY: zflxs => wrk_2d_2     ! Turbulence fluxed induced by internal waves 
-      USE wrk_nemo, ONLY: zhsro => wrk_2d_3     ! Surface roughness (surface waves)
-      USE wrk_nemo, ONLY: eb        => wrk_3d_1   ! tke at time before
-      USE wrk_nemo, ONLY: mxlb      => wrk_3d_2   ! mixing length at time before
-      USE wrk_nemo, ONLY: shear     => wrk_3d_3   ! vertical shear
-      USE wrk_nemo, ONLY: eps       => wrk_3d_4   ! dissipation rate
-      USE wrk_nemo, ONLY: zwall_psi => wrk_3d_5   ! Wall function use in the wb case (ln_sigpsi.AND.ln_crban=T)
-      !
       INTEGER, INTENT(in) ::   kt ! ocean time step
       INTEGER  ::   ji, jj, jk, ibot, ibotm1, dir  ! dummy loop arguments
       REAL(wp) ::   zesh2, zsigpsi, zcoef, zex1, zex2   ! local scalars
@@ -151,15 +146,32 @@ CONTAINS
       REAL(wp) ::   zratio, zrn2, zflxb, sh             !   -      -
       REAL(wp) ::   prod, buoy, diss, zdiss, sm         !   -      -
       REAL(wp) ::   gh, gm, shr, dif, zsqen, zav        !   -      -
+      REAL(wp), POINTER, DIMENSION(:,:  ) ::   zdep
+      REAL(wp), POINTER, DIMENSION(:,:  ) ::   zflxs       ! Turbulence fluxed induced by internal waves 
+      REAL(wp), POINTER, DIMENSION(:,:  ) ::   zhsro       ! Surface roughness (surface waves)
+      REAL(wp), POINTER, DIMENSION(:,:,:) ::   eb          ! tke at time before
+      REAL(wp), POINTER, DIMENSION(:,:,:) ::   mxlb        ! mixing length at time before
+      REAL(wp), POINTER, DIMENSION(:,:,:) ::   shear       ! vertical shear
+      REAL(wp), POINTER, DIMENSION(:,:,:) ::   eps         ! dissipation rate
+      REAL(wp), POINTER, DIMENSION(:,:,:) ::   zwall_psi   ! Wall function use in the wb case (ln_sigpsi.AND.ln_crban=T)
+      REAL(wp), POINTER, DIMENSION(:,:,:) ::   z_elem_a, z_elem_b, z_elem_c, psi
       !!--------------------------------------------------------------------
-
-      IF(  wrk_in_use(2, 1,2,3)  .OR.  wrk_in_use(3, 1,2,3,4,5)  ) THEN
-         CALL ctl_stop('zdf_gls: requested workspace arrays unavailable.')   ;   RETURN
-      END IF
+      !
+      IF( nn_timing == 1 )  CALL timing_start('zdf_gls')
+      !
+      CALL wrk_alloc( jpi,jpj, zdep, zflxs, zhsro )
+      CALL wrk_alloc( jpi,jpj,jpk, eb, mxlb, shear, eps, zwall_psi, z_elem_a, z_elem_b, z_elem_c, psi )
 
       ! Preliminary computing
 
       ustars2 = 0._wp   ;   ustarb2 = 0._wp   ;   psi  = 0._wp   ;   zwall_psi = 0._wp
+
+      IF( kt /= nit000 ) THEN   ! restore before value to compute tke
+         avt (:,:,:) = avt_k (:,:,:)
+         avm (:,:,:) = avm_k (:,:,:)
+         avmu(:,:,:) = avmu_k(:,:,:)
+         avmv(:,:,:) = avmv_k(:,:,:) 
+      ENDIF
 
       ! Compute surface and bottom friction at T-points
 !CDIR NOVERRCHK
@@ -261,7 +273,8 @@ CONTAINS
                ! Otherwise, this should be rsc_psi/rsc_psi0
                IF( ln_sigpsi ) THEN
                   zsigpsi = MIN( 1._wp, zesh2 / eps(ji,jj,jk) )     ! 0. <= zsigpsi <= 1.
-                  zwall_psi(ji,jj,jk) = rsc_psi / (  zsigpsi * rsc_psi + (1._wp-zsigpsi) * rsc_psi0 / MAX( zwall(ji,jj,jk), 1._wp )  )
+                  zwall_psi(ji,jj,jk) = rsc_psi /   & 
+                     &     (  zsigpsi * rsc_psi + (1._wp-zsigpsi) * rsc_psi0 / MAX( zwall(ji,jj,jk), 1._wp )  )
                ELSE
                   zwall_psi(ji,jj,jk) = 1._wp
                ENDIF
@@ -457,7 +470,7 @@ CONTAINS
          DO jk = 2, jpkm1
             DO jj = 2, jpjm1
                DO ji = fs_2, fs_jpim1   ! vector opt.
-                  psi(ji,jj,jk)  = en(ji,jj,jk) * mxln(ji,jj,jk)
+                  psi(ji,jj,jk)  = eb(ji,jj,jk) * mxlb(ji,jj,jk)
                END DO
             END DO
          END DO
@@ -475,7 +488,7 @@ CONTAINS
          DO jk = 2, jpkm1
             DO jj = 2, jpjm1
                DO ji = fs_2, fs_jpim1   ! vector opt.
-                  psi(ji,jj,jk)  = SQRT( en(ji,jj,jk) ) / ( rc0 * mxln(ji,jj,jk) )
+                  psi(ji,jj,jk)  = SQRT( eb(ji,jj,jk) ) / ( rc0 * mxlb(ji,jj,jk) )
                END DO
             END DO
          END DO
@@ -484,7 +497,7 @@ CONTAINS
          DO jk = 2, jpkm1
             DO jj = 2, jpjm1
                DO ji = fs_2, fs_jpim1   ! vector opt.
-                  psi(ji,jj,jk)  = rc02 * en(ji,jj,jk) * mxln(ji,jj,jk)**rnn 
+                  psi(ji,jj,jk)  = rc02 * eb(ji,jj,jk) * mxlb(ji,jj,jk)**rnn 
                END DO
             END DO
          END DO
@@ -882,8 +895,16 @@ CONTAINS
             &          tab3d_2=avmv, clinfo2=       ' v: ', mask2=vmask, ovlap=1, kdim=jpk )
       ENDIF
       !
-      IF( wrk_not_released(2, 1,2,3)     .OR. &
-          wrk_not_released(3, 1,2,3,4,5)  )   CALL ctl_stop('zdf_gls: failed to release workspace arrays')
+      avt_k (:,:,:) = avt (:,:,:)
+      avm_k (:,:,:) = avm (:,:,:)
+      avmu_k(:,:,:) = avmu(:,:,:)
+      avmv_k(:,:,:) = avmv(:,:,:)
+      !
+      CALL wrk_dealloc( jpi,jpj, zdep, zflxs, zhsro )
+      CALL wrk_dealloc( jpi,jpj,jpk, eb, mxlb, shear, eps, zwall_psi, z_elem_a, z_elem_b, z_elem_c, psi )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('zdf_gls')
+      !
       !
    END SUBROUTINE zdf_gls
 
@@ -916,7 +937,9 @@ CONTAINS
          &            nn_psibc_surf, nn_psibc_bot,           &
          &            nn_stab_func, nn_clos
       !!----------------------------------------------------------
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('zdf_gls_init')
+      !
       REWIND( numnam )                 !* Read Namelist namzdf_gls
       READ  ( numnam, namzdf_gls )
 
@@ -1183,6 +1206,8 @@ CONTAINS
       !                              
       CALL gls_rst( nit000, 'READ' )   !* read or initialize all required files
       !
+      IF( nn_timing == 1 )  CALL timing_stop('zdf_gls_init')
+      !
    END SUBROUTINE zdf_gls_init
 
 
@@ -1200,7 +1225,7 @@ CONTAINS
       CHARACTER(len=*), INTENT(in) ::   cdrw       ! "READ"/"WRITE" flag
       !
       INTEGER ::   jit, jk   ! dummy loop indices
-      INTEGER ::   id1, id2, id3, id4, id5, id6, id7, id8
+      INTEGER ::   id1, id2, id3, id4, id5, id6
       INTEGER ::   ji, jj, ikbu, ikbv
       REAL(wp)::   cbx, cby
       !!----------------------------------------------------------------------
@@ -1215,7 +1240,7 @@ CONTAINS
             id5 = iom_varid( numror, 'avmv' , ldstop = .FALSE. )
             id6 = iom_varid( numror, 'mxln' , ldstop = .FALSE. )
             !
-            IF( MIN( id1, id2, id3, id4, id5, id6, id7, id8 ) > 0 ) THEN        ! all required arrays exist
+            IF( MIN( id1, id2, id3, id4, id5, id6 ) > 0 ) THEN        ! all required arrays exist
                CALL iom_get( numror, jpdom_autoglo, 'en'    , en     )
                CALL iom_get( numror, jpdom_autoglo, 'avt'   , avt    )
                CALL iom_get( numror, jpdom_autoglo, 'avm'   , avm    )
@@ -1226,6 +1251,12 @@ CONTAINS
                IF(lwp) WRITE(numout,*) ' ===>>>> : previous run without gls scheme, en and mxln computed by iterative loop'
                en  (:,:,:) = rn_emin
                mxln(:,:,:) = 0.001        
+               !
+               avt_k (:,:,:) = avt (:,:,:)
+               avm_k (:,:,:) = avm (:,:,:)
+               avmu_k(:,:,:) = avmu(:,:,:)
+               avmv_k(:,:,:) = avmv(:,:,:)
+               !
                DO jit = nit000 + 1, nit000 + 10   ;   CALL zdf_gls( jit )   ;   END DO
             ENDIF
          ELSE                                   !* Start from rest
@@ -1238,10 +1269,10 @@ CONTAINS
          !                                   ! -------------------
          IF(lwp) WRITE(numout,*) '---- gls-rst ----'
          CALL iom_rstput( kt, nitrst, numrow, 'en'   , en    )
-         CALL iom_rstput( kt, nitrst, numrow, 'avt'  , avt   )
-         CALL iom_rstput( kt, nitrst, numrow, 'avm'  , avm   )
-         CALL iom_rstput( kt, nitrst, numrow, 'avmu' , avmu  )
-         CALL iom_rstput( kt, nitrst, numrow, 'avmv' , avmv  )
+         CALL iom_rstput( kt, nitrst, numrow, 'avt'  , avt_k  )
+         CALL iom_rstput( kt, nitrst, numrow, 'avm'  , avm_k  )
+         CALL iom_rstput( kt, nitrst, numrow, 'avmu' , avmu_k )
+         CALL iom_rstput( kt, nitrst, numrow, 'avmv' , avmv_k )
          CALL iom_rstput( kt, nitrst, numrow, 'mxln' , mxln  )
          !
       ENDIF

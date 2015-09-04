@@ -7,6 +7,7 @@ MODULE dynzdf_imp
    !!            8.0  !  1997-05  (G. Madec)  vertical component of isopycnal
    !!   NEMO     0.5  !  2002-08  (G. Madec)  F90: Free form and module
    !!            3.3  !  2010-04  (M. Leclair, G. Madec)  Forcing averaged over 2 time steps
+   !!            3.4  !  2012-01  (H. Liu) Semi-implicit bottom friction
    !!----------------------------------------------------------------------
 
    !!----------------------------------------------------------------------
@@ -19,6 +20,9 @@ MODULE dynzdf_imp
    USE phycst          ! physical constants
    USE in_out_manager  ! I/O manager
    USE lib_mpp         ! MPP library
+   USE zdfbfr          ! Bottom friction setup
+   USE wrk_nemo        ! Memory Allocation
+   USE timing          ! Timing
 
    IMPLICIT NONE
    PRIVATE
@@ -30,7 +34,7 @@ MODULE dynzdf_imp
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: dynzdf_imp.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -53,21 +57,23 @@ CONTAINS
       !!
       !! ** Action : - Update (ua,va) arrays with the after vertical diffusive mixing trend.
       !!---------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE oce     , ONLY:  zwd  => ta       , zws   => sa   ! (ta,sa) used as 3D workspace
-      USE wrk_nemo, ONLY:   zwi => wrk_3d_3                 ! 3D workspace
-      !!
-      INTEGER , INTENT(in) ::   kt    ! ocean time-step index
+      INTEGER , INTENT(in) ::  kt     ! ocean time-step index
       REAL(wp), INTENT(in) ::  p2dt   ! vertical profile of tracer time-step
       !!
       INTEGER  ::   ji, jj, jk   ! dummy loop indices
+      INTEGER  ::   ikbu, ikbv   ! local integers
       REAL(wp) ::   z1_p2dt, zcoef, zzwi, zzws, zrhs   ! local scalars
       !!----------------------------------------------------------------------
 
-      IF( wrk_in_use(3, 3) ) THEN
-         CALL ctl_stop('dyn_zdf_imp: requested workspace array unavailable')   ;   RETURN
-      END IF
-
+      REAL(wp), POINTER, DIMENSION(:,:,:) ::  zwi, zwd, zws
+      REAL(wp), POINTER, DIMENSION(:,:)   ::  zavmu, zavmv
+      !!----------------------------------------------------------------------
+      !
+      IF( nn_timing == 1 )  CALL timing_start('dyn_zdf_imp')
+      !
+      CALL wrk_alloc( jpi,jpj,jpk, zwi, zwd, zws ) 
+      CALL wrk_alloc( jpi,jpj, zavmu, zavmv ) 
+      !
       IF( kt == nit000 ) THEN
          IF(lwp) WRITE(numout,*)
          IF(lwp) WRITE(numout,*) 'dyn_zdf_imp : vertical momentum diffusion implicit operator'
@@ -78,14 +84,36 @@ CONTAINS
       ! --------------------------------
       z1_p2dt = 1._wp / p2dt      ! inverse of the timestep
 
-      ! 1. Vertical diffusion on u
+      ! 1. Apply semi-implicit bottom friction
+      ! --------------------------------------
+      ! Only needed for semi-implicit bottom friction setup. The explicit
+      ! bottom friction has been included in "u(v)a" which act as the R.H.S
+      ! column vector of the tri-diagonal matrix equation
+      !
+
+      IF( ln_bfrimp ) THEN
+# if defined key_vectopt_loop
+      DO jj = 1, 1
+         DO ji = jpi+2, jpij-jpi-1   ! vector opt. (forced unrolling)
+# else
+      DO jj = 2, jpjm1
+         DO ji = 2, jpim1
+# endif
+            ikbu = mbku(ji,jj)         ! ocean bottom level at u- and v-points 
+            ikbv = mbkv(ji,jj)         ! (deepest ocean u- and v-points)
+            zavmu(ji,jj) = avmu(ji,jj,ikbu+1)
+            zavmv(ji,jj) = avmv(ji,jj,ikbv+1)
+            avmu(ji,jj,ikbu+1) = -bfrua(ji,jj) * fse3uw(ji,jj,ikbu+1) 
+            avmv(ji,jj,ikbv+1) = -bfrva(ji,jj) * fse3vw(ji,jj,ikbv+1)
+         END DO
+      END DO
+      ENDIF
+
+      ! 2. Vertical diffusion on u
       ! ---------------------------
       ! Matrix and second member construction
       ! bottom boundary condition: both zwi and zws must be masked as avmu can take
-      ! non zero value at the ocean bottom depending on the bottom friction
-      ! used but the bottom velocities have already been updated with the bottom
-      ! friction velocity in dyn_bfr using values from the previous timestep. There
-      ! is no need to include these in the implicit calculation.
+      ! non zero value at the ocean bottom depending on the bottom friction used.
       !
       DO jk = 1, jpkm1        ! Matrix
          DO jj = 2, jpjm1 
@@ -167,14 +195,11 @@ CONTAINS
       END DO
 
 
-      ! 2. Vertical diffusion on v
+      ! 3. Vertical diffusion on v
       ! ---------------------------
       ! Matrix and second member construction
       ! bottom boundary condition: both zwi and zws must be masked as avmv can take
-      ! non zero value at the ocean bottom depending on the bottom friction
-      ! used but the bottom velocities have already been updated with the bottom
-      ! friction velocity in dyn_bfr using values from the previous timestep. There
-      ! is no need to include these in the implicit calculation.
+      ! non zero value at the ocean bottom depending on the bottom friction used
       !
       DO jk = 1, jpkm1        ! Matrix
          DO jj = 2, jpjm1   
@@ -254,8 +279,28 @@ CONTAINS
             END DO
          END DO
       END DO
+
+      !! restore bottom layer avmu(v) 
+      IF( ln_bfrimp ) THEN
+# if defined key_vectopt_loop
+      DO jj = 1, 1
+         DO ji = jpi+2, jpij-jpi-1   ! vector opt. (forced unrolling)
+# else
+      DO jj = 2, jpjm1
+         DO ji = 2, jpim1
+# endif
+            ikbu = mbku(ji,jj)         ! ocean bottom level at u- and v-points 
+            ikbv = mbkv(ji,jj)         ! (deepest ocean u- and v-points)
+            avmu(ji,jj,ikbu+1) = zavmu(ji,jj)
+            avmv(ji,jj,ikbv+1) = zavmv(ji,jj)
+         END DO
+      END DO
+      ENDIF
       !
-      IF( wrk_not_released(3, 3) )   CALL ctl_stop('dyn_zdf_imp: failed to release workspace array')
+      CALL wrk_dealloc( jpi,jpj,jpk, zwi, zwd, zws) 
+      CALL wrk_dealloc( jpi,jpj, zavmu, zavmv) 
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('dyn_zdf_imp')
       !
    END SUBROUTINE dyn_zdf_imp
 

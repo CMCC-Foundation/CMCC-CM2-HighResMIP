@@ -9,34 +9,32 @@ MODULE sbcapr
    !!----------------------------------------------------------------------
    !!   sbc_apr        : read atmospheric pressure in netcdf files 
    !!----------------------------------------------------------------------
-   USE bdy_par         ! Unstructured boundary parameters
    USE obc_par         ! open boundary condition parameters
    USE dom_oce         ! ocean space and time domain
    USE sbc_oce         ! surface boundary condition
    USE dynspg_oce      ! surface pressure gradient variables
    USE phycst          ! physical constants
+   USE restart          ! ocean restart
    USE fldread         ! read input fields
    USE in_out_manager  ! I/O manager
    USE lib_fortran     ! distribued memory computing library
    USE iom             ! IOM library
    USE lib_mpp         ! MPP library
-   USE restart         ! ocean restart
 
    IMPLICIT NONE
    PRIVATE
 
    PUBLIC   sbc_apr    ! routine called in sbcmod
    
-   !                                         !!* namsbc_apr namelist (Atmospheric PRessure) *
-   LOGICAL, PUBLIC ::   ln_apr_obc = .FALSE.  !: inverse barometer added to OBC ssh data 
-   LOGICAL, PUBLIC ::   ln_apr_bdy = .FALSE.  !: inverse barometer added to BDY ssh data
-   LOGICAL, PUBLIC ::   ln_ref_apr = .FALSE.  !: ref. pressure: global mean Patm (F) or a constant (F)
+   !                                              !!* namsbc_apr namelist (Atmospheric PRessure) *
+   LOGICAL, PUBLIC ::   ln_apr_obc = .FALSE.      !: inverse barometer added to OBC ssh data 
+   LOGICAL, PUBLIC ::   ln_ref_apr = .FALSE.      !: ref. pressure: global mean Patm (F) or a constant (F)
+   REAL(wp)        ::   rn_pref    = 101000._wp   !  reference atmospheric pressure   [N/m2]
 
    REAL(wp), ALLOCATABLE, SAVE, PUBLIC, DIMENSION(:,:) ::   ssh_ib    ! Inverse barometer now    sea surface height   [m]
    REAL(wp), ALLOCATABLE, SAVE, PUBLIC, DIMENSION(:,:) ::   ssh_ibb   ! Inverse barometer before sea surface height   [m]
    REAL(wp), ALLOCATABLE, SAVE, PUBLIC, DIMENSION(:,:) ::   apr       ! atmospheric pressure at kt                 [N/m2]
    
-   REAL(wp) ::   rpref = 101000._wp   ! reference atmospheric pressure          [N/m2]
    REAL(wp) ::   tarea                ! whole domain mean masked ocean surface
    REAL(wp) ::   r1_grau              ! = 1.e0 / (grav * rau0)
    
@@ -67,12 +65,11 @@ CONTAINS
       INTEGER, INTENT(in)::   kt   ! ocean time step
       !!
       INTEGER            ::   ierror  ! local integer 
-      REAL(wp)           ::   zpref   ! local scalar
       !!
       CHARACTER(len=100) ::  cn_dir   ! Root directory for location of ssr files
       TYPE(FLD_N)        ::  sn_apr   ! informations about the fields to be read
       !!
-      NAMELIST/namsbc_apr/ cn_dir, sn_apr, ln_ref_apr
+      NAMELIST/namsbc_apr/ cn_dir, sn_apr, ln_ref_apr, rn_pref, ln_apr_obc
       !!----------------------------------------------------------------------
       !
       !
@@ -105,24 +102,21 @@ CONTAINS
          ENDIF
          !
          IF( ln_ref_apr ) THEN                        !* Compute whole inner domain mean masked ocean surface
-            tarea = glob_sum( e1t(:,:) * e2t(:,:) )
+            tarea = glob_sum( e1e2t(:,:) )
             IF(lwp) WRITE(numout,*) '         Variable ref. Patm computed over a ocean surface of ', tarea*1e-6, 'km2'
          ELSE
-            IF(lwp) WRITE(numout,*) '         Reference Patm used : ', rpref, ' N/m2'
+            IF(lwp) WRITE(numout,*) '         Reference Patm used : ', rn_pref, ' N/m2'
          ENDIF
          !
          r1_grau = 1.e0 / (grav * rau0)               !* constant for optimization
          !
          !                                            !* control check
-         IF( ln_apr_obc .OR. ln_apr_bdy   )   &
-            CALL ctl_stop( 'sbc_apr: inverse barometer added to OBC or BDY ssh data not yet implemented ' )
-         IF( ln_apr_obc .AND. .NOT. lk_obc )   &
-            CALL ctl_stop( 'sbc_apr: add inverse barometer to OBC requires to use key_obc' )
-         IF( ln_apr_bdy .AND. .NOT. lk_bdy )   &
-            CALL ctl_stop( 'sbc_apr: add inverse barometer to OBC requires to use key_bdy' )
-         IF( ( ln_apr_obc .OR. ln_apr_bdy ) .AND. .NOT. lk_dynspg_ts )   &
+         IF ( ln_apr_obc  ) THEN
+            IF(lwp) WRITE(numout,*) '         Inverse barometer added to OBC ssh data'
+         ENDIF
+         IF( ( ln_apr_obc ) .AND. .NOT. lk_dynspg_ts )   &
             CALL ctl_stop( 'sbc_apr: use inverse barometer ssh at open boundary ONLY possible with time-splitting' )
-         IF( ( ln_apr_obc .OR. ln_apr_bdy ) .AND. .NOT. ln_apr_dyn   )   &
+         IF( ( ln_apr_obc ) .AND. .NOT. ln_apr_dyn   )   &
             CALL ctl_stop( 'sbc_apr: use inverse barometer ssh at open boundary ONLY requires ln_apr_dyn=T' )
       ENDIF
 
@@ -135,10 +129,10 @@ CONTAINS
          CALL fld_read( kt, nn_fsbc, sf_apr )               !* input Patm provided at kt + nn_fsbc/2
          !
          !                                                  !* update the reference atmospheric pressure (if necessary)
-         IF( ln_ref_apr )   rpref = glob_sum( sf_apr(1)%fnow(:,:,1) * e1t(:,:) * e2t(:,:) ) / tarea
+         IF( ln_ref_apr )   rn_pref = glob_sum( sf_apr(1)%fnow(:,:,1) * e1e2t(:,:) ) / tarea
          !
          !                                                  !* Patm related forcing at kt
-         ssh_ib(:,:) = - ( sf_apr(1)%fnow(:,:,1) - rpref ) * r1_grau    ! equivalent ssh (inverse barometer)
+         ssh_ib(:,:) = - ( sf_apr(1)%fnow(:,:,1) - rn_pref ) * r1_grau    ! equivalent ssh (inverse barometer)
          apr   (:,:) =     sf_apr(1)%fnow(:,:,1)                        ! atmospheric pressure
          !
          CALL iom_put( "ssh_ib", ssh_ib )                   !* output the inverse barometer ssh

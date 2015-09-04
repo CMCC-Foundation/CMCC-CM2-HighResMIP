@@ -24,7 +24,9 @@ MODULE zdftmx
    USE in_out_manager  ! I/O manager
    USE iom             ! I/O Manager
    USE lib_mpp         ! MPP library
-   USE wrk_nemo, ONLY: wrk_in_use, wrk_not_released
+   USE wrk_nemo        ! work arrays
+   USE timing          ! Timing
+   USE lib_fortran     ! Fortran utilities (allows no signed zero when 'key_nosignedzero' defined)
 
    IMPLICIT NONE
    PRIVATE
@@ -52,7 +54,7 @@ MODULE zdftmx
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 4.0 , NEMO Consortium (2011)
-   !! $Id: zdftmx.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -103,17 +105,18 @@ CONTAINS
       !!              Koch-Larrouy et al. 2007, GRL.
       !!----------------------------------------------------------------------
       USE oce, zav_tide  =>   ua    ! use ua as workspace
-      USE wrk_nemo, ONLY: zkz => wrk_2d_1
       !!
       INTEGER, INTENT(in) ::   kt   ! ocean time-step 
       !!
       INTEGER  ::   ji, jj, jk   ! dummy loop indices
       REAL(wp) ::   ztpc         ! scalar workspace
+      REAL(wp), POINTER, DIMENSION(:,:) ::   zkz
       !!----------------------------------------------------------------------
+      !
+      IF( nn_timing == 1 )  CALL timing_start('zdf_tmx')
+      !
+      CALL wrk_alloc( jpi,jpj, zkz )
 
-      IF(wrk_in_use(2, 1))THEN
-         CALL ctl_stop('zdf_tmx : requested workspace array unavailable.')   ;   RETURN
-      END IF
       !                          ! ----------------------- !
       !                          !  Standard tidal mixing  !  (compute zav_tide)
       !                          ! ----------------------- !
@@ -175,9 +178,9 @@ CONTAINS
 
       IF(ln_ctl)   CALL prt_ctl(tab3d_1=zav_tide , clinfo1=' tmx - av_tide: ', tab3d_2=avt, clinfo2=' avt: ', ovlap=1, kdim=jpk)
       !
-      IF(wrk_not_released(2, 1))THEN
-         CALL ctl_stop('zdf_tmx : failed to release workspace array.')
-      END IF
+      CALL wrk_dealloc( jpi,jpj, zkz )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('zdf_tmx')
       !
    END SUBROUTINE zdf_tmx
 
@@ -202,23 +205,23 @@ CONTAINS
       !!
       !! References :  Koch-Larrouy et al. 2007, GRL 
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY: zkz => wrk_2d_5
-      USE wrk_nemo, ONLY: zsum1 => wrk_2d_2, zsum2 => wrk_2d_3, zsum => wrk_2d_4
-      USE wrk_nemo, ONLY: zempba_3d_1 => wrk_3d_1, zempba_3d_2 => wrk_3d_2
-      USE wrk_nemo, ONLY: zempba_3d   => wrk_3d_3, zdn2dz      => wrk_3d_4
-      USE wrk_nemo, ONLY: zavt_itf    => wrk_3d_5
-      !!
       INTEGER , INTENT(in   )                         ::   kt   ! ocean time-step
       REAL(wp), INTENT(inout), DIMENSION(jpi,jpj,jpk) ::   pav  ! Tidal mixing coef.
       !! 
       INTEGER  ::   ji, jj, jk    ! dummy loop indices
       REAL(wp) ::   zcoef, ztpc   ! temporary scalar
+      REAL(wp), DIMENSION(:,:)  , POINTER ::   zkz                        ! 2D workspace
+      REAL(wp), DIMENSION(:,:)  , POINTER ::   zsum1 , zsum2 , zsum       !  -      -
+      REAL(wp), DIMENSION(:,:,:), POINTER ::   zempba_3d_1, zempba_3d_2   ! 3D workspace
+      REAL(wp), DIMENSION(:,:,:), POINTER ::   zempba_3d  , zdn2dz        !  -      -
+      REAL(wp), DIMENSION(:,:,:), POINTER ::   zavt_itf                   !  -      -
       !!----------------------------------------------------------------------
       !
-      IF( wrk_in_use(2, 2,3,4,5) .OR. wrk_in_use(3, 1,2,3,4,5) )THEN
-         CALL ctl_stop('tmx_itf : requested workspace arrays unavailable.')
-         RETURN
-      END IF
+      IF( nn_timing == 1 )  CALL timing_start('tmx_itf')
+      !
+      CALL wrk_alloc( jpi,jpj, zkz, zsum1 , zsum2 , zsum )
+      CALL wrk_alloc( jpi,jpj,jpk, zempba_3d_1, zempba_3d_2, zempba_3d, zdn2dz, zavt_itf )
+
       !                             ! compute the form function using N2 at each time step
       zempba_3d_1(:,:,jpk) = 0.e0
       zempba_3d_2(:,:,jpk) = 0.e0
@@ -303,10 +306,10 @@ CONTAINS
             &        + zavt_itf(:,:,jk) *          mask_itf(:,:) 
       END DO
       !
-      IF( wrk_not_released(2, 2,3,4,5) .OR. &
-          wrk_not_released(3, 1,2,3,4,5) )THEN
-         CALL ctl_stop('tmx_itf : failed to release workspace arrays.')
-      END IF
+      CALL wrk_dealloc( jpi,jpj, zkz, zsum1 , zsum2 , zsum )
+      CALL wrk_dealloc( jpi,jpj,jpk, zempba_3d_1, zempba_3d_2, zempba_3d, zdn2dz, zavt_itf )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('tmx_itf')
       !
    END SUBROUTINE tmx_itf
 
@@ -347,24 +350,24 @@ CONTAINS
       !!              Koch-Larrouy et al. 2007, GRL.
       !!----------------------------------------------------------------------
       USE oce     ,         zav_tide =>  ua         ! ua used as workspace
-      USE wrk_nemo, ONLY:   zem2     =>  wrk_2d_1   ! read M2 and 
-      USE wrk_nemo, ONLY:   zek1     =>  wrk_2d_2   ! K1 tidal energy
-      USE wrk_nemo, ONLY:   zkz      =>  wrk_2d_3   ! total M2, K1 and S2 tidal energy
-      USE wrk_nemo, ONLY:   zfact    =>  wrk_2d_4   ! used for vertical structure function
-      USE wrk_nemo, ONLY:   zhdep    =>  wrk_2d_5   ! Ocean depth 
-      USE wrk_nemo, ONLY:   zpc      =>  wrk_3d_1   ! power consumption
       !!
       INTEGER  ::   ji, jj, jk   ! dummy loop indices
       INTEGER  ::   inum         ! local integer
       REAL(wp) ::   ztpc, ze_z   ! local scalars
+      REAL(wp), DIMENSION(:,:)  , POINTER ::  zem2, zek1   ! read M2 and K1 tidal energy
+      REAL(wp), DIMENSION(:,:)  , POINTER ::  zkz          ! total M2, K1 and S2 tidal energy
+      REAL(wp), DIMENSION(:,:)  , POINTER ::  zfact        ! used for vertical structure function
+      REAL(wp), DIMENSION(:,:)  , POINTER ::  zhdep        ! Ocean depth 
+      REAL(wp), DIMENSION(:,:,:), POINTER ::  zpc      ! power consumption
       !!
       NAMELIST/namzdf_tmx/ rn_htmx, rn_n2min, rn_tfe, rn_me, ln_tmx_itf, rn_tfe_itf
       !!----------------------------------------------------------------------
-
-      IF( wrk_in_use(2, 1,2,3,4,5)  .OR.  wrk_in_use(3, 1)  ) THEN
-         CALL ctl_stop('zdf_tmx_init : requested workspace arrays unavailable.')   ;   RETURN
-      END IF
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('zdf_tmx_init')
+      !
+      CALL wrk_alloc( jpi,jpj, zem2, zek1, zkz, zfact, zhdep )
+      CALL wrk_alloc( jpi,jpj,jpk, zpc )
+      
       REWIND( numnam )               ! Read Namelist namtmx : Tidal Mixing
       READ  ( numnam, namzdf_tmx )
 
@@ -525,8 +528,10 @@ CONTAINS
          !
       ENDIF
       !
-      IF(wrk_not_released(2, 1,2,3,4,5) .OR.   &
-         wrk_not_released(3, 1)          )   CALL ctl_stop( 'zdf_tmx_init : failed to release workspace arrays' )
+      CALL wrk_dealloc( jpi,jpj, zem2, zek1, zkz, zfact, zhdep )
+      CALL wrk_dealloc( jpi,jpj,jpk, zpc )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('zdf_tmx_init')
       !
    END SUBROUTINE zdf_tmx_init
 

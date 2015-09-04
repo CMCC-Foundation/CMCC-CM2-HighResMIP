@@ -73,7 +73,7 @@ MODULE obcdta
 #  include "domzgr_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: obcdta.F90 2722 2011-04-06 09:05:21Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -120,8 +120,8 @@ CONTAINS
 
       ALLOCATE( ltemsk(jpj,jpk) , luemsk(jpj,jpk) , lvemsk(jpj,jpk) ,     &
          &      ltwmsk(jpj,jpk) , luwmsk(jpj,jpk) , lvwmsk(jpj,jpk) ,     &
-         &      ltnmsk(jpj,jpk) , lunmsk(jpj,jpk) , lvnmsk(jpj,jpk) ,     &
-         &      ltsmsk(jpj,jpk) , lusmsk(jpj,jpk) , lvsmsk(jpj,jpk) , STAT=ierr(2) )
+         &      ltnmsk(jpi,jpk) , lunmsk(jpi,jpk) , lvnmsk(jpi,jpk) ,     &
+         &      ltsmsk(jpi,jpk) , lusmsk(jpi,jpk) , lvsmsk(jpi,jpk) , STAT=ierr(2) )
 
       obc_dta_alloc = MAXVAL( ierr )
       IF( lk_mpp )   CALL mpp_sum( obc_dta_alloc )
@@ -303,37 +303,37 @@ CONTAINS
       IF (nobc_dta == 0 ) THEN   ! boundary data are the initial data of this run (set only at nit000)
          IF (lp_obc_east) THEN  ! East
             DO ji = nie0 , nie1    
-               sfoe(nje0:nje1,:) = temsk(nje0:nje1,:) * sn (ji+1 , nje0:nje1 , :) * tmask(ji+1,nje0:nje1 , :)
-               tfoe(nje0:nje1,:) = temsk(nje0:nje1,:) * tn (ji+1 , nje0:nje1 , :) * tmask(ji+1,nje0:nje1 , :)
-               ufoe(nje0:nje1,:) = uemsk(nje0:nje1,:) * un (ji   , nje0:nje1 , :) * umask(ji,  nje0:nje1 , :)
-               vfoe(nje0:nje1,:) = vemsk(nje0:nje1,:) * vn (ji+1 , nje0:nje1 , :) * vmask(ji+1,nje0:nje1 , :)
+               sfoe(nje0:nje1,:) = temsk(nje0:nje1,:) * tsn(ji+1 , nje0:nje1 , :,jp_sal) * tmask(ji+1,nje0:nje1 , :)
+               tfoe(nje0:nje1,:) = temsk(nje0:nje1,:) * tsn(ji+1 , nje0:nje1 , :,jp_tem) * tmask(ji+1,nje0:nje1 , :)
+               ufoe(nje0:nje1,:) = uemsk(nje0:nje1,:) * un (ji   , nje0:nje1 , :)        * umask(ji,  nje0:nje1 , :)
+               vfoe(nje0:nje1,:) = vemsk(nje0:nje1,:) * vn (ji+1 , nje0:nje1 , :)        * vmask(ji+1,nje0:nje1 , :)
             END DO
          ENDIF
 
          IF (lp_obc_west) THEN  ! West
             DO ji = niw0 , niw1    
-               sfow(njw0:njw1,:) = twmsk(njw0:njw1,:) * sn (ji , njw0:njw1 , :) * tmask(ji , njw0:njw1 , :)
-               tfow(njw0:njw1,:) = twmsk(njw0:njw1,:) * tn (ji , njw0:njw1 , :) * tmask(ji , njw0:njw1 , :)
-               ufow(njw0:njw1,:) = uwmsk(njw0:njw1,:) * un (ji , njw0:njw1 , :) * umask(ji , njw0:njw1 , :)
-               vfow(njw0:njw1,:) = vwmsk(njw0:njw1,:) * vn (ji , njw0:njw1 , :) * vmask(ji , njw0:njw1 , :)
+               sfow(njw0:njw1,:) = twmsk(njw0:njw1,:) * tsn(ji , njw0:njw1 , :,jp_sal) * tmask(ji , njw0:njw1 , :)
+               tfow(njw0:njw1,:) = twmsk(njw0:njw1,:) * tsn(ji , njw0:njw1 , :,jp_tem) * tmask(ji , njw0:njw1 , :)
+               ufow(njw0:njw1,:) = uwmsk(njw0:njw1,:) * un (ji , njw0:njw1 , :)        * umask(ji , njw0:njw1 , :)
+               vfow(njw0:njw1,:) = vwmsk(njw0:njw1,:) * vn (ji , njw0:njw1 , :)        * vmask(ji , njw0:njw1 , :)
             END DO
          ENDIF
 
          IF (lp_obc_north) THEN ! North
             DO jj = njn0 , njn1
-               sfon(nin0:nin1,:) = tnmsk(nin0:nin1,:) * sn (nin0:nin1 , jj+1 , :) * tmask(nin0:nin1 , jj+1 , :)
-               tfon(nin0:nin1,:) = tnmsk(nin0:nin1,:) * tn (nin0:nin1 , jj+1 , :) * tmask(nin0:nin1 , jj+1 , :)
-               ufon(nin0:nin1,:) = unmsk(nin0:nin1,:) * un (nin0:nin1 , jj+1 , :) * umask(nin0:nin1 , jj+1 , :)
-               vfon(nin0:nin1,:) = vnmsk(nin0:nin1,:) * vn (nin0:nin1 , jj   , :) * vmask(nin0:nin1 , jj   , :)
+               sfon(nin0:nin1,:) = tnmsk(nin0:nin1,:) * tsn(nin0:nin1 , jj+1 , :,jp_sal) * tmask(nin0:nin1 , jj+1 , :)
+               tfon(nin0:nin1,:) = tnmsk(nin0:nin1,:) * tsn(nin0:nin1 , jj+1 , :,jp_tem) * tmask(nin0:nin1 , jj+1 , :)
+               ufon(nin0:nin1,:) = unmsk(nin0:nin1,:) * un (nin0:nin1 , jj+1 , :)        * umask(nin0:nin1 , jj+1 , :)
+               vfon(nin0:nin1,:) = vnmsk(nin0:nin1,:) * vn (nin0:nin1 , jj   , :)        * vmask(nin0:nin1 , jj   , :)
             END DO
          ENDIF
 
          IF (lp_obc_south) THEN ! South
             DO jj = njs0 , njs1
-               sfos(nis0:nis1,:) = tsmsk(nis0:nis1,:) * sn (nis0:nis1 , jj , :) * tmask(nis0:nis1 , jj , :)
-               tfos(nis0:nis1,:) = tsmsk(nis0:nis1,:) * tn (nis0:nis1 , jj , :) * tmask(nis0:nis1 , jj , :)
-               ufos(nis0:nis1,:) = usmsk(nis0:nis1,:) * un (nis0:nis1 , jj , :) * umask(nis0:nis1 , jj , :)
-               vfos(nis0:nis1,:) = vsmsk(nis0:nis1,:) * vn (nis0:nis1 , jj , :) * vmask(nis0:nis1 , jj , :)
+               sfos(nis0:nis1,:) = tsmsk(nis0:nis1,:) * tsn(nis0:nis1 , jj , :,jp_sal) * tmask(nis0:nis1 , jj , :)
+               tfos(nis0:nis1,:) = tsmsk(nis0:nis1,:) * tsn(nis0:nis1 , jj , :,jp_tem) * tmask(nis0:nis1 , jj , :)
+               ufos(nis0:nis1,:) = usmsk(nis0:nis1,:) * un (nis0:nis1 , jj , :)        * umask(nis0:nis1 , jj , :)
+               vfos(nis0:nis1,:) = vsmsk(nis0:nis1,:) * vn (nis0:nis1 , jj , :)        * vmask(nis0:nis1 , jj , :)
             END DO
          ENDIF
          RETURN  ! exit the routine all is done
@@ -1236,6 +1236,15 @@ CONTAINS
          INTEGER, INTENT (in) :: kt
          WRITE(*,*) 'obc_dta: You should not have seen this print! error?', kt
       END SUBROUTINE obc_dta
+      !!-----------------------------------------------------------------------------
+      !!   Default option
+      !!-----------------------------------------------------------------------------
+      SUBROUTINE obc_dta_bt ( kt, kbt )     ! Empty routine
+         INTEGER,INTENT(in) :: kt
+         INTEGER, INTENT( in ) ::   kbt     ! barotropic ocean time-step index
+         WRITE(*,*) 'obc_dta_bt: You should not have seen this print! error?', kt
+         WRITE(*,*) 'obc_dta_bt: You should not have seen this print! error?', kbt
+      END SUBROUTINE obc_dta_bt
 #endif
    !!==============================================================================
    END MODULE obcdta

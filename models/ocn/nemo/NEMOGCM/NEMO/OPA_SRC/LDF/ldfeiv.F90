@@ -24,6 +24,8 @@ MODULE ldfeiv
    USE lbclnk          ! ocean lateral boundary conditions (or mpp link)
    USE prtctl          ! Print control
    USE iom             ! I/O library
+   USE wrk_nemo        ! work arrays
+   USE timing          ! Timing
 
    IMPLICIT NONE
    PRIVATE
@@ -35,7 +37,7 @@ MODULE ldfeiv
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: ldfeiv.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -52,19 +54,16 @@ CONTAINS
       !! ** Action : - uslp , vslp  : i- and j-slopes of neutral surfaces at u- & v-points
       !!             - wslpi, wslpj : i- and j-slopes of neutral surfaces at w-points. 
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zn  => wrk_2d_1 , zah   => wrk_2d_2   ! 2D workspace
-      USE wrk_nemo, ONLY:   zhw => wrk_2d_3 , zross => wrk_2d_4
-      !
       INTEGER, INTENT(in) ::   kt   ! ocean time-step inedx
       !
       INTEGER  ::   ji, jj, jk   ! dummy loop indices
       REAL(wp) ::   zfw, ze3w, zn2, zf20, zaht, zaht_min      ! temporary scalars
+      REAL(wp), DIMENSION(:,:), POINTER ::   zn, zah, zhw, zross   ! 2D workspace
       !!----------------------------------------------------------------------
-      
-      IF( wrk_in_use(2, 1,2,3,4) ) THEN
-         CALL ctl_stop('ldf_eiv: requested workspace arrays are unavailable.')   ;   RETURN
-      ENDIF
+      !
+      IF( nn_timing == 1 )  CALL timing_start('ldf_eiv')
+      !
+      CALL wrk_alloc( jpi,jpj, zn, zah, zhw, zross )
 
       IF( kt == nit000 ) THEN
          IF(lwp) WRITE(numout,*)
@@ -242,7 +241,9 @@ CONTAINS
       CALL iom_put( "aht2d"    , ahtw )   ! lateral eddy diffusivity
       CALL iom_put( "aht2d_eiv", aeiw )   ! EIV lateral eddy diffusivity
       !  
-      IF( wrk_not_released(2, 1,2,3,4) )   CALL ctl_stop('ldf_eiv: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi,jpj, zn, zah, zhw, zross )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('ldf_eiv')
       !
    END SUBROUTINE ldf_eiv
 

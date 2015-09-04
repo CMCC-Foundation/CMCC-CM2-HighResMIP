@@ -51,7 +51,7 @@ MODULE asmtrj
 
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: asmtrj.F90 2399 2010-11-17 09:09:35Z gm $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -104,16 +104,16 @@ CONTAINS
             ENDIF
             !
             !                                      ! Write the information
-            CALL iom_rstput( kt, nitbkg_r, inum, 'rdastp' , zdate   )
-            CALL iom_rstput( kt, nitbkg_r, inum, 'un'     , un      )
-            CALL iom_rstput( kt, nitbkg_r, inum, 'vn'     , vn      )
-            CALL iom_rstput( kt, nitbkg_r, inum, 'tn'     , tn      )
-            CALL iom_rstput( kt, nitbkg_r, inum, 'sn'     , sn      )
-            CALL iom_rstput( kt, nitbkg_r, inum, 'sshn'   , sshn    )
+            CALL iom_rstput( kt, nitbkg_r, inum, 'rdastp' , zdate             )
+            CALL iom_rstput( kt, nitbkg_r, inum, 'un'     , un                )
+            CALL iom_rstput( kt, nitbkg_r, inum, 'vn'     , vn                )
+            CALL iom_rstput( kt, nitbkg_r, inum, 'tn'     , tsn(:,:,:,jp_tem) )
+            CALL iom_rstput( kt, nitbkg_r, inum, 'sn'     , tsn(:,:,:,jp_sal) )
+            CALL iom_rstput( kt, nitbkg_r, inum, 'sshn'   , sshn              )
 #if defined key_zdftke
-            CALL iom_rstput( kt, nitbkg_r, inum, 'en'     , en      )
+            CALL iom_rstput( kt, nitbkg_r, inum, 'en'     , en                )
 #endif
-            CALL iom_rstput( kt, nitbkg_r, inum, 'gcx'    , gcx     )
+            CALL iom_rstput( kt, nitbkg_r, inum, 'gcx'    , gcx               )
             !
             CALL iom_close( inum )
          ENDIF
@@ -142,12 +142,12 @@ CONTAINS
             ENDIF
             !
             !                                      ! Write the information
-            CALL iom_rstput( kt, nitdin_r, inum, 'rdastp' , zdate   )
-            CALL iom_rstput( kt, nitdin_r, inum, 'un'     , un      )
-            CALL iom_rstput( kt, nitdin_r, inum, 'vn'     , vn      )
-            CALL iom_rstput( kt, nitdin_r, inum, 'tn'     , tn      )
-            CALL iom_rstput( kt, nitdin_r, inum, 'sn'     , sn      )
-            CALL iom_rstput( kt, nitdin_r, inum, 'sshn'   , sshn    )
+            CALL iom_rstput( kt, nitdin_r, inum, 'rdastp' , zdate             )
+            CALL iom_rstput( kt, nitdin_r, inum, 'un'     , un                )
+            CALL iom_rstput( kt, nitdin_r, inum, 'vn'     , vn                )
+            CALL iom_rstput( kt, nitdin_r, inum, 'tn'     , tsn(:,:,:,jp_tem) )
+            CALL iom_rstput( kt, nitdin_r, inum, 'sn'     , tsn(:,:,:,jp_sal) )
+            CALL iom_rstput( kt, nitdin_r, inum, 'sshn'   , sshn              )
             !
             CALL iom_close( inum )
          ENDIF
@@ -215,8 +215,8 @@ CONTAINS
          CALL iom_rstput( it, it, inum, 'emps'  , emps   )
          CALL iom_rstput( it, it, inum, 'un'    , un     )
          CALL iom_rstput( it, it, inum, 'vn'    , vn     )
-         CALL iom_rstput( it, it, inum, 'tn'    , tn     )
-         CALL iom_rstput( it, it, inum, 'sn'    , sn     )
+         CALL iom_rstput( it, it, inum, 'tn'    , tsn(:,:,:,jp_tem) )
+         CALL iom_rstput( it, it, inum, 'sn'    , tsn(:,:,:,jp_sal) )
          CALL iom_rstput( it, it, inum, 'avmu'  , avmu   )
          CALL iom_rstput( it, it, inum, 'avmv'  , avmv   )
          CALL iom_rstput( it, it, inum, 'avt'   , avt    )
@@ -229,14 +229,14 @@ CONTAINS
 #if defined key_zdfddm
          CALL iom_rstput( it, it, inum, 'avs'   , avs    )
 #endif
-         CALL iom_rstput( it, it, inum, 'ta'    , ta     )
-         CALL iom_rstput( it, it, inum, 'sa'    , sa     )
-         CALL iom_rstput( it, it, inum, 'tb'    , tb     )
-         CALL iom_rstput( it, it, inum, 'sb'    , sb     )
-#if defined key_tradmp
-         CALL iom_rstput( it, it, inum, 'strdmp', strdmp )
-         CALL iom_rstput( it, it, inum, 'hmlp'  , hmlp   )
-#endif
+         CALL iom_rstput( it, it, inum, 'ta'    , tsa(:,:,:,jp_tem) )
+         CALL iom_rstput( it, it, inum, 'sa'    , tsa(:,:,:,jp_sal) )
+         CALL iom_rstput( it, it, inum, 'tb'    , tsb(:,:,:,jp_tem) )
+         CALL iom_rstput( it, it, inum, 'sb'    , tsb(:,:,:,jp_sal) )
+         IF( ln_tradmp ) THEN
+            CALL iom_rstput( it, it, inum, 'strdmp', strdmp )
+            CALL iom_rstput( it, it, inum, 'hmlp'  , hmlp   )
+         END IF
          CALL iom_rstput( it, it, inum, 'aeiu'  , aeiu   )
          CALL iom_rstput( it, it, inum, 'aeiv'  , aeiv   )
          CALL iom_rstput( it, it, inum, 'aeiw'  , aeiw   )

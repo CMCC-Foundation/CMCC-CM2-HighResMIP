@@ -24,6 +24,7 @@ MODULE domhgr
    USE phycst         ! physical constants
    USE in_out_manager ! I/O manager
    USE lib_mpp        ! MPP library
+   USE timing         ! Timing
 
    IMPLICIT NONE
    PRIVATE
@@ -34,7 +35,7 @@ MODULE domhgr
 
    !!----------------------------------------------------------------------
    !! NEMO/OPA 4.0 , NEMO Consortium (2011)
-   !! $Id: domhgr.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -104,7 +105,9 @@ CONTAINS
       REAL(wp) ::   zlam1, zcos_alpha, zim1 , zjm1 , ze1, ze1deg
       REAL(wp) ::   zphi1, zsin_alpha, zim05, zjm05
       !!----------------------------------------------------------------------
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('dom_hgr')
+      !
       IF(lwp) THEN
          WRITE(numout,*)
          WRITE(numout,*) 'dom_hgr : define the horizontal mesh from ithe following par_oce parameters '
@@ -567,7 +570,9 @@ CONTAINS
          znorme = SQRT( SUM( gphiu(:,2) * gphiu(:,2) ) ) / FLOAT( jpi )
          IF( znorme > 1.e-13 ) CALL ctl_stop( ' ===>>>> : symmetrical condition: rerun with good equator line' )
       ENDIF
-
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('dom_hgr')
+      !
    END SUBROUTINE dom_hgr
 
 

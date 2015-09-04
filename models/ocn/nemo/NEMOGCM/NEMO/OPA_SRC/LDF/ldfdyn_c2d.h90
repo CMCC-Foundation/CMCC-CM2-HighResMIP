@@ -7,7 +7,7 @@
 
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: ldfdyn_c2d.h90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 
@@ -139,8 +139,6 @@
       !!
       !!----------------------------------------------------------------------
       USE ldftra_oce, ONLY:   aht0
-      USE wrk_nemo  , ONLY:   iwrk_in_use, iwrk_not_released
-      USE wrk_nemo  , ONLY:   icof => iwrk_2d_1
       !
       LOGICAL, INTENT (in) ::   ld_print   ! If true, output arrays on numout
       !
@@ -149,13 +147,13 @@
       INTEGER  ::   ifreq, il1, il2, ij, ii
       REAL(wp) ::   zahmeq, zcoft, zcoff, zmsk
       CHARACTER (len=15) ::   clexp
-      INTEGER, DIMENSION(jpidta,jpidta) ::   idata
+      INTEGER, POINTER, DIMENSION(:,:)  :: icof
+      INTEGER, POINTER, DIMENSION(:,:)  :: idata
       !!----------------------------------------------------------------------
-
-      IF( iwrk_in_use(2, 1) )THEN
-         CALL ctl_stop('ldf_dyn_c2d_orca: requested workspace array is unavailable')   ;   RETURN
-      ENDIF
-
+      !                                
+      CALL wrk_alloc( jpi   , jpj   , icof  )
+      CALL wrk_alloc( jpidta, jpjdta, idata )
+      !
       IF(lwp) WRITE(numout,*)
       IF(lwp) WRITE(numout,*) 'inildf: 2d eddy viscosity coefficient'
       IF(lwp) WRITE(numout,*) '~~~~~~  --'
@@ -279,8 +277,9 @@
          WRITE(numout,*) 'inildf: 2D ahm2 array'
          CALL prihre(ahm2,jpi,jpj,1,jpi,1,1,jpj,1,1.e-3,numout)
       ENDIF
-
-      IF( iwrk_not_released(2, 1) )   CALL ctl_stop('ldf_dyn_c2d_orca: failed to release workspace array')
+      !
+      CALL wrk_dealloc( jpi   , jpj   , icof  )
+      CALL wrk_dealloc( jpidta, jpjdta, idata )
       !
    END SUBROUTINE ldf_dyn_c2d_orca
 
@@ -301,8 +300,6 @@
       !!
       !!----------------------------------------------------------------------
       USE ldftra_oce, ONLY:   aht0
-      USE wrk_nemo  , ONLY:   iwrk_in_use, iwrk_not_released
-      USE wrk_nemo  , ONLY:   icof => iwrk_2d_1
       !
       LOGICAL, INTENT (in) ::   ld_print   ! If true, output arrays on numout
       !
@@ -312,12 +309,13 @@
       INTEGER ::   ifreq, il1, il2, ij, ii
       REAL(wp) ::   zahmeq, zcoft, zcoff, zmsk, zam20s
       CHARACTER (len=15) ::   clexp
-      INTEGER, DIMENSION(jpidta,jpidta) ::   idata
+      INTEGER, POINTER, DIMENSION(:,:)  :: icof
+      INTEGER, POINTER, DIMENSION(:,:)  :: idata
       !!----------------------------------------------------------------------
-
-      IF( iwrk_in_use(2, 1) ) THEN
-         CALL ctl_stop('ldf_dyn_c2d_orca_R1: requested workspace array is unavailable')   ;   RETURN
-      ENDIF
+      !                                
+      CALL wrk_alloc( jpi   , jpj   , icof  )
+      CALL wrk_alloc( jpidta, jpjdta, idata )
+      !                                
 
       IF(lwp) WRITE(numout,*)
       IF(lwp) WRITE(numout,*) 'inildf: 2d eddy viscosity coefficient'
@@ -449,7 +447,8 @@
          WRITE(numout,*) 'inildf: 2D ahm2 array'
          CALL prihre(ahm2,jpi,jpj,1,jpi,1,1,jpj,1,1.e-3,numout)
       ENDIF
-
-      IF( iwrk_not_released(2, 1) )   CALL ctl_stop('ldf_dyn_c2d_orca_R1: failed to release workspace array')
+      !
+      CALL wrk_dealloc( jpi   , jpj   , icof  )
+      CALL wrk_dealloc( jpidta, jpjdta, idata )
       !
    END SUBROUTINE ldf_dyn_c2d_orca_R1

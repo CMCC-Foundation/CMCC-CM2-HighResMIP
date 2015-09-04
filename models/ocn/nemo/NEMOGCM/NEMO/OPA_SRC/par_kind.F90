@@ -34,7 +34,7 @@ MODULE par_kind
 
    !!----------------------------------------------------------------------
    !! NEMO 3.3 , NEMO Consortium (2010)
-   !! $Id: par_kind.F90 2528 2010-12-27 17:33:53Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 END MODULE par_kind

@@ -28,6 +28,9 @@ MODULE traqsr
    USE fldread         ! read input fields
    USE restart         ! ocean restart
    USE lib_mpp         ! MPP library
+   USE wrk_nemo       ! Memory Allocation
+   USE timing         ! Timing
+
 
    IMPLICIT NONE
    PRIVATE
@@ -57,7 +60,7 @@ MODULE traqsr
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: traqsr.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -89,10 +92,6 @@ CONTAINS
       !! Reference  : Jerlov, N. G., 1968 Optical Oceanography, Elsevier, 194pp.
       !!              Lengaigne et al. 2007, Clim. Dyn., V28, 5, 503-516.
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zekb => wrk_2d_1 , zekg => wrk_2d_2 , zekr => wrk_2d_3
-      USE wrk_nemo, ONLY:   ze0  => wrk_3d_1 , ze1  => wrk_3d_2 , ze2  => wrk_3d_3
-      USE wrk_nemo, ONLY:   ze3  => wrk_3d_4 , zea  => wrk_3d_5
       !
       INTEGER, INTENT(in) ::   kt     ! ocean time-step
       !
@@ -101,13 +100,15 @@ CONTAINS
       REAL(wp) ::   zchl, zcoef, zfact   ! local scalars
       REAL(wp) ::   zc0, zc1, zc2, zc3   !    -         -
       REAL(wp) ::   zz0, zz1, z1_e3t     !    -         -
-      REAL(wp), DIMENSION(:,:,:), ALLOCATABLE ::  ztrdt
+      REAL(wp), POINTER, DIMENSION(:,:  ) :: zekb, zekg, zekr
+      REAL(wp), POINTER, DIMENSION(:,:,:) :: ze0, ze1, ze2, ze3, zea, ztrdt
       !!----------------------------------------------------------------------
-
-      IF( wrk_in_use(3, 1,2,3,4,5) .OR. wrk_in_use(2, 1,2,3) )THEN
-         CALL ctl_stop('tra_qsr: requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('tra_qsr')
+      !
+      CALL wrk_alloc( jpi, jpj,      zekb, zekg, zekr        ) 
+      CALL wrk_alloc( jpi, jpj, jpk, ze0, ze1, ze2, ze3, zea ) 
+      !
       IF( kt == nit000 ) THEN
          IF(lwp) WRITE(numout,*)
          IF(lwp) WRITE(numout,*) 'tra_qsr : penetration of the surface solar radiation'
@@ -116,7 +117,8 @@ CONTAINS
       ENDIF
 
       IF( l_trdtra ) THEN      ! Save ta and sa trends
-         ALLOCATE( ztrdt(jpi,jpj,jpk) )   ;    ztrdt(:,:,:) = tsa(:,:,:,jp_tem)
+         CALL wrk_alloc( jpi, jpj, jpk, ztrdt ) 
+         ztrdt(:,:,:) = tsa(:,:,:,jp_tem)
       ENDIF
 
       !                                        Set before qsr tracer content field
@@ -124,6 +126,7 @@ CONTAINS
       IF( kt == nit000 ) THEN                     ! Set the forcing field at nit000 - 1
          !                                        ! -----------------------------------
          qsr_hc(:,:,:) = 0.e0
+         !
          IF( ln_rstart .AND.    &                    ! Restart: read in restart file
               & iom_varid( numror, 'qsr_hc_b', ldstop = .FALSE. ) > 0 ) THEN
             IF(lwp) WRITE(numout,*) '          nit000-1 qsr tracer content forcing field red in the restart file'
@@ -283,13 +286,15 @@ CONTAINS
       IF( l_trdtra ) THEN     ! qsr tracers trends saved for diagnostics
          ztrdt(:,:,:) = tsa(:,:,:,jp_tem) - ztrdt(:,:,:)
          CALL trd_tra( kt, 'TRA', jp_tem, jptra_trd_qsr, ztrdt )
-         DEALLOCATE( ztrdt )
+         CALL wrk_dealloc( jpi, jpj, jpk, ztrdt ) 
       ENDIF
       !                       ! print mean trends (used for debugging)
       IF(ln_ctl)   CALL prt_ctl( tab3d_1=tsa(:,:,:,jp_tem), clinfo1=' qsr  - Ta: ', mask1=tmask, clinfo3='tra-ta' )
       !
-      IF( wrk_not_released(3, 1,2,3,4,5) .OR.   &
-          wrk_not_released(2, 1,2,3)     )   CALL ctl_stop('tra_qsr: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi, jpj,      zekb, zekg, zekr        ) 
+      CALL wrk_dealloc( jpi, jpj, jpk, ze0, ze1, ze2, ze3, zea ) 
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('tra_qsr')
       !
    END SUBROUTINE tra_qsr
 
@@ -311,15 +316,13 @@ CONTAINS
       !!
       !! Reference : Jerlov, N. G., 1968 Optical Oceanography, Elsevier, 194pp.
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zekb => wrk_2d_1 , zekg => wrk_2d_2 , zekr => wrk_2d_3
-      USE wrk_nemo, ONLY:   ze0  => wrk_3d_1 , ze1  => wrk_3d_2 , ze2 => wrk_3d_3
-      USE wrk_nemo, ONLY:   ze3  => wrk_3d_4 , zea  => wrk_3d_5
       !
       INTEGER  ::   ji, jj, jk     ! dummy loop indices
       INTEGER  ::   irgb, ierror, ioptio, nqsr   ! local integer
       REAL(wp) ::   zz0, zc0  , zc1, zcoef       ! local scalars
       REAL(wp) ::   zz1, zc2  , zc3, zchl        !   -      -
+      REAL(wp), POINTER, DIMENSION(:,:  ) :: zekb, zekg, zekr
+      REAL(wp), POINTER, DIMENSION(:,:,:) :: ze0, ze1, ze2, ze3, zea
       !
       CHARACTER(len=100) ::   cn_dir   ! Root directory for location of ssr files
       TYPE(FLD_N)        ::   sn_chl   ! informations about the chlorofyl field to be read
@@ -328,9 +331,12 @@ CONTAINS
          &                  nn_chldta, rn_abs, rn_si0, rn_si1
       !!----------------------------------------------------------------------
 
-      IF( wrk_in_use(2, 1,2,3) .OR. wrk_in_use(3, 1,2,3,4,5) )THEN
-         CALL ctl_stop('tra_qsr_init: requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
+      !
+      IF( nn_timing == 1 )  CALL timing_start('tra_qsr_init')
+      !
+      CALL wrk_alloc( jpi, jpj,      zekb, zekg, zekr        ) 
+      CALL wrk_alloc( jpi, jpj, jpk, ze0, ze1, ze2, ze3, zea ) 
+      !
 
       cn_dir = './'       ! directory in which the model is executed
       ! ... default values (NB: frequency positive => hours, negative => months)
@@ -504,8 +510,10 @@ CONTAINS
          ENDIF
       ENDIF
       !
-      IF( wrk_not_released(2, 1,2,3)     .OR.   &
-          wrk_not_released(3, 1,2,3,4,5) )   CALL ctl_stop('tra_qsr_init: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi, jpj,      zekb, zekg, zekr        ) 
+      CALL wrk_dealloc( jpi, jpj, jpk, ze0, ze1, ze2, ze3, zea ) 
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('tra_qsr_init')
       !
    END SUBROUTINE tra_qsr_init
 

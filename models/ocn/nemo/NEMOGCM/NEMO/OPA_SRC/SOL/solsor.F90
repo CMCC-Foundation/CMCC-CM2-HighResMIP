@@ -21,7 +21,9 @@ MODULE solsor
    USE in_out_manager  ! I/O manager
    USE lib_mpp         ! distributed memory computing
    USE lbclnk          ! ocean lateral boundary conditions (or mpp link)
-   USE lib_fortran
+   USE lib_fortran     ! Fortran routines library
+   USE wrk_nemo        ! Memory allocation
+   USE timing          ! Timing
 
    IMPLICIT NONE
    PRIVATE
@@ -30,7 +32,7 @@ MODULE solsor
 
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: solsor.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -56,8 +58,6 @@ CONTAINS
       !! References :   Madec et al. 1988, Ocean Modelling, issue 78, 1-6.
       !!                Beare and Stevens 1997 Ann. Geophysicae 15, 1369-1377
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   ztab => wrk_2d_1    ! 2D workspace
       !!
       INTEGER, INTENT(inout) ::   kindic   ! solver indicator, < 0 if the convergence is not reached:
       !                                    ! the model is stopped in step (set to zero before the call of solsor)
@@ -65,12 +65,13 @@ CONTAINS
       INTEGER  ::   ji, jj, jn       ! dummy loop indices
       INTEGER  ::   ishift, icount, ijmppodd, ijmppeven, ijpr2d   ! local integers
       REAL(wp) ::   ztmp, zres, zres2                             ! local scalars
+      REAL(wp), POINTER, DIMENSION(:,:) ::   ztab                 ! 2D workspace
       !!----------------------------------------------------------------------
-      
-      IF( wrk_in_use(2, 1) )THEN
-         CALL ctl_stop('sol_sor: requested workspace array is unavailable')   ;   RETURN
-      ENDIF
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('sol_sor')
+      !
+      CALL wrk_alloc( jpi, jpj, ztab )
+      !
       ijmppeven = MOD( nimpp+njmpp+jpr2di+jpr2dj   , 2 )
       ijmppodd  = MOD( nimpp+njmpp+jpr2di+jpr2dj+1 , 2 )
       ijpr2d    = MAX( jpr2di , jpr2dj )
@@ -166,8 +167,10 @@ CONTAINS
       !  Output in gcx
       !  -------------
       CALL lbc_lnk_e( gcx, c_solver_pt, 1. )    ! boundary conditions
-      ! 
-      IF( wrk_not_released(2, 1) )   CALL ctl_stop('sol_sor: failed to release workspace array')
+      !
+      CALL wrk_dealloc( jpi, jpj, ztab )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('sol_sor')
       !
    END SUBROUTINE sol_sor
 

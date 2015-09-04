@@ -26,6 +26,8 @@ MODULE traadv_eiv
    USE lbclnk          ! ocean lateral boundary conditions (or mpp link)
    USE diaar5, ONLY:   lk_diaar5
 # endif  
+   USE wrk_nemo        ! Memory Allocation
+   USE timing          ! Timing
 
    IMPLICIT NONE
    PRIVATE
@@ -39,12 +41,12 @@ MODULE traadv_eiv
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: traadv_eiv.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
 
-   SUBROUTINE tra_adv_eiv( kt, pun, pvn, pwn, cdtype )
+   SUBROUTINE tra_adv_eiv( kt, kit000, pun, pvn, pwn, cdtype )
       !!----------------------------------------------------------------------
       !!                  ***  ROUTINE tra_adv_eiv  ***
       !! 
@@ -62,12 +64,8 @@ CONTAINS
       !!
       !! ** Action  : - add to p.n the eiv component
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zu_eiv => wrk_2d_1 , zv_eiv => wrk_2d_2 , zw_eiv => wrk_2d_3   ! 2D workspace
-# if defined key_diaeiv 
-      USE wrk_nemo, ONLY:   z2d => wrk_2d_4   ! 2D workspace
-#endif
       INTEGER                         , INTENT(in   ) ::   kt       ! ocean time-step index
+      INTEGER                         , INTENT(in   ) ::   kit000   ! first time step index
       CHARACTER(len=3)                , INTENT(in   ) ::   cdtype   ! =TRA or TRC (tracer indicator)
       REAL(wp), DIMENSION(jpi,jpj,jpk), INTENT(inout) ::   pun      ! in : 3 ocean velocity components 
       REAL(wp), DIMENSION(jpi,jpj,jpk), INTENT(inout) ::   pvn      ! out: 3 ocean velocity components
@@ -79,17 +77,18 @@ CONTAINS
 # if defined key_diaeiv 
       REAL(wp) ::   zztmp                      ! local scalar
 # endif  
+      REAL(wp), POINTER, DIMENSION(:,:) :: zu_eiv, zv_eiv, zw_eiv, z2d
       !!----------------------------------------------------------------------
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start( 'tra_adv_eiv')
+      !
 # if defined key_diaeiv 
-      IF( wrk_in_use(2, 1,2,3,4) ) THEN
+      CALL wrk_alloc( jpi, jpj, zu_eiv, zv_eiv, zw_eiv, z2d )
 # else
-      IF( wrk_in_use(2, 1,2,3)   ) THEN
+      CALL wrk_alloc( jpi, jpj, zu_eiv, zv_eiv, zw_eiv )
 # endif
-         CALL ctl_stop('tra_adv_eiv: requested workspace arrays are unavailable')   ;   RETURN
-      ENDIF
 
-      IF( kt == nit000 )  THEN
+      IF( kt == kit000 )  THEN
          IF(lwp) WRITE(numout,*)
          IF(lwp) WRITE(numout,*) 'tra_adv_eiv : eddy induced advection on ', cdtype,' :'
          IF(lwp) WRITE(numout,*) '~~~~~~~~~~~   add to velocity fields the eiv component'
@@ -190,10 +189,12 @@ CONTAINS
 # endif  
       ! 
 # if defined key_diaeiv 
-      IF( wrk_not_released(2, 1,2,3,4) )   CALL ctl_stop('tra_adv_eiv: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi, jpj, zu_eiv, zv_eiv, zw_eiv, z2d )
 # else
-      IF( wrk_not_released(2, 1,2,3)   )   CALL ctl_stop('tra_adv_eiv: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi, jpj, zu_eiv, zv_eiv, zw_eiv )
 # endif
+      !
+      IF( nn_timing == 1 )  CALL timing_stop( 'tra_adv_eiv')
       !
     END SUBROUTINE tra_adv_eiv
 
@@ -202,8 +203,9 @@ CONTAINS
    !!   Dummy module :             No rotation of the lateral mixing tensor
    !!----------------------------------------------------------------------
 CONTAINS
-   SUBROUTINE tra_adv_eiv( kt, pun, pvn, pwn, cdtype )              ! Empty routine
+   SUBROUTINE tra_adv_eiv( kt, kit000, pun, pvn, pwn, cdtype )              ! Empty routine
       INTEGER  ::   kt    
+      INTEGER  ::   kit000    
       CHARACTER(len=3) ::   cdtype
       REAL, DIMENSION(:,:,:) ::   pun, pvn, pwn
       WRITE(*,*) 'tra_adv_eiv: You should not have seen this print! error?', kt, cdtype, pun(1,1,1), pvn(1,1,1), pwn(1,1,1)

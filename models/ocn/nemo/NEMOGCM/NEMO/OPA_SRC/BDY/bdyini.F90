@@ -9,6 +9,7 @@ MODULE bdyini
    !!            3.0  !  2008-04  (NEMO team)  add in the reference version
    !!            3.3  !  2010-09  (E.O'Dea) updates for Shelf configurations
    !!            3.3  !  2010-09  (D.Storkey) add ice boundary conditions
+   !!            3.4  !  2011     (D. Storkey) rewrite in preparation for OBC-BDY merge
    !!----------------------------------------------------------------------
 #if defined key_bdy
    !!----------------------------------------------------------------------
@@ -16,12 +17,10 @@ MODULE bdyini
    !!----------------------------------------------------------------------
    !!   bdy_init       : Initialization of unstructured open boundaries
    !!----------------------------------------------------------------------
+   USE timing          ! Timing
    USE oce             ! ocean dynamics and tracers variables
    USE dom_oce         ! ocean space and time domain
-   USE obc_par         ! ocean open boundary conditions
    USE bdy_oce         ! unstructured open boundary conditions
-   USE bdydta, ONLY: bdy_dta_alloc ! open boundary data
-   USE bdytides        ! tides at open boundaries initialization (tide_init routine)
    USE in_out_manager  ! I/O units
    USE lbclnk          ! ocean lateral boundary conditions (or mpp link)
    USE lib_mpp         ! for mpp_sum  
@@ -30,11 +29,11 @@ MODULE bdyini
    IMPLICIT NONE
    PRIVATE
 
-   PUBLIC   bdy_init   ! routine called by opa.F90
+   PUBLIC   bdy_init   ! routine called in nemo_init
 
    !!----------------------------------------------------------------------
    !! NEMO/OPA 4.0 , NEMO Consortium (2011)
-   !! $Id: bdyini.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -51,114 +50,589 @@ CONTAINS
       !!
       !! ** Input   :  bdy_init.nc, input file for unstructured open boundaries
       !!----------------------------------------------------------------------      
-      INTEGER  ::   ii, ij, ik, igrd, ib, ir   ! dummy loop indices
-      INTEGER  ::   icount, icountr, ib_len, ibr_max   ! local integers
-      INTEGER  ::   iw, ie, is, in, inum, id_dummy     !   -       -
-      INTEGER  ::   igrd_start, igrd_end               !   -       -
-      REAL(wp) ::   zefl, zwfl, znfl, zsfl              ! local scalars
-      INTEGER, DIMENSION (2)             ::   kdimsz
-      INTEGER, DIMENSION(jpbdta, jpbgrd) ::   nbidta, nbjdta   ! Index arrays: i and j indices of bdy dta
-      INTEGER, DIMENSION(jpbdta, jpbgrd) ::   nbrdta           ! Discrete distance from rim points
-      REAL(wp), DIMENSION(jpidta,jpjdta) ::   zmask            ! global domain mask
-      REAL(wp), DIMENSION(jpbdta,1)      ::   zdta             ! temporary array 
-      CHARACTER(LEN=80),DIMENSION(6)     ::   clfile
+      ! namelist variables
+      !-------------------
+      INTEGER, PARAMETER          :: jp_nseg = 100
+      INTEGER                     :: nbdysege, nbdysegw, nbdysegn, nbdysegs 
+      INTEGER, DIMENSION(jp_nseg) :: jpieob, jpjedt, jpjeft
+      INTEGER, DIMENSION(jp_nseg) :: jpiwob, jpjwdt, jpjwft
+      INTEGER, DIMENSION(jp_nseg) :: jpjnob, jpindt, jpinft
+      INTEGER, DIMENSION(jp_nseg) :: jpjsob, jpisdt, jpisft
+
+      ! local variables
+      !-------------------
+      INTEGER  ::   ib_bdy, ii, ij, ik, igrd, ib, ir, iseg ! dummy loop indices
+      INTEGER  ::   icount, icountr, ibr_max, ilen1, ibm1  ! local integers
+      INTEGER  ::   iw, ie, is, in, inum, id_dummy         !   -       -
+      INTEGER  ::   igrd_start, igrd_end, jpbdta           !   -       -
+      INTEGER, POINTER  ::  nbi, nbj, nbr                  ! short cuts
+      REAL   , POINTER  ::  flagu, flagv                   !    -   -
+      REAL(wp) ::   zefl, zwfl, znfl, zsfl                 ! local scalars
+      INTEGER, DIMENSION (2)                ::   kdimsz
+      INTEGER, DIMENSION(jpbgrd,jp_bdy)       ::   nblendta         ! Length of index arrays 
+      INTEGER, ALLOCATABLE, DIMENSION(:,:,:)  ::   nbidta, nbjdta   ! Index arrays: i and j indices of bdy dta
+      INTEGER, ALLOCATABLE, DIMENSION(:,:,:)  ::   nbrdta           ! Discrete distance from rim points
+      REAL(wp), DIMENSION(jpidta,jpjdta)    ::   zmask            ! global domain mask
+      CHARACTER(LEN=80),DIMENSION(jpbgrd)  ::   clfile
+      CHARACTER(LEN=1),DIMENSION(jpbgrd)   ::   cgrid
       !!
-      NAMELIST/nambdy/cn_mask, cn_dta_frs_T, cn_dta_frs_U, cn_dta_frs_V,   &
-         &            cn_dta_fla_T, cn_dta_fla_U, cn_dta_fla_V,            &
-         &            ln_tides, ln_clim, ln_vol, ln_mask,                  &
-         &            ln_dyn_fla, ln_dyn_frs, ln_tra_frs,ln_ice_frs,       &
-         &            nn_dtactl, nn_rimwidth, nn_volctl
+      NAMELIST/nambdy/ nb_bdy, ln_coords_file, cn_coords_file,             &
+         &             ln_mask_file, cn_mask_file, nn_dyn2d, nn_dyn2d_dta, &
+         &             nn_dyn3d, nn_dyn3d_dta, nn_tra, nn_tra_dta,         &  
+#if defined key_lim2
+         &             nn_ice_lim2, nn_ice_lim2_dta,                       &
+#endif
+         &             ln_vol, nn_volctl, nn_rimwidth
+      !!
+      NAMELIST/nambdy_index/ nbdysege, jpieob, jpjedt, jpjeft,             &
+                             nbdysegw, jpiwob, jpjwdt, jpjwft,             &
+                             nbdysegn, jpjnob, jpindt, jpinft,             &
+                             nbdysegs, jpjsob, jpisdt, jpisft
+
       !!----------------------------------------------------------------------
 
+      IF( nn_timing == 1 ) CALL timing_start('bdy_init')
+
+      IF( bdy_oce_alloc() /= 0 )   CALL ctl_stop( 'STOP', 'bdy_init : unable to allocate oce arrays' )
+
       IF(lwp) WRITE(numout,*)
-      IF(lwp) WRITE(numout,*) 'bdy_init : initialization of unstructured open boundaries'
+      IF(lwp) WRITE(numout,*) 'bdy_init : initialization of open boundaries'
       IF(lwp) WRITE(numout,*) '~~~~~~~~'
       !
-      !                                      ! allocate bdy_oce arrays
-      IF( bdy_oce_alloc() /= 0 )   CALL ctl_stop( 'STOP', 'bdy_init : unable to allocate oce arrays' )
-      IF( bdy_dta_alloc() /= 0 )   CALL ctl_stop( 'STOP', 'bdy_init : unable to allocate dta arrays' )
 
       IF( jperio /= 0 )   CALL ctl_stop( 'Cyclic or symmetric,',   &
-         &                               ' and unstructured open boundary condition are not compatible' )
+         &                               ' and general open boundary condition are not compatible' )
 
-      IF( lk_obc      )   CALL ctl_stop( 'Straight open boundaries,',   &
-         &                               ' and unstructured open boundaries are not compatible' )
+      cgrid= (/'t','u','v'/)
 
-      ! ---------------------------
-      REWIND( numnam )                    ! Read namelist parameters
+      ! -----------------------------------------
+      ! Initialise and read namelist parameters
+      ! -----------------------------------------
+
+      nb_bdy            = 0
+      ln_coords_file(:) = .false.
+      cn_coords_file(:) = ''
+      ln_mask_file      = .false.
+      cn_mask_file(:)   = ''
+      nn_dyn2d(:)       = 0
+      nn_dyn2d_dta(:)   = -1  ! uninitialised flag
+      nn_dyn3d(:)       = 0
+      nn_dyn3d_dta(:)   = -1  ! uninitialised flag
+      nn_tra(:)         = 0
+      nn_tra_dta(:)     = -1  ! uninitialised flag
+#if defined key_lim2
+      nn_ice_lim2(:)    = 0
+      nn_ice_lim2_dta(:)= -1  ! uninitialised flag
+#endif
+      ln_vol            = .false.
+      nn_volctl         = -1  ! uninitialised flag
+      nn_rimwidth(:)    = -1  ! uninitialised flag
+
+      REWIND( numnam )                    
       READ  ( numnam, nambdy )
+
+      ! -----------------------------------------
+      ! Check and write out namelist parameters
+      ! -----------------------------------------
 
       !                                   ! control prints
       IF(lwp) WRITE(numout,*) '         nambdy'
 
-      !                                         ! check type of data used (nn_dtactl value)
-      IF(lwp) WRITE(numout,*) 'nn_dtactl =', nn_dtactl      
-      IF(lwp) WRITE(numout,*)
-      SELECT CASE( nn_dtactl )                   ! 
-      CASE( 0 )      ;   IF(lwp) WRITE(numout,*) '      initial state used for bdy data'        
-      CASE( 1 )      ;   IF(lwp) WRITE(numout,*) '      boundary data taken from file'
-      CASE DEFAULT   ;   CALL ctl_stop( 'nn_dtactl must be 0 or 1' )
-      END SELECT
+      IF( nb_bdy .eq. 0 ) THEN 
+        IF(lwp) WRITE(numout,*) 'nb_bdy = 0, NO OPEN BOUNDARIES APPLIED.'
+      ELSE
+        IF(lwp) WRITE(numout,*) 'Number of open boundary sets : ',nb_bdy
+      ENDIF
 
-      IF(lwp) WRITE(numout,*)
-      IF(lwp) WRITE(numout,*) 'Boundary rim width for the FRS nn_rimwidth = ', nn_rimwidth
+      DO ib_bdy = 1,nb_bdy
+        IF(lwp) WRITE(numout,*) ' ' 
+        IF(lwp) WRITE(numout,*) '------ Open boundary data set ',ib_bdy,'------' 
 
-      IF(lwp) WRITE(numout,*)
-      IF(lwp) WRITE(numout,*) '      nn_volctl = ', nn_volctl
+        IF( ln_coords_file(ib_bdy) ) THEN
+           IF(lwp) WRITE(numout,*) 'Boundary definition read from file '//TRIM(cn_coords_file(ib_bdy))
+        ELSE
+           IF(lwp) WRITE(numout,*) 'Boundary defined in namelist.'
+        ENDIF
+        IF(lwp) WRITE(numout,*)
 
-      IF( ln_vol ) THEN                     ! check volume conservation (nn_volctl value)
-         SELECT CASE ( nn_volctl )
+        IF(lwp) WRITE(numout,*) 'Boundary conditions for barotropic solution:  '
+        SELECT CASE( nn_dyn2d(ib_bdy) )                  
+          CASE( 0 )      ;   IF(lwp) WRITE(numout,*) '      no open boundary condition'        
+          CASE( 1 )      ;   IF(lwp) WRITE(numout,*) '      Flow Relaxation Scheme'
+          CASE( 2 )      ;   IF(lwp) WRITE(numout,*) '      Flather radiation condition'
+          CASE DEFAULT   ;   CALL ctl_stop( 'unrecognised value for nn_dyn2d' )
+        END SELECT
+        IF( nn_dyn2d(ib_bdy) .gt. 0 ) THEN
+           SELECT CASE( nn_dyn2d_dta(ib_bdy) )                   ! 
+              CASE( 0 )      ;   IF(lwp) WRITE(numout,*) '      initial state used for bdy data'        
+              CASE( 1 )      ;   IF(lwp) WRITE(numout,*) '      boundary data taken from file'
+              CASE( 2 )      ;   IF(lwp) WRITE(numout,*) '      tidal harmonic forcing taken from file'
+              CASE( 3 )      ;   IF(lwp) WRITE(numout,*) '      boundary data AND tidal harmonic forcing taken from files'
+              CASE DEFAULT   ;   CALL ctl_stop( 'nn_dyn2d_dta must be between 0 and 3' )
+           END SELECT
+        ENDIF
+        IF(lwp) WRITE(numout,*)
+
+        IF(lwp) WRITE(numout,*) 'Boundary conditions for baroclinic velocities:  '
+        SELECT CASE( nn_dyn3d(ib_bdy) )                  
+          CASE( 0 )      ;   IF(lwp) WRITE(numout,*) '      no open boundary condition'        
+          CASE( 1 )      ;   IF(lwp) WRITE(numout,*) '      Flow Relaxation Scheme'
+          CASE DEFAULT   ;   CALL ctl_stop( 'unrecognised value for nn_dyn3d' )
+        END SELECT
+        IF( nn_dyn3d(ib_bdy) .gt. 0 ) THEN
+           SELECT CASE( nn_dyn3d_dta(ib_bdy) )                   ! 
+              CASE( 0 )      ;   IF(lwp) WRITE(numout,*) '      initial state used for bdy data'        
+              CASE( 1 )      ;   IF(lwp) WRITE(numout,*) '      boundary data taken from file'
+              CASE DEFAULT   ;   CALL ctl_stop( 'nn_dyn3d_dta must be 0 or 1' )
+           END SELECT
+        ENDIF
+        IF(lwp) WRITE(numout,*)
+
+        IF(lwp) WRITE(numout,*) 'Boundary conditions for temperature and salinity:  '
+        SELECT CASE( nn_tra(ib_bdy) )                  
+          CASE( 0 )      ;   IF(lwp) WRITE(numout,*) '      no open boundary condition'        
+          CASE( 1 )      ;   IF(lwp) WRITE(numout,*) '      Flow Relaxation Scheme'
+          CASE DEFAULT   ;   CALL ctl_stop( 'unrecognised value for nn_tra' )
+        END SELECT
+        IF( nn_tra(ib_bdy) .gt. 0 ) THEN
+           SELECT CASE( nn_tra_dta(ib_bdy) )                   ! 
+              CASE( 0 )      ;   IF(lwp) WRITE(numout,*) '      initial state used for bdy data'        
+              CASE( 1 )      ;   IF(lwp) WRITE(numout,*) '      boundary data taken from file'
+              CASE DEFAULT   ;   CALL ctl_stop( 'nn_tra_dta must be 0 or 1' )
+           END SELECT
+        ENDIF
+        IF(lwp) WRITE(numout,*)
+
+#if defined key_lim2
+        IF(lwp) WRITE(numout,*) 'Boundary conditions for sea ice:  '
+        SELECT CASE( nn_ice_lim2(ib_bdy) )                  
+          CASE( 0 )      ;   IF(lwp) WRITE(numout,*) '      no open boundary condition'        
+          CASE( 1 )      ;   IF(lwp) WRITE(numout,*) '      Flow Relaxation Scheme'
+          CASE DEFAULT   ;   CALL ctl_stop( 'unrecognised value for nn_tra' )
+        END SELECT
+        IF( nn_ice_lim2(ib_bdy) .gt. 0 ) THEN 
+           SELECT CASE( nn_ice_lim2_dta(ib_bdy) )                   ! 
+              CASE( 0 )      ;   IF(lwp) WRITE(numout,*) '      initial state used for bdy data'        
+              CASE( 1 )      ;   IF(lwp) WRITE(numout,*) '      boundary data taken from file'
+              CASE DEFAULT   ;   CALL ctl_stop( 'nn_ice_lim2_dta must be 0 or 1' )
+           END SELECT
+        ENDIF
+        IF(lwp) WRITE(numout,*)
+#endif
+
+        IF(lwp) WRITE(numout,*) 'Boundary rim width for the FRS scheme = ', nn_rimwidth(ib_bdy)
+        IF(lwp) WRITE(numout,*)
+
+      ENDDO
+
+     IF( ln_vol ) THEN                     ! check volume conservation (nn_volctl value)
+       IF(lwp) WRITE(numout,*) 'Volume correction applied at open boundaries'
+       IF(lwp) WRITE(numout,*)
+       SELECT CASE ( nn_volctl )
          CASE( 1 )      ;   IF(lwp) WRITE(numout,*) '      The total volume will be constant'
          CASE( 0 )      ;   IF(lwp) WRITE(numout,*) '      The total volume will vary according to the surface E-P flux'
          CASE DEFAULT   ;   CALL ctl_stop( 'nn_volctl must be 0 or 1' )
-         END SELECT
-         IF(lwp) WRITE(numout,*)
-      ELSE
-         IF(lwp) WRITE(numout,*) 'No volume correction with unstructured open boundaries'
-         IF(lwp) WRITE(numout,*)
-      ENDIF
+       END SELECT
+       IF(lwp) WRITE(numout,*)
+     ELSE
+       IF(lwp) WRITE(numout,*) 'No volume correction applied at open boundaries'
+       IF(lwp) WRITE(numout,*)
+     ENDIF
 
-      IF( ln_tides ) THEN
-        IF(lwp) WRITE(numout,*) 'Tidal harmonic forcing at unstructured open boundaries'
-        IF(lwp) WRITE(numout,*)
-      ENDIF
-
-      IF( ln_dyn_fla ) THEN
-        IF(lwp) WRITE(numout,*) 'Flather condition on U, V at unstructured open boundaries'
-        IF(lwp) WRITE(numout,*)
-      ENDIF
-
-      IF( ln_dyn_frs ) THEN
-        IF(lwp) WRITE(numout,*) 'FRS condition on U and V at unstructured open boundaries'
-        IF(lwp) WRITE(numout,*)
-      ENDIF
-
-      IF( ln_tra_frs ) THEN
-        IF(lwp) WRITE(numout,*) 'FRS condition on T & S fields at unstructured open boundaries'
-        IF(lwp) WRITE(numout,*)
-      ENDIF
-
-      IF( ln_ice_frs ) THEN
-        IF(lwp) WRITE(numout,*) 'FRS condition on ice fields at unstructured open boundaries'
-        IF(lwp) WRITE(numout,*)
-      ENDIF
-
-      IF( ln_tides )   CALL tide_init      ! Read tides namelist 
-
-
-      ! Read arrays defining unstructured open boundaries
+      ! -------------------------------------------------
+      ! Initialise indices arrays for open boundaries
       ! -------------------------------------------------
 
+      ! Work out global dimensions of boundary data
+      ! ---------------------------------------------
+      REWIND( numnam )                    
+      jpbdta = 1
+      DO ib_bdy = 1, nb_bdy
+
+         IF( .NOT. ln_coords_file(ib_bdy) ) THEN ! Work out size of global arrays from namelist parameters
+ 
+            ! No REWIND here because may need to read more than one nambdy_index namelist.
+            READ  ( numnam, nambdy_index )
+
+            ! Automatic boundary definition: if nbdysegX = -1
+            ! set boundary to whole side of model domain.
+            IF( nbdysege == -1 ) THEN
+               nbdysege = 1
+               jpieob(1) = jpiglo - 1
+               jpjedt(1) = 2
+               jpjeft(1) = jpjglo - 1
+            ENDIF
+            IF( nbdysegw == -1 ) THEN
+               nbdysegw = 1
+               jpiwob(1) = 2
+               jpjwdt(1) = 2
+               jpjwft(1) = jpjglo - 1
+            ENDIF
+            IF( nbdysegn == -1 ) THEN
+               nbdysegn = 1
+               jpjnob(1) = jpjglo - 1
+               jpindt(1) = 2
+               jpinft(1) = jpiglo - 1
+            ENDIF
+            IF( nbdysegs == -1 ) THEN
+               nbdysegs = 1
+               jpjsob(1) = 2
+               jpisdt(1) = 2
+               jpisft(1) = jpiglo - 1
+            ENDIF
+
+            nblendta(:,ib_bdy) = 0
+            DO iseg = 1, nbdysege
+               igrd = 1
+               nblendta(igrd,ib_bdy) = nblendta(igrd,ib_bdy) + jpjeft(iseg) - jpjedt(iseg) + 1               
+               igrd = 2
+               nblendta(igrd,ib_bdy) = nblendta(igrd,ib_bdy) + jpjeft(iseg) - jpjedt(iseg) + 1               
+               igrd = 3
+               nblendta(igrd,ib_bdy) = nblendta(igrd,ib_bdy) + jpjeft(iseg) - jpjedt(iseg)               
+            ENDDO
+            DO iseg = 1, nbdysegw
+               igrd = 1
+               nblendta(igrd,ib_bdy) = nblendta(igrd,ib_bdy) + jpjwft(iseg) - jpjwdt(iseg) + 1               
+               igrd = 2
+               nblendta(igrd,ib_bdy) = nblendta(igrd,ib_bdy) + jpjwft(iseg) - jpjwdt(iseg) + 1               
+               igrd = 3
+               nblendta(igrd,ib_bdy) = nblendta(igrd,ib_bdy) + jpjwft(iseg) - jpjwdt(iseg)               
+            ENDDO
+            DO iseg = 1, nbdysegn
+               igrd = 1
+               nblendta(igrd,ib_bdy) = nblendta(igrd,ib_bdy) + jpinft(iseg) - jpindt(iseg) + 1               
+               igrd = 2
+               nblendta(igrd,ib_bdy) = nblendta(igrd,ib_bdy) + jpinft(iseg) - jpindt(iseg)               
+               igrd = 3
+               nblendta(igrd,ib_bdy) = nblendta(igrd,ib_bdy) + jpinft(iseg) - jpindt(iseg) + 1
+            ENDDO
+            DO iseg = 1, nbdysegs
+               igrd = 1
+               nblendta(igrd,ib_bdy) = nblendta(igrd,ib_bdy) + jpisft(iseg) - jpisdt(iseg) + 1               
+               igrd = 2
+               nblendta(igrd,ib_bdy) = nblendta(igrd,ib_bdy) + jpisft(iseg) - jpisdt(iseg)
+               igrd = 3
+               nblendta(igrd,ib_bdy) = nblendta(igrd,ib_bdy) + jpisft(iseg) - jpisdt(iseg) + 1               
+            ENDDO
+
+            nblendta(:,ib_bdy) = nblendta(:,ib_bdy) * nn_rimwidth(ib_bdy)
+            jpbdta = MAX( jpbdta, MAXVAL(nblendta(:,ib_bdy)) )
+
+
+         ELSE            ! Read size of arrays in boundary coordinates file.
+
+
+            CALL iom_open( cn_coords_file(ib_bdy), inum )
+
+            DO igrd = 1, jpbgrd
+               id_dummy = iom_varid( inum, 'nbi'//cgrid(igrd), kdimsz=kdimsz )  
+               nblendta(igrd,ib_bdy) = kdimsz(1)
+               jpbdta = MAX(jpbdta, kdimsz(1))
+            ENDDO
+            CALL iom_close( inum )
+
+         ENDIF 
+
+      ENDDO ! ib_bdy
+
+      ! Allocate arrays
+      !---------------
+      ALLOCATE( nbidta(jpbdta, jpbgrd, nb_bdy), nbjdta(jpbdta, jpbgrd, nb_bdy),    &
+         &      nbrdta(jpbdta, jpbgrd, nb_bdy) )
+
+      ALLOCATE( dta_global(jpbdta, 1, jpk) )
+
+      ! Calculate global boundary index arrays or read in from file
+      !------------------------------------------------------------
+      REWIND( numnam )                    
+      DO ib_bdy = 1, nb_bdy
+
+         IF( .NOT. ln_coords_file(ib_bdy) ) THEN ! Calculate global index arrays from namelist parameters
+
+            ! No REWIND here because may need to read more than one nambdy_index namelist.
+            READ  ( numnam, nambdy_index )
+
+            ! Automatic boundary definition: if nbdysegX = -1
+            ! set boundary to whole side of model domain.
+            IF( nbdysege == -1 ) THEN
+               nbdysege = 1
+               jpieob(1) = jpiglo - 1
+               jpjedt(1) = 2
+               jpjeft(1) = jpjglo - 1
+            ENDIF
+            IF( nbdysegw == -1 ) THEN
+               nbdysegw = 1
+               jpiwob(1) = 2
+               jpjwdt(1) = 2
+               jpjwft(1) = jpjglo - 1
+            ENDIF
+            IF( nbdysegn == -1 ) THEN
+               nbdysegn = 1
+               jpjnob(1) = jpjglo - 1
+               jpindt(1) = 2
+               jpinft(1) = jpiglo - 1
+            ENDIF
+            IF( nbdysegs == -1 ) THEN
+               nbdysegs = 1
+               jpjsob(1) = 2
+               jpisdt(1) = 2
+               jpisft(1) = jpiglo - 1
+            ENDIF
+
+            ! ------------ T points -------------
+            igrd = 1  
+            icount = 0
+            DO ir = 1, nn_rimwidth(ib_bdy)
+               ! east
+               DO iseg = 1, nbdysege
+                  DO ij = jpjedt(iseg), jpjeft(iseg)
+                     icount = icount + 1
+                     nbidta(icount, igrd, ib_bdy) = jpieob(iseg) - ir + 1
+                     nbjdta(icount, igrd, ib_bdy) = ij
+                     nbrdta(icount, igrd, ib_bdy) = ir
+                  ENDDO
+               ENDDO
+               ! west
+               DO iseg = 1, nbdysegw
+                  DO ij = jpjwdt(iseg), jpjwft(iseg)
+                     icount = icount + 1
+                     nbidta(icount, igrd, ib_bdy) = jpiwob(iseg) + ir - 1
+                     nbjdta(icount, igrd, ib_bdy) = ij
+                     nbrdta(icount, igrd, ib_bdy) = ir
+                  ENDDO
+               ENDDO
+               ! north
+               DO iseg = 1, nbdysegn
+                  DO ii = jpindt(iseg), jpinft(iseg)
+                     icount = icount + 1
+                     nbidta(icount, igrd, ib_bdy) = ii
+                     nbjdta(icount, igrd, ib_bdy) = jpjnob(iseg) - ir + 1
+                     nbrdta(icount, igrd, ib_bdy) = ir
+                  ENDDO
+               ENDDO
+               ! south
+               DO iseg = 1, nbdysegs
+                  DO ii = jpisdt(iseg), jpisft(iseg)
+                     icount = icount + 1
+                     nbidta(icount, igrd, ib_bdy) = ii
+                     nbjdta(icount, igrd, ib_bdy) = jpjsob(iseg) + ir - 1
+                     nbrdta(icount, igrd, ib_bdy) = ir
+                  ENDDO
+               ENDDO
+            ENDDO
+
+            ! ------------ U points -------------
+            igrd = 2  
+            icount = 0
+            DO ir = 1, nn_rimwidth(ib_bdy)
+               ! east
+               DO iseg = 1, nbdysege
+                  DO ij = jpjedt(iseg), jpjeft(iseg)
+                     icount = icount + 1
+                     nbidta(icount, igrd, ib_bdy) = jpieob(iseg) - ir
+                     nbjdta(icount, igrd, ib_bdy) = ij
+                     nbrdta(icount, igrd, ib_bdy) = ir
+                  ENDDO
+               ENDDO
+               ! west
+               DO iseg = 1, nbdysegw
+                  DO ij = jpjwdt(iseg), jpjwft(iseg)
+                     icount = icount + 1
+                     nbidta(icount, igrd, ib_bdy) = jpiwob(iseg) + ir - 1
+                     nbjdta(icount, igrd, ib_bdy) = ij
+                     nbrdta(icount, igrd, ib_bdy) = ir
+                  ENDDO
+               ENDDO
+               ! north
+               DO iseg = 1, nbdysegn
+                  DO ii = jpindt(iseg), jpinft(iseg) - 1
+                     icount = icount + 1
+                     nbidta(icount, igrd, ib_bdy) = ii
+                     nbjdta(icount, igrd, ib_bdy) = jpjnob(iseg) - ir + 1
+                     nbrdta(icount, igrd, ib_bdy) = ir
+                  ENDDO
+               ENDDO
+               ! south
+               DO iseg = 1, nbdysegs
+                  DO ii = jpisdt(iseg), jpisft(iseg) - 1
+                     icount = icount + 1
+                     nbidta(icount, igrd, ib_bdy) = ii
+                     nbjdta(icount, igrd, ib_bdy) = jpjsob(iseg) + ir - 1
+                     nbrdta(icount, igrd, ib_bdy) = ir
+                  ENDDO
+               ENDDO
+            ENDDO
+
+            ! ------------ V points -------------
+            igrd = 3  
+            icount = 0
+            DO ir = 1, nn_rimwidth(ib_bdy)
+               ! east
+               DO iseg = 1, nbdysege
+                  DO ij = jpjedt(iseg), jpjeft(iseg) - 1
+                     icount = icount + 1
+                     nbidta(icount, igrd, ib_bdy) = jpieob(iseg) - ir + 1
+                     nbjdta(icount, igrd, ib_bdy) = ij
+                     nbrdta(icount, igrd, ib_bdy) = ir
+                  ENDDO
+               ENDDO
+               ! west
+               DO iseg = 1, nbdysegw
+                  DO ij = jpjwdt(iseg), jpjwft(iseg) - 1
+                     icount = icount + 1
+                     nbidta(icount, igrd, ib_bdy) = jpiwob(iseg) + ir - 1
+                     nbjdta(icount, igrd, ib_bdy) = ij
+                     nbrdta(icount, igrd, ib_bdy) = ir
+                  ENDDO
+               ENDDO
+               ! north
+               DO iseg = 1, nbdysegn
+                  DO ii = jpindt(iseg), jpinft(iseg)
+                     icount = icount + 1
+                     nbidta(icount, igrd, ib_bdy) = ii
+                     nbjdta(icount, igrd, ib_bdy) = jpjnob(iseg) - ir
+                     nbrdta(icount, igrd, ib_bdy) = ir
+                  ENDDO
+               ENDDO
+               ! south
+               DO iseg = 1, nbdysegs
+                  DO ii = jpisdt(iseg), jpisft(iseg)
+                     icount = icount + 1
+                     nbidta(icount, igrd, ib_bdy) = ii
+                     nbjdta(icount, igrd, ib_bdy) = jpjsob(iseg) + ir - 1
+                     nbrdta(icount, igrd, ib_bdy) = ir
+                  ENDDO
+               ENDDO
+            ENDDO
+
+         ELSE            ! Read global index arrays from boundary coordinates file.
+
+            CALL iom_open( cn_coords_file(ib_bdy), inum )
+            DO igrd = 1, jpbgrd
+               CALL iom_get( inum, jpdom_unknown, 'nbi'//cgrid(igrd), dta_global(1:nblendta(igrd,ib_bdy),:,1) )
+               DO ii = 1,nblendta(igrd,ib_bdy)
+                  nbidta(ii,igrd,ib_bdy) = INT( dta_global(ii,1,1) )
+               END DO
+               CALL iom_get( inum, jpdom_unknown, 'nbj'//cgrid(igrd), dta_global(1:nblendta(igrd,ib_bdy),:,1) )
+               DO ii = 1,nblendta(igrd,ib_bdy)
+                  nbjdta(ii,igrd,ib_bdy) = INT( dta_global(ii,1,1) )
+               END DO
+               CALL iom_get( inum, jpdom_unknown, 'nbr'//cgrid(igrd), dta_global(1:nblendta(igrd,ib_bdy),:,1) )
+               DO ii = 1,nblendta(igrd,ib_bdy)
+                  nbrdta(ii,igrd,ib_bdy) = INT( dta_global(ii,1,1) )
+               END DO
+
+               ibr_max = MAXVAL( nbrdta(:,igrd,ib_bdy) )
+               IF(lwp) WRITE(numout,*)
+               IF(lwp) WRITE(numout,*) ' Maximum rimwidth in file is ', ibr_max
+               IF(lwp) WRITE(numout,*) ' nn_rimwidth from namelist is ', nn_rimwidth(ib_bdy)
+               IF (ibr_max < nn_rimwidth(ib_bdy))   &
+                     CALL ctl_stop( 'nn_rimwidth is larger than maximum rimwidth in file',cn_coords_file(ib_bdy) )
+
+            END DO
+            CALL iom_close( inum )
+
+         ENDIF 
+
+      ENDDO 
+
+      ! Work out dimensions of boundary data on each processor
+      ! ------------------------------------------------------
+     
+      iw = mig(1) + 1            ! if monotasking and no zoom, iw=2
+      ie = mig(1) + nlci-1 - 1   ! if monotasking and no zoom, ie=jpim1
+      is = mjg(1) + 1            ! if monotasking and no zoom, is=2
+      in = mjg(1) + nlcj-1 - 1   ! if monotasking and no zoom, in=jpjm1
+
+      DO ib_bdy = 1, nb_bdy
+         DO igrd = 1, jpbgrd
+            icount  = 0
+            icountr = 0
+            idx_bdy(ib_bdy)%nblen(igrd)    = 0
+            idx_bdy(ib_bdy)%nblenrim(igrd) = 0
+            DO ib = 1, nblendta(igrd,ib_bdy)
+               ! check that data is in correct order in file
+               ibm1 = MAX(1,ib-1)
+               IF(lwp) THEN         ! Since all procs read global data only need to do this check on one proc...
+                  IF( nbrdta(ib,igrd,ib_bdy) < nbrdta(ibm1,igrd,ib_bdy) ) THEN
+                     CALL ctl_stop('bdy_init : ERROR : boundary data in file must be defined in order of distance from edge nbr.', &
+                    'A utility for re-ordering boundary coordinates and data files exists in the TOOLS/OBC directory')
+                  ENDIF    
+               ENDIF
+               ! check if point is in local domain
+               IF(  nbidta(ib,igrd,ib_bdy) >= iw .AND. nbidta(ib,igrd,ib_bdy) <= ie .AND.   &
+                  & nbjdta(ib,igrd,ib_bdy) >= is .AND. nbjdta(ib,igrd,ib_bdy) <= in       ) THEN
+                  !
+                  icount = icount  + 1
+                  !
+                  IF( nbrdta(ib,igrd,ib_bdy) == 1 )   icountr = icountr+1
+               ENDIF
+            ENDDO
+            idx_bdy(ib_bdy)%nblenrim(igrd) = icountr !: length of rim boundary data on each proc
+            idx_bdy(ib_bdy)%nblen   (igrd) = icount  !: length of boundary data on each proc        
+         ENDDO  ! igrd
+
+         ! Allocate index arrays for this boundary set
+         !--------------------------------------------
+         ilen1 = MAXVAL(idx_bdy(ib_bdy)%nblen(:))
+         ALLOCATE( idx_bdy(ib_bdy)%nbi(ilen1,jpbgrd) )
+         ALLOCATE( idx_bdy(ib_bdy)%nbj(ilen1,jpbgrd) )
+         ALLOCATE( idx_bdy(ib_bdy)%nbr(ilen1,jpbgrd) )
+         ALLOCATE( idx_bdy(ib_bdy)%nbmap(ilen1,jpbgrd) )
+         ALLOCATE( idx_bdy(ib_bdy)%nbw(ilen1,jpbgrd) )
+         ALLOCATE( idx_bdy(ib_bdy)%flagu(ilen1) )
+         ALLOCATE( idx_bdy(ib_bdy)%flagv(ilen1) )
+
+         ! Dispatch mapping indices and discrete distances on each processor
+         ! -----------------------------------------------------------------
+
+         DO igrd = 1, jpbgrd
+            icount  = 0
+            ! Loop on rimwidth to ensure outermost points come first in the local arrays.
+            DO ir=1, nn_rimwidth(ib_bdy)
+               DO ib = 1, nblendta(igrd,ib_bdy)
+                  ! check if point is in local domain and equals ir
+                  IF(  nbidta(ib,igrd,ib_bdy) >= iw .AND. nbidta(ib,igrd,ib_bdy) <= ie .AND.   &
+                     & nbjdta(ib,igrd,ib_bdy) >= is .AND. nbjdta(ib,igrd,ib_bdy) <= in .AND.   &
+                     & nbrdta(ib,igrd,ib_bdy) == ir  ) THEN
+                     !
+                     icount = icount  + 1
+                     idx_bdy(ib_bdy)%nbi(icount,igrd)   = nbidta(ib,igrd,ib_bdy)- mig(1)+1
+                     idx_bdy(ib_bdy)%nbj(icount,igrd)   = nbjdta(ib,igrd,ib_bdy)- mjg(1)+1
+                     idx_bdy(ib_bdy)%nbr(icount,igrd)   = nbrdta(ib,igrd,ib_bdy)
+                     idx_bdy(ib_bdy)%nbmap(icount,igrd) = ib
+                  ENDIF
+               ENDDO
+            ENDDO
+         ENDDO 
+
+         ! Compute rim weights for FRS scheme
+         ! ----------------------------------
+         DO igrd = 1, jpbgrd
+            DO ib = 1, idx_bdy(ib_bdy)%nblen(igrd)
+               nbr => idx_bdy(ib_bdy)%nbr(ib,igrd)
+               idx_bdy(ib_bdy)%nbw(ib,igrd) = 1.- TANH( FLOAT( nbr - 1 ) *0.5 )      ! tanh formulation
+!              idx_bdy(ib_bdy)%nbw(ib,igrd) = (FLOAT(nn_rimwidth+1-nbr)/FLOAT(nn_rimwidth))**2      ! quadratic
+!              idx_bdy(ib_bdy)%nbw(ib,igrd) =  FLOAT(nn_rimwidth+1-nbr)/FLOAT(nn_rimwidth)          ! linear
+            END DO
+         END DO 
+
+      ENDDO
+
+      ! ------------------------------------------------------
+      ! Initialise masks and find normal/tangential directions
+      ! ------------------------------------------------------
+
       ! Read global 2D mask at T-points: bdytmask
-      ! *****************************************
+      ! -----------------------------------------
       ! bdytmask = 1  on the computational domain AND on open boundaries
       !          = 0  elsewhere   
  
       IF( cp_cfg == "eel" .AND. jp_cfg == 5 ) THEN          ! EEL configuration at 5km resolution
          zmask(         :                ,:) = 0.e0
          zmask(jpizoom+1:jpizoom+jpiglo-2,:) = 1.e0          
-      ELSE IF( ln_mask ) THEN
-         CALL iom_open( cn_mask, inum )
+      ELSE IF( ln_mask_file ) THEN
+         CALL iom_open( cn_mask_file, inum )
          CALL iom_get ( inum, jpdom_data, 'bdy_msk', zmask(:,:) )
          CALL iom_close( inum )
       ELSE
@@ -183,156 +657,6 @@ CONTAINS
       CALL lbc_lnk( bdyumask(:,:), 'U', 1. )   ;   CALL lbc_lnk( bdyvmask(:,:), 'V', 1. )      ! Lateral boundary cond.
 
 
-      ! Read discrete distance and mapping indices
-      ! ******************************************
-      nbidta(:,:) = 0.e0
-      nbjdta(:,:) = 0.e0
-      nbrdta(:,:) = 0.e0
-
-      IF( cp_cfg == "eel" .AND. jp_cfg == 5 ) THEN
-         icount = 0
-         DO ir = 1, nn_rimwidth                  ! Define west boundary (from ii=2 to ii=1+nn_rimwidth):
-            DO ij = 3, jpjglo-2
-               icount = icount + 1
-               nbidta(icount,:) = ir + 1 + (jpizoom-1)
-               nbjdta(icount,:) = ij     + (jpjzoom-1) 
-               nbrdta(icount,:) = ir
-            END DO
-         END DO
-         !
-         DO ir = 1, nn_rimwidth                  ! Define east boundary (from ii=jpiglo-1 to ii=jpiglo-nn_rimwidth):
-            DO ij=3,jpjglo-2
-               icount = icount + 1
-               nbidta(icount,:) = jpiglo-ir + (jpizoom-1)
-               nbidta(icount,2) = jpiglo-ir-1 + (jpizoom-1) ! special case for u points
-               nbjdta(icount,:) = ij + (jpjzoom-1)
-               nbrdta(icount,:) = ir
-            END DO
-         END DO
-         !       
-      ELSE            ! Read indices and distances in unstructured boundary data files 
-         !
-         IF( ln_tides ) THEN             ! Read tides input files for preference in case there are no bdydata files
-            clfile(4) = TRIM(filtide)//TRIM(tide_cpt(1))//'_grid_T.nc'
-            clfile(5) = TRIM(filtide)//TRIM(tide_cpt(1))//'_grid_U.nc'
-            clfile(6) = TRIM(filtide)//TRIM(tide_cpt(1))//'_grid_V.nc'
-         ENDIF
-         IF( ln_dyn_fla .AND. .NOT. ln_tides ) THEN 
-            clfile(4) = cn_dta_fla_T
-            clfile(5) = cn_dta_fla_U
-            clfile(6) = cn_dta_fla_V
-         ENDIF
-
-         IF( ln_tra_frs ) THEN 
-            clfile(1) = cn_dta_frs_T
-            IF( .NOT. ln_dyn_frs ) THEN 
-               clfile(2) = cn_dta_frs_T     ! Dummy read re read T file for sake of 6 files
-               clfile(3) = cn_dta_frs_T     !
-            ENDIF
-         ENDIF          
-         IF( ln_dyn_frs ) THEN 
-            IF( .NOT. ln_tra_frs )   clfile(1) = cn_dta_frs_U      ! Dummy Read 
-            clfile(2) = cn_dta_frs_U
-            clfile(3) = cn_dta_frs_V 
-         ENDIF
-
-         !                                   ! how many files are we to read in?
-         IF(ln_tides .OR. ln_dyn_fla)   igrd_start = 4
-         !
-         IF(ln_tra_frs    ) THEN   ;   igrd_start = 1
-         ELSEIF(ln_dyn_frs) THEN   ;   igrd_start = 2
-         ENDIF
-         !
-         IF( ln_tra_frs   )   igrd_end = 1
-         !
-         IF(ln_dyn_fla .OR. ln_tides) THEN   ;   igrd_end = 6
-         ELSEIF( ln_dyn_frs             ) THEN   ;   igrd_end = 3
-         ENDIF
-
-         DO igrd = igrd_start, igrd_end
-            CALL iom_open( clfile(igrd), inum )
-            id_dummy = iom_varid( inum, 'nbidta', kdimsz=kdimsz )  
-            IF(lwp) WRITE(numout,*) 'kdimsz : ',kdimsz
-            ib_len = kdimsz(1)
-            IF( ib_len > jpbdta)   CALL ctl_stop(  'Boundary data array in file too long.',                  &
-                &                                  'File :', TRIM(clfile(igrd)),'increase parameter jpbdta.' )
-
-            CALL iom_get( inum, jpdom_unknown, 'nbidta', zdta(1:ib_len,:) )
-            DO ii = 1,ib_len
-               nbidta(ii,igrd) = INT( zdta(ii,1) )
-            END DO
-            CALL iom_get( inum, jpdom_unknown, 'nbjdta', zdta(1:ib_len,:) )
-            DO ii = 1,ib_len
-               nbjdta(ii,igrd) = INT( zdta(ii,1) )
-            END DO
-            CALL iom_get( inum, jpdom_unknown, 'nbrdta', zdta(1:ib_len,:) )
-            DO ii = 1,ib_len
-               nbrdta(ii,igrd) = INT( zdta(ii,1) )
-            END DO
-            CALL iom_close( inum )
-
-            IF( igrd < 4) THEN            ! Check that rimwidth in file is big enough for Frs case(barotropic is one):
-               ibr_max = MAXVAL( nbrdta(:,igrd) )
-               IF(lwp) WRITE(numout,*)
-               IF(lwp) WRITE(numout,*) ' Maximum rimwidth in file is ', ibr_max
-               IF(lwp) WRITE(numout,*) ' nn_rimwidth from namelist is ', nn_rimwidth
-               IF (ibr_max < nn_rimwidth)   CALL ctl_stop( 'nn_rimwidth is larger than maximum rimwidth in file' )
-            ENDIF !Check igrd < 4
-            !
-         END DO
-         !
-      ENDIF 
-
-      ! Dispatch mapping indices and discrete distances on each processor
-      ! *****************************************************************
-     
-      iw = mig(1) + 1            ! if monotasking and no zoom, iw=2
-      ie = mig(1) + nlci-1 - 1   ! if monotasking and no zoom, ie=jpim1
-      is = mjg(1) + 1            ! if monotasking and no zoom, is=2
-      in = mjg(1) + nlcj-1 - 1   ! if monotasking and no zoom, in=jpjm1
-
-      DO igrd = igrd_start, igrd_end
-         icount  = 0
-         icountr = 0
-         nblen   (igrd) = 0
-         nblenrim(igrd) = 0
-         nblendta(igrd) = 0
-         DO ir=1, nn_rimwidth
-            DO ib = 1, jpbdta
-               ! check if point is in local domain and equals ir
-               IF(  nbidta(ib,igrd) >= iw .AND. nbidta(ib,igrd) <= ie .AND.   &
-                  & nbjdta(ib,igrd) >= is .AND. nbjdta(ib,igrd) <= in .AND.   &
-                  & nbrdta(ib,igrd) == ir  ) THEN
-                  !
-                  icount = icount  + 1
-                  !
-                  IF( ir == 1 )   icountr = icountr+1
-                  IF (icount > jpbdim) THEN
-                     IF(lwp) WRITE(numout,*) 'bdy_ini: jpbdim too small'
-                     nstop = nstop + 1
-                  ELSE
-                     nbi(icount, igrd)  = nbidta(ib,igrd)- mig(1)+1
-                     nbj(icount, igrd)  = nbjdta(ib,igrd)- mjg(1)+1
-                     nbr(icount, igrd)  = nbrdta(ib,igrd)
-                     nbmap(icount,igrd) = ib
-                  ENDIF            
-               ENDIF
-            END DO
-         END DO
-         nblenrim(igrd) = icountr !: length of rim boundary data on each proc
-         nblen   (igrd) = icount  !: length of boundary data on each proc        
-      END DO 
-
-      ! Compute rim weights
-      ! -------------------
-      DO igrd = igrd_start, igrd_end
-         DO ib = 1, nblen(igrd)
-            nbw(ib,igrd) = 1.- TANH( FLOAT( nbr(ib,igrd) - 1 ) *0.5 )                     ! tanh formulation
-!           nbw(ib,igrd) = (FLOAT(nn_rimwidth+1-nbr(ib,igrd))/FLOAT(nn_rimwidth))**2      ! quadratic
-!           nbw(ib,igrd) =  FLOAT(nn_rimwidth+1-nbr(ib,igrd))/FLOAT(nn_rimwidth)          ! linear
-         END DO
-      END DO 
-   
       ! Mask corrections
       ! ----------------
       DO ik = 1, jpkm1
@@ -360,122 +684,132 @@ CONTAINS
 
       ! bdy masks and bmask are now set to zero on boundary points:
       igrd = 1       ! In the free surface case, bmask is at T-points
-      DO ib = 1, nblenrim(igrd)     
-        bmask(nbi(ib,igrd), nbj(ib,igrd)) = 0.e0
-      END DO
+      DO ib_bdy = 1, nb_bdy
+        DO ib = 1, idx_bdy(ib_bdy)%nblenrim(igrd)     
+          bmask(idx_bdy(ib_bdy)%nbi(ib,igrd), idx_bdy(ib_bdy)%nbj(ib,igrd)) = 0.e0
+        ENDDO
+      ENDDO
       !
       igrd = 1
-      DO ib = 1, nblenrim(igrd)      
-        bdytmask(nbi(ib,igrd), nbj(ib,igrd)) = 0.e0
-      END DO
+      DO ib_bdy = 1, nb_bdy
+        DO ib = 1, idx_bdy(ib_bdy)%nblenrim(igrd)      
+          bdytmask(idx_bdy(ib_bdy)%nbi(ib,igrd), idx_bdy(ib_bdy)%nbj(ib,igrd)) = 0.e0
+        ENDDO
+      ENDDO
       !
       igrd = 2
-      DO ib = 1, nblenrim(igrd)
-        bdyumask(nbi(ib,igrd), nbj(ib,igrd)) = 0.e0
-      END DO
+      DO ib_bdy = 1, nb_bdy
+        DO ib = 1, idx_bdy(ib_bdy)%nblenrim(igrd)
+          bdyumask(idx_bdy(ib_bdy)%nbi(ib,igrd), idx_bdy(ib_bdy)%nbj(ib,igrd)) = 0.e0
+        ENDDO
+      ENDDO
       !
       igrd = 3
-      DO ib = 1, nblenrim(igrd)
-        bdyvmask(nbi(ib,igrd), nbj(ib,igrd)) = 0.e0
-      END DO
+      DO ib_bdy = 1, nb_bdy
+        DO ib = 1, idx_bdy(ib_bdy)%nblenrim(igrd)
+          bdyvmask(idx_bdy(ib_bdy)%nbi(ib,igrd), idx_bdy(ib_bdy)%nbj(ib,igrd)) = 0.e0
+        ENDDO
+      ENDDO
 
       ! Lateral boundary conditions
       CALL lbc_lnk( fmask        , 'F', 1. )   ;   CALL lbc_lnk( bdytmask(:,:), 'T', 1. )
       CALL lbc_lnk( bdyumask(:,:), 'U', 1. )   ;   CALL lbc_lnk( bdyvmask(:,:), 'V', 1. )
 
-      IF( ln_vol .OR. ln_dyn_fla ) THEN      ! Indices and directions of rim velocity components
-         !
+      DO ib_bdy = 1, nb_bdy       ! Indices and directions of rim velocity components
+
+         idx_bdy(ib_bdy)%flagu(:) = 0.e0
+         idx_bdy(ib_bdy)%flagv(:) = 0.e0
+         icount = 0 
+
          !flagu = -1 : u component is normal to the dynamical boundary but its direction is outward
          !flagu =  0 : u is tangential
          !flagu =  1 : u is normal to the boundary and is direction is inward
-         icount = 0 
-         flagu(:) = 0.e0
- 
+  
          igrd = 2      ! u-component 
-         DO ib = 1, nblenrim(igrd)  
-            zefl=bdytmask(nbi(ib,igrd)  , nbj(ib,igrd))
-            zwfl=bdytmask(nbi(ib,igrd)+1, nbj(ib,igrd))
-            IF( zefl + zwfl ==2 ) THEN
-               icount = icount +1
+         DO ib = 1, idx_bdy(ib_bdy)%nblenrim(igrd)  
+            nbi => idx_bdy(ib_bdy)%nbi(ib,igrd)
+            nbj => idx_bdy(ib_bdy)%nbj(ib,igrd)
+            zefl = bdytmask(nbi  ,nbj)
+            zwfl = bdytmask(nbi+1,nbj)
+            IF( zefl + zwfl == 2 ) THEN
+               icount = icount + 1
             ELSE
-               flagu(ib)=-zefl+zwfl
+               idx_bdy(ib_bdy)%flagu(ib)=-zefl+zwfl
             ENDIF
          END DO
 
          !flagv = -1 : u component is normal to the dynamical boundary but its direction is outward
          !flagv =  0 : u is tangential
          !flagv =  1 : u is normal to the boundary and is direction is inward
-         flagv(:) = 0.e0
 
          igrd = 3      ! v-component
-         DO ib = 1, nblenrim(igrd)  
-            znfl = bdytmask(nbi(ib,igrd), nbj(ib,igrd))
-            zsfl = bdytmask(nbi(ib,igrd), nbj(ib,igrd)+1)
-            IF( znfl + zsfl ==2 ) THEN
+         DO ib = 1, idx_bdy(ib_bdy)%nblenrim(igrd)  
+            nbi => idx_bdy(ib_bdy)%nbi(ib,igrd)
+            nbj => idx_bdy(ib_bdy)%nbj(ib,igrd)
+            znfl = bdytmask(nbi,nbj  )
+            zsfl = bdytmask(nbi,nbj+1)
+            IF( znfl + zsfl == 2 ) THEN
                icount = icount + 1
             ELSE
-               flagv(ib) = -znfl + zsfl
+               idx_bdy(ib_bdy)%flagv(ib) = -znfl + zsfl
             END IF
          END DO
  
          IF( icount /= 0 ) THEN
             IF(lwp) WRITE(numout,*)
             IF(lwp) WRITE(numout,*) ' E R R O R : Some data velocity points,',   &
-               ' are not boundary points. Check nbi, nbj, indices.'
+               ' are not boundary points. Check nbi, nbj, indices for boundary set ',ib_bdy
             IF(lwp) WRITE(numout,*) ' ========== '
             IF(lwp) WRITE(numout,*)
             nstop = nstop + 1
          ENDIF 
     
-      ENDIF
+      ENDDO
 
       ! Compute total lateral surface for volume correction:
       ! ----------------------------------------------------
       bdysurftot = 0.e0 
       IF( ln_vol ) THEN  
          igrd = 2      ! Lateral surface at U-points
-         DO ib = 1, nblenrim(igrd)
-            bdysurftot = bdysurftot + hu     (nbi(ib,igrd)  ,nbj(ib,igrd))                      &
-               &                    * e2u    (nbi(ib,igrd)  ,nbj(ib,igrd)) * ABS( flagu(ib) )   &
-               &                    * tmask_i(nbi(ib,igrd)  ,nbj(ib,igrd))                      &
-               &                    * tmask_i(nbi(ib,igrd)+1,nbj(ib,igrd))                   
-         END DO
+         DO ib_bdy = 1, nb_bdy
+            DO ib = 1, idx_bdy(ib_bdy)%nblenrim(igrd)
+               nbi => idx_bdy(ib_bdy)%nbi(ib,igrd)
+               nbj => idx_bdy(ib_bdy)%nbj(ib,igrd)
+               flagu => idx_bdy(ib_bdy)%flagu(ib)
+               bdysurftot = bdysurftot + hu     (nbi  , nbj)                           &
+                  &                    * e2u    (nbi  , nbj) * ABS( flagu ) &
+                  &                    * tmask_i(nbi  , nbj)                           &
+                  &                    * tmask_i(nbi+1, nbj)                   
+            ENDDO
+         ENDDO
 
          igrd=3 ! Add lateral surface at V-points
-         DO ib = 1, nblenrim(igrd)
-            bdysurftot = bdysurftot + hv     (nbi(ib,igrd),nbj(ib,igrd)  )                      &
-               &                    * e1v    (nbi(ib,igrd),nbj(ib,igrd)  ) * ABS( flagv(ib) )   &
-               &                    * tmask_i(nbi(ib,igrd),nbj(ib,igrd)  )                      &
-               &                    * tmask_i(nbi(ib,igrd),nbj(ib,igrd)+1)
-         END DO
+         DO ib_bdy = 1, nb_bdy
+            DO ib = 1, idx_bdy(ib_bdy)%nblenrim(igrd)
+               nbi => idx_bdy(ib_bdy)%nbi(ib,igrd)
+               nbj => idx_bdy(ib_bdy)%nbj(ib,igrd)
+               flagv => idx_bdy(ib_bdy)%flagv(ib)
+               bdysurftot = bdysurftot + hv     (nbi, nbj  )                           &
+                  &                    * e1v    (nbi, nbj  ) * ABS( flagv ) &
+                  &                    * tmask_i(nbi, nbj  )                           &
+                  &                    * tmask_i(nbi, nbj+1)
+            ENDDO
+         ENDDO
          !
          IF( lk_mpp )   CALL mpp_sum( bdysurftot )      ! sum over the global domain
       END IF   
-
-      ! Initialise bdy data arrays
-      ! --------------------------
-      tbdy(:,:) = 0.e0
-      sbdy(:,:) = 0.e0
-      ubdy(:,:) = 0.e0
-      vbdy(:,:) = 0.e0
-      sshbdy(:) = 0.e0
-      ubtbdy(:) = 0.e0
-      vbtbdy(:) = 0.e0
-#if defined key_lim2
-      frld_bdy(:) = 0.e0
-      hicif_bdy(:) = 0.e0
-      hsnif_bdy(:) = 0.e0
-#endif
-
-      ! Read in tidal constituents and adjust for model start time
-      ! ----------------------------------------------------------
-      IF( ln_tides )   CALL tide_data
       !
+      ! Tidy up
+      !--------
+      DEALLOCATE(nbidta, nbjdta, nbrdta)
+
+      IF( nn_timing == 1 ) CALL timing_stop('bdy_init')
+
    END SUBROUTINE bdy_init
 
 #else
    !!---------------------------------------------------------------------------------
-   !!   Dummy module                                   NO unstructured open boundaries
+   !!   Dummy module                                   NO open boundaries
    !!---------------------------------------------------------------------------------
 CONTAINS
    SUBROUTINE bdy_init      ! Dummy routine

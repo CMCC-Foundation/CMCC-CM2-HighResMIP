@@ -32,6 +32,7 @@ MODULE obs_read_altbias
    USE obs_inter_h2d
    USE obs_utils               ! Various observation tools
    USE obs_inter_sup
+   USE wrk_nemo                ! Memory Allocation
 
    IMPLICIT NONE
 
@@ -42,7 +43,7 @@ MODULE obs_read_altbias
 
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: obs_read_altbias.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 
@@ -66,8 +67,6 @@ CONTAINS
       !!----------------------------------------------------------------------
       !! * Modules used
       USE iom
-      USE wrk_nemo, ONLY: wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY: z_altbias => wrk_2d_1   ! Array to store the alt bias values
       !
       !! * Arguments
       INTEGER, INTENT(IN) :: kslano      ! Number of SLA Products
@@ -101,6 +100,7 @@ CONTAINS
          & zbias, &
          & zglam, &
          & zgphi
+      REAL(wp), POINTER, DIMENSION(:,:) ::   z_altbias
       REAL(wp) :: zlam
       REAL(wp) :: zphi
       INTEGER, DIMENSION(:,:,:), ALLOCATABLE :: &
@@ -108,10 +108,7 @@ CONTAINS
          & igrdj
       INTEGER :: numaltbias
 
-      IF(wrk_in_use(2, 1))THEN
-         CALL ctl_stop('obs_rea_altbias : requested workspace array unavailable.')
-         RETURN
-      END IF
+      CALL wrk_alloc(jpi,jpj,z_altbias) 
 
       IF(lwp)WRITE(numout,*) 
       IF(lwp)WRITE(numout,*) ' obs_rea_altbias : '
@@ -210,9 +207,7 @@ CONTAINS
          
       END DO
 
-      IF(wrk_not_released(2, 1))THEN
-         CALL ctl_stop('obs_rea_altbias : failed to release workspace array.')
-      END IF
+      CALL wrk_dealloc(jpi,jpj,z_altbias) 
 
    END SUBROUTINE obs_rea_altbias
 

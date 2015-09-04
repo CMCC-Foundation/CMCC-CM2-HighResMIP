@@ -25,6 +25,9 @@ MODULE dynldf
    USE in_out_manager ! I/O manager
    USE lib_mpp        ! distribued memory computing library
    USE lbclnk         ! ocean lateral boundary conditions (or mpp link)
+   USE wrk_nemo        ! Memory Allocation
+   USE timing          ! Timing
+
 
    IMPLICIT NONE
    PRIVATE
@@ -39,7 +42,7 @@ MODULE dynldf
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: dynldf.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -50,17 +53,16 @@ CONTAINS
       !! 
       !! ** Purpose :   compute the lateral ocean dynamics physics.
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   ztrdu => wrk_3d_1 , ztrdv => wrk_3d_2
       !
       INTEGER, INTENT(in) ::   kt   ! ocean time-step index
+      !
+      REAL(wp), POINTER, DIMENSION(:,:,:) ::  ztrdu, ztrdv
       !!----------------------------------------------------------------------
-
-      IF( wrk_in_use(3, 1,2) ) THEN
-         CALL ctl_stop('dyn_ldf: requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
+      !
+      IF( nn_timing == 1 )  CALL timing_start('dyn_ldf')
       !
       IF( l_trddyn )   THEN                      ! temporary save of ta and sa trends
+         CALL wrk_alloc( jpi, jpj, jpk, ztrdu, ztrdv )
          ztrdu(:,:,:) = ua(:,:,:) 
          ztrdv(:,:,:) = va(:,:,:) 
       ENDIF
@@ -104,12 +106,13 @@ CONTAINS
          ztrdu(:,:,:) = ua(:,:,:) - ztrdu(:,:,:)
          ztrdv(:,:,:) = va(:,:,:) - ztrdv(:,:,:)
          CALL trd_mod( ztrdu, ztrdv, jpdyn_trd_ldf, 'DYN', kt )
+         CALL wrk_dealloc( jpi, jpj, jpk, ztrdu, ztrdv )
       ENDIF
       !                                          ! print sum trends (used for debugging)
       IF(ln_ctl)   CALL prt_ctl( tab3d_1=ua, clinfo1=' ldf  - Ua: ', mask1=umask,   &
          &                       tab3d_2=va, clinfo2=       ' Va: ', mask2=vmask, clinfo3='dyn' )
       !
-      IF( wrk_not_released(3, 1,2) )   CALL ctl_stop('dyn_ldf: failed to release workspace arrays')
+      IF( nn_timing == 1 )  CALL timing_stop('dyn_ldf')
       !
    END SUBROUTINE dyn_ldf
 
@@ -146,7 +149,7 @@ CONTAINS
       IF( ln_dynldf_level )   ioptio = ioptio + 1
       IF( ln_dynldf_hor   )   ioptio = ioptio + 1
       IF( ln_dynldf_iso   )   ioptio = ioptio + 1
-      IF( ioptio /= 1 ) CALL ctl_stop( '          use only ONE direction (level/hor/iso)' )
+      IF( ioptio >  1 ) CALL ctl_stop( '          use only ONE direction (level/hor/iso)' )
 
       !                                   ! Set nldf, the type of lateral diffusion, from ln_dynldf_... logicals
       ierr = 0

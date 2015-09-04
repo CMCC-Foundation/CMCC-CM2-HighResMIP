@@ -34,6 +34,7 @@ MODULE domain
    USE domvvl          ! variable volume
    USE c1d             ! 1D vertical configuration
    USE dyncor_c1d      ! Coriolis term (c1d case)         (cor_c1d routine)
+   USE timing          ! Timing
 
    IMPLICIT NONE
    PRIVATE
@@ -44,7 +45,7 @@ MODULE domain
 #  include "domzgr_substitute.h90"
    !!-------------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: domain.F90 2528 2010-12-27 17:33:53Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence        (NEMOGCM/NEMO_CeCILL.txt)
    !!-------------------------------------------------------------------------
 CONTAINS
@@ -65,9 +66,11 @@ CONTAINS
       !!              - dom_wri: create the meshmask file if nmsh=1
       !!              - 1D configuration, move Coriolis, u and v at T-point
       !!----------------------------------------------------------------------
-      INTEGER ::   jk                ! dummy loop argument
-      INTEGER ::   iconf = 0         ! temporary integers
+      INTEGER ::   jk          ! dummy loop argument
+      INTEGER ::   iconf = 0   ! local integers
       !!----------------------------------------------------------------------
+      !
+      IF( nn_timing == 1 )   CALL timing_start('dom_init')
       !
       IF(lwp) THEN
          WRITE(numout,*)
@@ -82,25 +85,23 @@ CONTAINS
                              CALL dom_msk      ! Masks
       IF( lk_vvl         )   CALL dom_vvl      ! Vertical variable mesh
       !
-      IF( lk_c1d ) THEN                        ! 1D configuration 
-         CALL cor_c1d                          ! Coriolis set at T-point
-         umask(:,:,:) = tmask(:,:,:)           ! U, V moved at T-point
-         vmask(:,:,:) = tmask(:,:,:)
-      END IF
+      IF( lk_c1d         )   CALL cor_c1d      ! 1D configuration: Coriolis set at T-point
       !
-      hu(:,:) = 0.e0                           ! Ocean depth at U- and V-points
-      hv(:,:) = 0.e0
+      hu(:,:) = 0._wp                          ! Ocean depth at U- and V-points
+      hv(:,:) = 0._wp
       DO jk = 1, jpk
          hu(:,:) = hu(:,:) + fse3u(:,:,jk) * umask(:,:,jk)
          hv(:,:) = hv(:,:) + fse3v(:,:,jk) * vmask(:,:,jk)
       END DO
       !                                        ! Inverse of the local depth
-      hur(:,:) = 1. / ( hu(:,:) + 1.e0 - umask(:,:,1) ) * umask(:,:,1)
-      hvr(:,:) = 1. / ( hv(:,:) + 1.e0 - vmask(:,:,1) ) * vmask(:,:,1)
+      hur(:,:) = 1._wp / ( hu(:,:) + 1._wp - umask(:,:,1) ) * umask(:,:,1)
+      hvr(:,:) = 1._wp / ( hv(:,:) + 1._wp - vmask(:,:,1) ) * vmask(:,:,1)
 
                              CALL dom_stp      ! time step
       IF( nmsh /= 0      )   CALL dom_wri      ! Create a domain file
       IF( .NOT.ln_rstart )   CALL dom_ctl      ! Domain control
+      !
+      IF( nn_timing == 1 )   CALL timing_stop('dom_init')
       !
    END SUBROUTINE dom_init
 
@@ -232,7 +233,6 @@ CONTAINS
       rdtmin    = rn_rdtmin
       rdtmax    = rn_rdtmin
       rdth      = rn_rdth
-      nclosea   = nn_closea
 
       REWIND( numnam )              ! Namelist cross land advection
       READ  ( numnam, namcla )
@@ -287,21 +287,21 @@ CONTAINS
          CALL mpp_maxloc( e1t(:,:), tmask(:,:,1), ze1max, iima1,ijma1 )
          CALL mpp_maxloc( e2t(:,:), tmask(:,:,1), ze2max, iima2,ijma2 )
       ELSE
-         ze1min = MINVAL( e1t(:,:), mask = tmask(:,:,1) == 1.e0_wp )    
-         ze2min = MINVAL( e2t(:,:), mask = tmask(:,:,1) == 1.e0_wp )    
-         ze1max = MAXVAL( e1t(:,:), mask = tmask(:,:,1) == 1.e0_wp )    
-         ze2max = MAXVAL( e2t(:,:), mask = tmask(:,:,1) == 1.e0_wp )    
+         ze1min = MINVAL( e1t(:,:), mask = tmask(:,:,1) == 1._wp )    
+         ze2min = MINVAL( e2t(:,:), mask = tmask(:,:,1) == 1._wp )    
+         ze1max = MAXVAL( e1t(:,:), mask = tmask(:,:,1) == 1._wp )    
+         ze2max = MAXVAL( e2t(:,:), mask = tmask(:,:,1) == 1._wp )    
 
-         iloc  = MINLOC( e1t(:,:), mask = tmask(:,:,1) == 1.e0_wp )
+         iloc  = MINLOC( e1t(:,:), mask = tmask(:,:,1) == 1._wp )
          iimi1 = iloc(1) + nimpp - 1
          ijmi1 = iloc(2) + njmpp - 1
-         iloc  = MINLOC( e2t(:,:), mask = tmask(:,:,1) == 1.e0_wp )
+         iloc  = MINLOC( e2t(:,:), mask = tmask(:,:,1) == 1._wp )
          iimi2 = iloc(1) + nimpp - 1
          ijmi2 = iloc(2) + njmpp - 1
-         iloc  = MAXLOC( e1t(:,:), mask = tmask(:,:,1) == 1.e0_wp )
+         iloc  = MAXLOC( e1t(:,:), mask = tmask(:,:,1) == 1._wp )
          iima1 = iloc(1) + nimpp - 1
          ijma1 = iloc(2) + njmpp - 1
-         iloc  = MAXLOC( e2t(:,:), mask = tmask(:,:,1) == 1.e0_wp )
+         iloc  = MAXLOC( e2t(:,:), mask = tmask(:,:,1) == 1._wp )
          iima2 = iloc(1) + nimpp - 1
          ijma2 = iloc(2) + njmpp - 1
       ENDIF

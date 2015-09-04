@@ -10,9 +10,11 @@ MODULE dynhpg
    !!            8.5  !  2002-07  (G. Madec)  F90: Free form and module
    !!            8.5  !  2002-08  (A. Bozec)  hpg_zps: Original code
    !!   NEMO     1.0  !  2005-10  (A. Beckmann, B.W. An)  various s-coordinate options
-   !!                 !         Original code for hpg_ctl, hpg_hel hpg_wdj, hpg_djc, hpg_rot 
+   !!                 !         Original code for hpg_ctl, hpg_hel hpg_wdj, hpg_djc, hpg_rot
    !!             -   !  2005-11  (G. Madec) style & small optimisation
    !!            3.3  !  2010-10  (C. Ethe, G. Madec) reorganisation of initialisation phase
+   !!            3.4  !  2011-11  (H. Liu) hpg_prj: Original code for s-coordinates
+   !!                 !           (A. Coward) suppression of hel, wdj and rot options
    !!----------------------------------------------------------------------
 
    !!----------------------------------------------------------------------
@@ -22,20 +24,20 @@ MODULE dynhpg
    !!       hpg_zco  : z-coordinate scheme
    !!       hpg_zps  : z-coordinate plus partial steps (interpolation)
    !!       hpg_sco  : s-coordinate (standard jacobian formulation)
-   !!       hpg_hel  : s-coordinate (helsinki modification)
-   !!       hpg_wdj  : s-coordinate (weighted density jacobian)
    !!       hpg_djc  : s-coordinate (Density Jacobian with Cubic polynomial)
-   !!       hpg_rot  : s-coordinate (ROTated axes scheme)
+   !!       hpg_prj  : s-coordinate (Pressure Jacobian with Cubic polynomial)
    !!----------------------------------------------------------------------
    USE oce             ! ocean dynamics and tracers
    USE dom_oce         ! ocean space and time domain
    USE phycst          ! physical constants
-   USE trdmod          ! ocean dynamics trends 
+   USE trdmod          ! ocean dynamics trends
    USE trdmod_oce      ! ocean variables trends
    USE in_out_manager  ! I/O manager
    USE prtctl          ! Print control
-   USE lbclnk          ! lateral boundary condition 
+   USE lbclnk          ! lateral boundary condition
    USE lib_mpp         ! MPP library
+   USE wrk_nemo        ! Memory Allocation
+   USE timing          ! Timing
 
    IMPLICIT NONE
    PRIVATE
@@ -43,25 +45,22 @@ MODULE dynhpg
    PUBLIC   dyn_hpg        ! routine called by step module
    PUBLIC   dyn_hpg_init   ! routine called by opa module
 
-   !                                              !!* Namelist namdyn_hpg : hydrostatic pressure gradient 
+   !                                              !!* Namelist namdyn_hpg : hydrostatic pressure gradient
    LOGICAL , PUBLIC ::   ln_hpg_zco    = .TRUE.    !: z-coordinate - full steps
    LOGICAL , PUBLIC ::   ln_hpg_zps    = .FALSE.   !: z-coordinate - partial steps (interpolation)
    LOGICAL , PUBLIC ::   ln_hpg_sco    = .FALSE.   !: s-coordinate (standard jacobian formulation)
-   LOGICAL , PUBLIC ::   ln_hpg_hel    = .FALSE.   !: s-coordinate (helsinki modification)
-   LOGICAL , PUBLIC ::   ln_hpg_wdj    = .FALSE.   !: s-coordinate (weighted density jacobian)
    LOGICAL , PUBLIC ::   ln_hpg_djc    = .FALSE.   !: s-coordinate (Density Jacobian with Cubic polynomial)
-   LOGICAL , PUBLIC ::   ln_hpg_rot    = .FALSE.   !: s-coordinate (ROTated axes scheme)
-   REAL(wp), PUBLIC ::   rn_gamma      = 0._wp     !: weighting coefficient
+   LOGICAL , PUBLIC ::   ln_hpg_prj    = .FALSE.   !: s-coordinate (Pressure Jacobian scheme)
    LOGICAL , PUBLIC ::   ln_dynhpg_imp = .FALSE.   !: semi-implicite hpg flag
 
-   INTEGER  ::   nhpg  =  0   ! = 0 to 6, type of pressure gradient scheme used ! (deduced from ln_hpg_... flags)
+   INTEGER , PUBLIC ::   nhpg  =  0   ! = 0 to 7, type of pressure gradient scheme used ! (deduced from ln_hpg_... flags) (PUBLIC for TAM)
 
    !! * Substitutions
 #  include "domzgr_substitute.h90"
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: dynhpg.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -70,47 +69,43 @@ CONTAINS
       !!---------------------------------------------------------------------
       !!                  ***  ROUTINE dyn_hpg  ***
       !!
-      !! ** Method  :   Call the hydrostatic pressure gradient routine 
+      !! ** Method  :   Call the hydrostatic pressure gradient routine
       !!              using the scheme defined in the namelist
-      !!   
+      !!
       !! ** Action : - Update (ua,va) with the now hydrastatic pressure trend
       !!             - Save the trend (l_trddyn=T)
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   ztrdu => wrk_3d_1 , ztrdv => wrk_3d_2   ! 3D workspace
-      !!
       INTEGER, INTENT(in) ::   kt   ! ocean time-step index
+      REAL(wp), POINTER, DIMENSION(:,:,:) ::  ztrdu, ztrdv
       !!----------------------------------------------------------------------
       !
-      IF( wrk_in_use(3, 1,2) ) THEN
-         CALL ctl_stop('dyn_hpg: requested workspace arrays are unavailable')   ;   RETURN
-      ENDIF
+      IF( nn_timing == 1 )  CALL timing_start('dyn_hpg')
       !
       IF( l_trddyn ) THEN                    ! Temporary saving of ua and va trends (l_trddyn)
-         ztrdu(:,:,:) = ua(:,:,:)  
-         ztrdv(:,:,:) = va(:,:,:) 
-      ENDIF      
+         CALL wrk_alloc( jpi,jpj,jpk, ztrdu, ztrdv )
+         ztrdu(:,:,:) = ua(:,:,:)
+         ztrdv(:,:,:) = va(:,:,:)
+      ENDIF
       !
-      SELECT CASE ( nhpg )      ! Hydrastatic pressure gradient computation
+      SELECT CASE ( nhpg )      ! Hydrostatic pressure gradient computation
       CASE (  0 )   ;   CALL hpg_zco    ( kt )      ! z-coordinate
       CASE (  1 )   ;   CALL hpg_zps    ( kt )      ! z-coordinate plus partial steps (interpolation)
       CASE (  2 )   ;   CALL hpg_sco    ( kt )      ! s-coordinate (standard jacobian formulation)
-      CASE (  3 )   ;   CALL hpg_hel    ( kt )      ! s-coordinate (helsinki modification)
-      CASE (  4 )   ;   CALL hpg_wdj    ( kt )      ! s-coordinate (weighted density jacobian)
-      CASE (  5 )   ;   CALL hpg_djc    ( kt )      ! s-coordinate (Density Jacobian with Cubic polynomial)
-      CASE (  6 )   ;   CALL hpg_rot    ( kt )      ! s-coordinate (ROTated axes scheme)
+      CASE (  3 )   ;   CALL hpg_djc    ( kt )      ! s-coordinate (Density Jacobian with Cubic polynomial)
+      CASE (  4 )   ;   CALL hpg_prj    ( kt )      ! s-coordinate (Pressure Jacobian scheme)
       END SELECT
       !
       IF( l_trddyn ) THEN      ! save the hydrostatic pressure gradient trends for momentum trend diagnostics
          ztrdu(:,:,:) = ua(:,:,:) - ztrdu(:,:,:)
          ztrdv(:,:,:) = va(:,:,:) - ztrdv(:,:,:)
          CALL trd_mod( ztrdu, ztrdv, jpdyn_trd_hpg, 'DYN', kt )
-      ENDIF          
+         CALL wrk_dealloc( jpi,jpj,jpk, ztrdu, ztrdv )
+      ENDIF
       !
       IF(ln_ctl)   CALL prt_ctl( tab3d_1=ua, clinfo1=' hpg  - Ua: ', mask1=umask,   &
          &                       tab3d_2=va, clinfo2=       ' Va: ', mask2=vmask, clinfo3='dyn' )
       !
-      IF( wrk_not_released(3, 1,2) )   CALL ctl_stop('dyn_hpg: failed to release workspace arrays')
+      IF( nn_timing == 1 )  CALL timing_stop('dyn_hpg')
       !
    END SUBROUTINE dyn_hpg
 
@@ -127,8 +122,8 @@ CONTAINS
       !!----------------------------------------------------------------------
       INTEGER ::   ioptio = 0      ! temporary integer
       !!
-      NAMELIST/namdyn_hpg/ ln_hpg_zco, ln_hpg_zps, ln_hpg_sco, ln_hpg_hel,    &
-         &                 ln_hpg_wdj, ln_hpg_djc, ln_hpg_rot, rn_gamma  , ln_dynhpg_imp
+      NAMELIST/namdyn_hpg/ ln_hpg_zco, ln_hpg_zps, ln_hpg_sco,     &
+         &                 ln_hpg_djc, ln_hpg_prj, ln_dynhpg_imp
       !!----------------------------------------------------------------------
       !
       REWIND( numnam )               ! Read Namelist namdyn_hpg
@@ -142,35 +137,35 @@ CONTAINS
          WRITE(numout,*) '      z-coord. - full steps                             ln_hpg_zco    = ', ln_hpg_zco
          WRITE(numout,*) '      z-coord. - partial steps (interpolation)          ln_hpg_zps    = ', ln_hpg_zps
          WRITE(numout,*) '      s-coord. (standard jacobian formulation)          ln_hpg_sco    = ', ln_hpg_sco
-         WRITE(numout,*) '      s-coord. (helsinki modification)                  ln_hpg_hel    = ', ln_hpg_hel
-         WRITE(numout,*) '      s-coord. (weighted density jacobian)              ln_hpg_wdj    = ', ln_hpg_wdj
          WRITE(numout,*) '      s-coord. (Density Jacobian: Cubic polynomial)     ln_hpg_djc    = ', ln_hpg_djc
-         WRITE(numout,*) '      s-coord. (ROTated axes scheme)                    ln_hpg_rot    = ', ln_hpg_rot
-         WRITE(numout,*) '      weighting coeff. (wdj scheme)                     rn_gamma      = ', rn_gamma
+         WRITE(numout,*) '      s-coord. (Pressure Jacobian: Cubic polynomial)    ln_hpg_prj    = ', ln_hpg_prj
          WRITE(numout,*) '      time stepping: centered (F) or semi-implicit (T)  ln_dynhpg_imp = ', ln_dynhpg_imp
       ENDIF
       !
-      IF( lk_vvl .AND. .NOT. ln_hpg_sco )   &
-         &   CALL ctl_stop('dyn_hpg_init : variable volume key_vvl require the standard jacobian formulation hpg_sco')
+      IF( ln_hpg_djc )   &
+         &   CALL ctl_stop('dyn_hpg_init : Density Jacobian: Cubic polynominal method &
+                           & currently disabled (bugs under investigation). Please select &
+                           & either  ln_hpg_sco or  ln_hpg_prj instead')
+      !
+      IF( lk_vvl .AND. .NOT. (ln_hpg_sco.OR.ln_hpg_prj) )   &
+         &   CALL ctl_stop('dyn_hpg_init : variable volume key_vvl requires:&
+                           & the standard jacobian formulation hpg_sco or &
+                           & the pressure jacobian formulation hpg_prj')
       !
       !                               ! Set nhpg from ln_hpg_... flags
       IF( ln_hpg_zco )   nhpg = 0
       IF( ln_hpg_zps )   nhpg = 1
       IF( ln_hpg_sco )   nhpg = 2
-      IF( ln_hpg_hel )   nhpg = 3
-      IF( ln_hpg_wdj )   nhpg = 4
-      IF( ln_hpg_djc )   nhpg = 5
-      IF( ln_hpg_rot )   nhpg = 6
+      IF( ln_hpg_djc )   nhpg = 3
+      IF( ln_hpg_prj )   nhpg = 4
       !
-      !                               ! Consitency check
-      ioptio = 0 
+      !                               ! Consistency check
+      ioptio = 0
       IF( ln_hpg_zco )   ioptio = ioptio + 1
       IF( ln_hpg_zps )   ioptio = ioptio + 1
       IF( ln_hpg_sco )   ioptio = ioptio + 1
-      IF( ln_hpg_hel )   ioptio = ioptio + 1
-      IF( ln_hpg_wdj )   ioptio = ioptio + 1
       IF( ln_hpg_djc )   ioptio = ioptio + 1
-      IF( ln_hpg_rot )   ioptio = ioptio + 1
+      IF( ln_hpg_prj )   ioptio = ioptio + 1
       IF( ioptio /= 1 )   CALL ctl_stop( 'NO or several hydrostatic pressure gradient options used' )
       !
    END SUBROUTINE dyn_hpg_init
@@ -189,24 +184,25 @@ CONTAINS
       !!      add it to the general momentum trend (ua,va).
       !!            ua = ua - 1/e1u * zhpi
       !!            va = va - 1/e2v * zhpj
-      !! 
+      !!
       !! ** Action : - Update (ua,va) with the now hydrastatic pressure trend
       !!----------------------------------------------------------------------
-      USE oce, ONLY:   zhpi => ta , zhpj => sa   ! (ta,sa) used as 3D workspace
-      !!
       INTEGER, INTENT(in) ::   kt    ! ocean time-step index
       !!
       INTEGER  ::   ji, jj, jk       ! dummy loop indices
       REAL(wp) ::   zcoef0, zcoef1   ! temporary scalars
+      REAL(wp), POINTER, DIMENSION(:,:,:) ::  zhpi, zhpj
       !!----------------------------------------------------------------------
-      
+      !
+      CALL wrk_alloc( jpi,jpj,jpk, zhpi, zhpj )
+      !
       IF( kt == nit000 ) THEN
          IF(lwp) WRITE(numout,*)
          IF(lwp) WRITE(numout,*) 'dyn:hpg_zco : hydrostatic pressure gradient trend'
          IF(lwp) WRITE(numout,*) '~~~~~~~~~~~   z-coordinate case '
       ENDIF
-      
-      zcoef0 = - grav * 0.5_wp      ! Local constant initialization 
+
+      zcoef0 = - grav * 0.5_wp      ! Local constant initialization
 
       ! Surface value
       DO jj = 2, jpjm1
@@ -220,6 +216,7 @@ CONTAINS
             va(ji,jj,1) = va(ji,jj,1) + zhpj(ji,jj,1)
          END DO
       END DO
+
       !
       ! interior value (2=<jk=<jpkm1)
       DO jk = 2, jpkm1
@@ -241,31 +238,35 @@ CONTAINS
          END DO
       END DO
       !
+      CALL wrk_dealloc( jpi,jpj,jpk, zhpi, zhpj )
+      !
    END SUBROUTINE hpg_zco
 
 
    SUBROUTINE hpg_zps( kt )
       !!---------------------------------------------------------------------
       !!                 ***  ROUTINE hpg_zps  ***
-      !!                    
-      !! ** Method  :   z-coordinate plus partial steps case.  blahblah...
-      !! 
-      !! ** Action  : - Update (ua,va) with the now hydrastatic pressure trend
-      !!---------------------------------------------------------------------- 
-      USE oce, ONLY:   zhpi => ta , zhpj => sa   ! (ta,sa) used as 3D workspace
       !!
+      !! ** Method  :   z-coordinate plus partial steps case.  blahblah...
+      !!
+      !! ** Action  : - Update (ua,va) with the now hydrastatic pressure trend
+      !!----------------------------------------------------------------------
       INTEGER, INTENT(in) ::   kt    ! ocean time-step index
       !!
       INTEGER  ::   ji, jj, jk                       ! dummy loop indices
       INTEGER  ::   iku, ikv                         ! temporary integers
       REAL(wp) ::   zcoef0, zcoef1, zcoef2, zcoef3   ! temporary scalars
+      REAL(wp), POINTER, DIMENSION(:,:,:) ::  zhpi, zhpj
       !!----------------------------------------------------------------------
-
+      !
+      CALL wrk_alloc( jpi,jpj,jpk, zhpi, zhpj )
+      !
       IF( kt == nit000 ) THEN
          IF(lwp) WRITE(numout,*)
          IF(lwp) WRITE(numout,*) 'dyn:hpg_zps : hydrostatic pressure gradient trend'
          IF(lwp) WRITE(numout,*) '~~~~~~~~~~~   z-coordinate with partial steps - vector optimization'
       ENDIF
+
 
       ! Local constant initialization
       zcoef0 = - grav * 0.5_wp
@@ -282,6 +283,7 @@ CONTAINS
             va(ji,jj,1) = va(ji,jj,1) + zhpj(ji,jj,1)
          END DO
       END DO
+
 
       ! interior value (2=<jk=<jpkm1)
       DO jk = 2, jpkm1
@@ -302,6 +304,7 @@ CONTAINS
             END DO
          END DO
       END DO
+
 
       ! partial steps correction at the last level  (use gru & grv computed in zpshde.F90)
 # if defined key_vectopt_loop
@@ -332,6 +335,8 @@ CONTAINS
 # endif
       END DO
       !
+      CALL wrk_dealloc( jpi,jpj,jpk, zhpi, zhpj )
+      !
    END SUBROUTINE hpg_zps
 
 
@@ -353,14 +358,15 @@ CONTAINS
       !!
       !! ** Action : - Update (ua,va) with the now hydrastatic pressure trend
       !!----------------------------------------------------------------------
-      USE oce, ONLY:   zhpi => ta , zhpj => sa   ! (ta,sa) used as 3D workspace
-      !!
       INTEGER, INTENT(in) ::   kt    ! ocean time-step index
       !!
       INTEGER  ::   ji, jj, jk                 ! dummy loop indices
       REAL(wp) ::   zcoef0, zuap, zvap, znad   ! temporary scalars
+      REAL(wp), POINTER, DIMENSION(:,:,:) ::  zhpi, zhpj
       !!----------------------------------------------------------------------
-
+      !
+      CALL wrk_alloc( jpi,jpj,jpk, zhpi, zhpj )
+      !
       IF( kt == nit000 ) THEN
          IF(lwp) WRITE(numout,*)
          IF(lwp) WRITE(numout,*) 'dyn:hpg_sco : hydrostatic pressure gradient trend'
@@ -376,7 +382,7 @@ CONTAINS
 
       ! Surface value
       DO jj = 2, jpjm1
-         DO ji = fs_2, fs_jpim1   ! vector opt.   
+         DO ji = fs_2, fs_jpim1   ! vector opt.
             ! hydrostatic pressure gradient along s-surfaces
             zhpi(ji,jj,1) = zcoef0 / e1u(ji,jj) * ( fse3w(ji+1,jj  ,1) * ( znad + rhd(ji+1,jj  ,1) )   &
                &                                  - fse3w(ji  ,jj  ,1) * ( znad + rhd(ji  ,jj  ,1) ) )
@@ -390,16 +396,16 @@ CONTAINS
             ! add to the general momentum trend
             ua(ji,jj,1) = ua(ji,jj,1) + zhpi(ji,jj,1) + zuap
             va(ji,jj,1) = va(ji,jj,1) + zhpj(ji,jj,1) + zvap
-         END DO  
-      END DO   
-            
+         END DO
+      END DO
+
       ! interior value (2=<jk=<jpkm1)
-      DO jk = 2, jpkm1                                  
-         DO jj = 2, jpjm1     
-            DO ji = fs_2, fs_jpim1   ! vector opt.      
+      DO jk = 2, jpkm1
+         DO jj = 2, jpjm1
+            DO ji = fs_2, fs_jpim1   ! vector opt.
                ! hydrostatic pressure gradient along s-surfaces
-               zhpi(ji,jj,jk) = zhpi(ji,jj,jk-1) + zcoef0 / e1u(ji,jj)   & 
-                  &           * (  fse3w(ji+1,jj,jk) * ( rhd(ji+1,jj,jk) + rhd(ji+1,jj,jk-1) + 2*znad )   & 
+               zhpi(ji,jj,jk) = zhpi(ji,jj,jk-1) + zcoef0 / e1u(ji,jj)   &
+                  &           * (  fse3w(ji+1,jj,jk) * ( rhd(ji+1,jj,jk) + rhd(ji+1,jj,jk-1) + 2*znad )   &
                   &              - fse3w(ji  ,jj,jk) * ( rhd(ji  ,jj,jk) + rhd(ji  ,jj,jk-1) + 2*znad )  )
                zhpj(ji,jj,jk) = zhpj(ji,jj,jk-1) + zcoef0 / e2v(ji,jj)   &
                   &           * (  fse3w(ji,jj+1,jk) * ( rhd(ji,jj+1,jk) + rhd(ji,jj+1,jk-1) + 2*znad )   &
@@ -416,204 +422,34 @@ CONTAINS
          END DO
       END DO
       !
+      CALL wrk_dealloc( jpi,jpj,jpk, zhpi, zhpj )
+      !
    END SUBROUTINE hpg_sco
-
-
-   SUBROUTINE hpg_hel( kt )
-      !!---------------------------------------------------------------------
-      !!                  ***  ROUTINE hpg_hel  ***
-      !!
-      !! ** Method  :   s-coordinate case.
-      !!      The now hydrostatic pressure gradient at a given level
-      !!      jk is computed by taking the vertical integral of the in-situ 
-      !!      density gradient along the model level from the suface to that 
-      !!      level. s-coordinates (ln_sco): a corrective term is added
-      !!      to the horizontal pressure gradient :
-      !!         zhpi = grav .....  + 1/e1u mi(rhd) di[ grav dep3w ]
-      !!         zhpj = grav .....  + 1/e2v mj(rhd) dj[ grav dep3w ]
-      !!      add it to the general momentum trend (ua,va).
-      !!         ua = ua - 1/e1u * zhpi
-      !!         va = va - 1/e2v * zhpj
-      !!
-      !! ** Action : - Update (ua,va) with the now hydrastatic pressure trend
-      !!             - Save the trend (l_trddyn=T)
-      !!----------------------------------------------------------------------
-      USE oce, ONLY:   zhpi => ta , zhpj => sa   ! (ta,sa) used as 3D workspace
-      !!
-      INTEGER, INTENT(in) ::   kt    ! ocean time-step index
-      !!
-      INTEGER  ::   ji, jj, jk           ! dummy loop indices
-      REAL(wp) ::   zcoef0, zuap, zvap   ! temporary scalars
-      !!----------------------------------------------------------------------
-
-      IF( kt == nit000 ) THEN
-         IF(lwp) WRITE(numout,*)
-         IF(lwp) WRITE(numout,*) 'dyn:hpg_hel : hydrostatic pressure gradient trend'
-         IF(lwp) WRITE(numout,*) '~~~~~~~~~~~   s-coordinate case, helsinki modified scheme'
-      ENDIF
-
-      ! Local constant initialization
-      zcoef0 = - grav * 0.5_wp
- 
-      ! Surface value
-      DO jj = 2, jpjm1
-         DO ji = fs_2, fs_jpim1   ! vector opt.
-            ! hydrostatic pressure gradient along s-surfaces
-            zhpi(ji,jj,1) = zcoef0 / e1u(ji,jj) * ( fse3t(ji+1,jj  ,1) * rhd(ji+1,jj  ,1)  &
-               &                                  - fse3t(ji  ,jj  ,1) * rhd(ji  ,jj  ,1) )
-            zhpj(ji,jj,1) = zcoef0 / e2v(ji,jj) * ( fse3t(ji  ,jj+1,1) * rhd(ji  ,jj+1,1)  &
-               &                                  - fse3t(ji  ,jj  ,1) * rhd(ji  ,jj  ,1) )
-            ! s-coordinate pressure gradient correction
-            zuap = -zcoef0 * ( rhd   (ji+1,jj,1) + rhd   (ji,jj,1) )   &
-               &           * ( fsdept(ji+1,jj,1) - fsdept(ji,jj,1) ) / e1u(ji,jj)
-            zvap = -zcoef0 * ( rhd   (ji,jj+1,1) + rhd   (ji,jj,1) )   &
-               &           * ( fsdept(ji,jj+1,1) - fsdept(ji,jj,1) ) / e2v(ji,jj)
-            ! add to the general momentum trend
-            ua(ji,jj,1) = ua(ji,jj,1) + zhpi(ji,jj,1) + zuap
-            va(ji,jj,1) = va(ji,jj,1) + zhpj(ji,jj,1) + zvap
-         END DO
-      END DO
-      !
-      ! interior value (2=<jk=<jpkm1)
-      DO jk = 2, jpkm1
-         DO jj = 2, jpjm1
-            DO ji = fs_2, fs_jpim1   ! vector opt.
-               ! hydrostatic pressure gradient along s-surfaces
-               zhpi(ji,jj,jk) = zhpi(ji,jj,jk-1) &
-                  &           +  zcoef0 / e1u(ji,jj) * ( fse3t(ji+1,jj,jk  ) * rhd(ji+1,jj,jk)     &
-                  &                                     -fse3t(ji  ,jj,jk  ) * rhd(ji  ,jj,jk)   ) &
-                  &           +  zcoef0 / e1u(ji,jj) * ( fse3t(ji+1,jj,jk-1) * rhd(ji+1,jj,jk-1)   &
-                  &                                     -fse3t(ji  ,jj,jk-1) * rhd(ji  ,jj,jk-1) )
-               zhpj(ji,jj,jk) = zhpj(ji,jj,jk-1) &
-                  &           +  zcoef0 / e2v(ji,jj) * ( fse3t(ji,jj+1,jk  ) * rhd(ji,jj+1,jk)     &
-                  &                                     -fse3t(ji,jj  ,jk  ) * rhd(ji,jj,  jk)   ) &
-                  &           +  zcoef0 / e2v(ji,jj) * ( fse3t(ji,jj+1,jk-1) * rhd(ji,jj+1,jk-1)   &
-                  &                                     -fse3t(ji,jj  ,jk-1) * rhd(ji,jj,  jk-1) )
-               ! s-coordinate pressure gradient correction
-               zuap = - zcoef0 * ( rhd   (ji+1,jj,jk) + rhd   (ji,jj,jk) )   &
-                  &            * ( fsdept(ji+1,jj,jk) - fsdept(ji,jj,jk) ) / e1u(ji,jj)
-               zvap = - zcoef0 * ( rhd   (ji,jj+1,jk) + rhd   (ji,jj,jk) )   &
-                  &            * ( fsdept(ji,jj+1,jk) - fsdept(ji,jj,jk) ) / e2v(ji,jj)
-               ! add to the general momentum trend
-               ua(ji,jj,jk) = ua(ji,jj,jk) + zhpi(ji,jj,jk) + zuap
-               va(ji,jj,jk) = va(ji,jj,jk) + zhpj(ji,jj,jk) + zvap
-            END DO
-         END DO
-      END DO
-      !
-   END SUBROUTINE hpg_hel
-
-
-   SUBROUTINE hpg_wdj( kt )
-      !!---------------------------------------------------------------------
-      !!                  ***  ROUTINE hpg_wdj  ***
-      !!
-      !! ** Method  :   Weighted Density Jacobian (wdj) scheme (song 1998)
-      !!      The weighting coefficients from the namelist parameter rn_gamma
-      !!      (alpha=0.5-rn_gamma ; beta=1-alpha=0.5+rn_gamma
-      !!
-      !! Reference : Song, Mon. Wea. Rev., 126, 3213-3230, 1998.
-      !!----------------------------------------------------------------------
-      USE oce, ONLY:   zhpi => ta , zhpj => sa   ! (ta,sa) used as 3D workspace
-      !!
-      INTEGER, INTENT(in) ::   kt    ! ocean time-step index
-      !!
-      INTEGER  ::   ji, jj, jk           ! dummy loop indices
-      REAL(wp) ::   zcoef0, zuap, zvap   ! temporary scalars
-      REAL(wp) ::   zalph , zbeta        !    "         "
-      !!----------------------------------------------------------------------
-
-      IF( kt == nit000 ) THEN
-         IF(lwp) WRITE(numout,*)
-         IF(lwp) WRITE(numout,*) 'dyn:hpg_wdj : hydrostatic pressure gradient trend'
-         IF(lwp) WRITE(numout,*) '~~~~~~~~~~~   Weighted Density Jacobian'
-      ENDIF
-
-      ! Local constant initialization
-      zcoef0 = - grav * 0.5_wp
-      zalph  = 0.5_wp - rn_gamma    ! weighting coefficients (alpha=0.5-rn_gamma
-      zbeta  = 0.5_wp + rn_gamma    !                        (beta =1-alpha=0.5+rn_gamma
-
-      ! Surface value (no ponderation)
-      DO jj = 2, jpjm1
-         DO ji = fs_2, fs_jpim1   ! vector opt.
-            ! hydrostatic pressure gradient along s-surfaces
-            zhpi(ji,jj,1) = zcoef0 / e1u(ji,jj) * (  fse3w(ji+1,jj  ,1) * rhd(ji+1,jj  ,1)   &
-               &                                   - fse3w(ji  ,jj  ,1) * rhd(ji  ,jj  ,1)  )
-            zhpj(ji,jj,1) = zcoef0 / e2v(ji,jj) * (  fse3w(ji  ,jj+1,1) * rhd(ji  ,jj+1,1)   &
-               &                                   - fse3w(ji  ,jj  ,1) * rhd(ji,  jj  ,1)  )
-            ! s-coordinate pressure gradient correction
-            zuap = -zcoef0 * ( rhd   (ji+1,jj,1) + rhd   (ji,jj,1) )   &
-               &           * ( fsde3w(ji+1,jj,1) - fsde3w(ji,jj,1) ) / e1u(ji,jj)
-            zvap = -zcoef0 * ( rhd   (ji,jj+1,1) + rhd   (ji,jj,1) )   &
-               &           * ( fsde3w(ji,jj+1,1) - fsde3w(ji,jj,1) ) / e2v(ji,jj)
-            ! add to the general momentum trend
-            ua(ji,jj,1) = ua(ji,jj,1) + zhpi(ji,jj,1) + zuap
-            va(ji,jj,1) = va(ji,jj,1) + zhpj(ji,jj,1) + zvap
-         END DO
-      END DO
-
-      ! Interior value (2=<jk=<jpkm1) (weighted with zalph & zbeta)
-      DO jk = 2, jpkm1
-         DO jj = 2, jpjm1
-            DO ji = fs_2, fs_jpim1   ! vector opt.
-               zhpi(ji,jj,jk) = zhpi(ji,jj,jk-1) + zcoef0 / e1u(ji,jj)                            &
-                  &           * (   (            fsde3w(ji+1,jj,jk  ) + fsde3w(ji,jj,jk  )        &
-                  &                            - fsde3w(ji+1,jj,jk-1) - fsde3w(ji,jj,jk-1)    )   &
-                  &               * (  zalph * ( rhd   (ji+1,jj,jk-1) - rhd   (ji,jj,jk-1) )      &
-                  &                  + zbeta * ( rhd   (ji+1,jj,jk  ) - rhd   (ji,jj,jk  ) )  )   &
-                  &             -   (            rhd   (ji+1,jj,jk  ) + rhd   (ji,jj,jk  )        &
-                  &                           - rhd   (ji+1,jj,jk-1) - rhd   (ji,jj,jk-1)     )   &
-                  &               * (  zalph * ( fsde3w(ji+1,jj,jk-1) - fsde3w(ji,jj,jk-1) )      &
-                  &                  + zbeta * ( fsde3w(ji+1,jj,jk  ) - fsde3w(ji,jj,jk  ) )  )  )
-               zhpj(ji,jj,jk) = zhpj(ji,jj,jk-1) + zcoef0 / e2v(ji,jj)                            &
-                  &           * (   (           fsde3w(ji,jj+1,jk  ) + fsde3w(ji,jj,jk  )         &
-                  &                           - fsde3w(ji,jj+1,jk-1) - fsde3w(ji,jj,jk-1)     )   &
-                  &               * (  zalph * ( rhd   (ji,jj+1,jk-1) - rhd   (ji,jj,jk-1) )      &
-                  &                  + zbeta * ( rhd   (ji,jj+1,jk  ) - rhd   (ji,jj,jk  ) )  )   &
-                  &             -   (            rhd   (ji,jj+1,jk  ) + rhd   (ji,jj,jk  )        &
-                  &                            - rhd   (ji,jj+1,jk-1) - rhd   (ji,jj,jk-1)    )   &
-                  &               * (  zalph * ( fsde3w(ji,jj+1,jk-1) - fsde3w(ji,jj,jk-1) )      &
-                  &                  + zbeta * ( fsde3w(ji,jj+1,jk  ) - fsde3w(ji,jj,jk  ) )  )  )
-               ! add to the general momentum trend
-               ua(ji,jj,jk) = ua(ji,jj,jk) + zhpi(ji,jj,jk)
-               va(ji,jj,jk) = va(ji,jj,jk) + zhpj(ji,jj,jk)
-            END DO
-         END DO
-      END DO
-      !
-   END SUBROUTINE hpg_wdj
-
 
    SUBROUTINE hpg_djc( kt )
       !!---------------------------------------------------------------------
       !!                  ***  ROUTINE hpg_djc  ***
       !!
       !! ** Method  :   Density Jacobian with Cubic polynomial scheme
-      !! 
+      !!
       !! Reference: Shchepetkin and McWilliams, J. Geophys. Res., 108(C3), 3090, 2003
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE oce     , ONLY:   zhpi  => ta        , zhpj => sa       ! (ta,sa) used as 3D workspace
-      USE wrk_nemo, ONLY:   drhox => wrk_3d_1  , dzx  => wrk_3d_2
-      USE wrk_nemo, ONLY:   drhou => wrk_3d_3  , dzu  => wrk_3d_4 , rho_i => wrk_3d_5
-      USE wrk_nemo, ONLY:   drhoy => wrk_3d_6  , dzy  => wrk_3d_7
-      USE wrk_nemo, ONLY:   drhov => wrk_3d_8  , dzv  => wrk_3d_9 , rho_j => wrk_3d_10
-      USE wrk_nemo, ONLY:   drhoz => wrk_3d_11 , dzz  => wrk_3d_12 
-      USE wrk_nemo, ONLY:   drhow => wrk_3d_13 , dzw  => wrk_3d_14
-      USE wrk_nemo, ONLY:   rho_k => wrk_3d_15
-      !!
       INTEGER, INTENT(in) ::   kt    ! ocean time-step index
       !!
       INTEGER  ::   ji, jj, jk          ! dummy loop indices
       REAL(wp) ::   zcoef0, zep, cffw   ! temporary scalars
       REAL(wp) ::   z1_10, cffu, cffx   !    "         "
       REAL(wp) ::   z1_12, cffv, cffy   !    "         "
+      REAL(wp), POINTER, DIMENSION(:,:,:) ::  zhpi, zhpj
+      REAL(wp), POINTER, DIMENSION(:,:,:) ::  dzx, dzy, dzz, dzu, dzv, dzw
+      REAL(wp), POINTER, DIMENSION(:,:,:) ::  drhox, drhoy, drhoz, drhou, drhov, drhow
+      REAL(wp), POINTER, DIMENSION(:,:,:) ::  rho_i, rho_j, rho_k
       !!----------------------------------------------------------------------
-
-      IF( wrk_in_use(3, 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15) ) THEN
-         CALL ctl_stop('dyn:hpg_djc: requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
+      !
+      CALL wrk_alloc( jpi, jpj, jpk, dzx  , dzy  , dzz  , dzu  , dzv  , dzw   )
+      CALL wrk_alloc( jpi, jpj, jpk, drhox, drhoy, drhoz, drhou, drhov, drhow )
+      CALL wrk_alloc( jpi, jpj, jpk, rho_i, rho_j, rho_k,  zhpi,  zhpj        )
+      !
 
       IF( kt == nit000 ) THEN
          IF(lwp) WRITE(numout,*)
@@ -660,7 +496,7 @@ CONTAINS
 
                cffu = 2._wp * drhox(ji+1,jj  ,jk) * drhox(ji,jj,jk  )
                cffx = 2._wp * dzx  (ji+1,jj  ,jk) * dzx  (ji,jj,jk  )
-  
+
                cffv = 2._wp * drhoy(ji  ,jj+1,jk) * drhoy(ji,jj,jk  )
                cffy = 2._wp * dzy  (ji  ,jj+1,jk) * dzy  (ji,jj,jk  )
 
@@ -731,7 +567,7 @@ CONTAINS
                &                   * (  rhd(ji,jj,1)                                    &
                &                     + 0.5_wp * ( rhd(ji,jj,2) - rhd(ji,jj,1) )         &
                &                              * ( fse3w (ji,jj,1) - fsde3w(ji,jj,1) )   &
-               &                              / ( fsde3w(ji,jj,2) - fsde3w(ji,jj,1) )  ) 
+               &                              / ( fsde3w(ji,jj,2) - fsde3w(ji,jj,1) )  )
          END DO
       END DO
 
@@ -794,7 +630,7 @@ CONTAINS
       !  interior value   (2=<jk=<jpkm1)
       ! ----------------
       DO jk = 2, jpkm1
-         DO jj = 2, jpjm1 
+         DO jj = 2, jpjm1
             DO ji = fs_2, fs_jpim1   ! vector opt.
                ! hydrostatic pressure gradient along s-surfaces
                zhpi(ji,jj,jk) = zhpi(ji,jj,jk-1)                                &
@@ -810,199 +646,486 @@ CONTAINS
          END DO
       END DO
       !
-      IF( wrk_not_released(3, 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15) )   &
-         CALL ctl_stop('dyn:hpg_djc: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi, jpj, jpk, dzx  , dzy  , dzz  , dzu  , dzv  , dzw   )
+      CALL wrk_dealloc( jpi, jpj, jpk, drhox, drhoy, drhoz, drhou, drhov, drhow )
+      CALL wrk_dealloc( jpi, jpj, jpk, rho_i, rho_j, rho_k,  zhpi,  zhpj        )
       !
    END SUBROUTINE hpg_djc
 
 
-   SUBROUTINE hpg_rot( kt )
+   SUBROUTINE hpg_prj( kt )
       !!---------------------------------------------------------------------
-      !!                  ***  ROUTINE hpg_rot  ***
+      !!                  ***  ROUTINE hpg_prj  ***
       !!
-      !! ** Method  :   rotated axes scheme (Thiem and Berntsen 2005)
+      !! ** Method  :   s-coordinate case.
+      !!      A Pressure-Jacobian horizontal pressure gradient method
+      !!      based on the constrained cubic-spline interpolation for
+      !!      all vertical coordinate systems
       !!
-      !! Reference: Thiem & Berntsen, Ocean Modelling, In press, 2005.
+      !! ** Action : - Update (ua,va) with the now hydrastatic pressure trend
+      !!             - Save the trend (l_trddyn=T)
+      !!
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE oce     , ONLY:   zhpi    => ta       , zhpj    => sa       ! (ta,sa) used as 3D workspace
-      USE wrk_nemo, ONLY:   zdistr  => wrk_2d_1 , zsina   => wrk_2d_2 , zcosa  => wrk_2d_3
-      USE wrk_nemo, ONLY:   zhpiorg => wrk_3d_1 , zhpirot => wrk_3d_2
-      USE wrk_nemo, ONLY:   zhpitra => wrk_3d_3 , zhpine  => wrk_3d_4
-      USE wrk_nemo, ONLY:   zhpjorg => wrk_3d_5 , zhpjrot => wrk_3d_6
-      USE wrk_nemo, ONLY:   zhpjtra => wrk_3d_7 , zhpjne  => wrk_3d_8
+      INTEGER, PARAMETER  :: polynomial_type = 1    ! 1: cubic spline, 2: linear
+      INTEGER, INTENT(in) ::   kt                   ! ocean time-step index
       !!
-      INTEGER, INTENT(in) ::   kt    ! ocean time-step index
+      INTEGER  ::   ji, jj, jk, jkk                 ! dummy loop indices
+      REAL(wp) ::   zcoef0, znad                    ! temporary scalars
       !!
-      INTEGER  ::   ji, jj, jk          ! dummy loop indices
-      REAL(wp) ::   zforg, zcoef0, zuap, zmskd1, zmskd1m   ! temporary scalar
-      REAL(wp) ::   zfrot        , zvap, zmskd2, zmskd2m   !    "         "
+      !! The local variables for the correction term
+      INTEGER  :: jk1, jis, jid, jjs, jjd
+      REAL(wp) :: zuijk, zvijk, zpwes, zpwed, zpnss, zpnsd, zdeps
+      REAL(wp) :: zrhdt1
+      REAL(wp) :: zdpdx1, zdpdx2, zdpdy1, zdpdy2
+      REAL(wp), POINTER, DIMENSION(:,:,:) ::   zdept, zrhh
+      REAL(wp), POINTER, DIMENSION(:,:,:) ::   zhpi, zu, zv, fsp, xsp, asp, bsp, csp, dsp
       !!----------------------------------------------------------------------
-
-      IF( wrk_in_use(2, 1,2,3)             .OR.   &
-          wrk_in_use(3, 1,2,3,4,5,6,7,8) ) THEN
-         CALL ctl_stop('dyn:hpg_rot: requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
-
+      !
+      CALL wrk_alloc( jpi,jpj,jpk, zhpi, zu, zv, fsp, xsp, asp, bsp, csp, dsp )
+      CALL wrk_alloc( jpi,jpj,jpk, zdept, zrhh )
+      !
       IF( kt == nit000 ) THEN
          IF(lwp) WRITE(numout,*)
-         IF(lwp) WRITE(numout,*) 'dyn:hpg_rot : hydrostatic pressure gradient trend'
-         IF(lwp) WRITE(numout,*) '~~~~~~~~~~~   s-coordinate case, rotated axes scheme used'
+         IF(lwp) WRITE(numout,*) 'dyn:hpg_prj : hydrostatic pressure gradient trend'
+         IF(lwp) WRITE(numout,*) '~~~~~~~~~~~   s-coordinate case, cubic spline pressure Jacobian'
       ENDIF
 
-      ! -------------------------------
-      !  Local constant initialization
-      ! -------------------------------
-      zcoef0 = - grav * 0.5_wp
-      zforg  = 0.95_wp
-      zfrot  = 1._wp - zforg
+      !!----------------------------------------------------------------------
+      ! Local constant initialization
+      zcoef0 = - grav
+      znad = 0.0_wp
+      IF( lk_vvl ) znad = 1._wp
 
-      ! inverse of the distance between 2 diagonal T-points (defined at F-point) (here zcoef0/distance)
-      zdistr(:,:) = zcoef0 / SQRT( e1f(:,:)*e1f(:,:) + e2f(:,:)*e1f(:,:) )
+      ! Clean 3-D work arrays
+      zhpi(:,:,:) = 0._wp
+      zrhh(:,:,:) = rhd(:,:,:)
 
-      ! sinus and cosinus of diagonal angle at F-point
-      zsina(:,:) = ATAN2( e2f(:,:), e1f(:,:) )
-      zcosa(:,:) = COS( zsina(:,:) )
-      zsina(:,:) = SIN( zsina(:,:) )
+      ! Preparing vertical density profile "zrhh(:,:,:)" for hybrid-sco coordinate
+      DO jj = 1, jpj
+        DO ji = 1, jpi
+          jk = mbathy(ji,jj)
+          IF( jk <= 0 ) THEN; zrhh(ji,jj,:) = 0._wp
+          ELSE IF(jk == 1) THEN; zrhh(ji,jj, jk+1:jpk) = rhd(ji,jj,jk)
+          ELSE IF(jk < jpkm1) THEN
+             DO jkk = jk+1, jpk
+                zrhh(ji,jj,jkk) = interp1(fsde3w(ji,jj,jkk),   fsde3w(ji,jj,jkk-1), &
+                                         fsde3w(ji,jj,jkk-2), rhd(ji,jj,jkk-1), rhd(ji,jj,jkk-2))
+             END DO
+          ENDIF
+        END DO
+      END DO
 
-      ! ---------------
-      !  Surface value
-      ! ---------------
-      ! compute and add to the general trend the pressure gradients along the axes
+      ! Transfer the depth of "T(:,:,:)" to vertical coordinate "zdept(:,:,:)"
+      DO jj = 1, jpj;   DO ji = 1, jpi
+          zdept(ji,jj,1) = 0.5_wp * fse3w(ji,jj,1) - sshn(ji,jj) * znad
+      END DO        ;   END DO
+
+      DO jk = 2, jpk;   DO jj = 1, jpj;   DO ji = 1, jpi
+          zdept(ji,jj,jk) = zdept(ji,jj,jk-1) + fse3w(ji,jj,jk)
+      END DO        ;   END DO        ;   END DO
+
+      fsp(:,:,:) = zrhh(:,:,:)
+      xsp(:,:,:) = zdept(:,:,:)
+
+      ! Construct the vertical density profile with the
+      ! constrained cubic spline interpolation
+      ! rho(z) = asp + bsp*z + csp*z^2 + dsp*z^3
+      CALL cspline(fsp,xsp,asp,bsp,csp,dsp,polynomial_type)
+
+      ! Integrate the hydrostatic pressure "zhpi(:,:,:)" at "T(ji,jj,1)"
+      DO jj = 2, jpj
+        DO ji = 2, jpi
+          zrhdt1 = zrhh(ji,jj,1) - interp3(zdept(ji,jj,1),asp(ji,jj,1), &
+                                         bsp(ji,jj,1),   csp(ji,jj,1), &
+                                         dsp(ji,jj,1) ) * 0.25_wp * fse3w(ji,jj,1)
+
+          ! assuming linear profile across the top half surface layer
+          zhpi(ji,jj,1) =  0.5_wp * fse3w(ji,jj,1) * zrhdt1
+        END DO
+      END DO
+
+      ! Calculate the pressure "zhpi(:,:,:)" at "T(ji,jj,2:jpkm1)"
+      DO jk = 2, jpkm1
+        DO jj = 2, jpj
+          DO ji = 2, jpi
+            zhpi(ji,jj,jk) = zhpi(ji,jj,jk-1) +                          &
+                             integ_spline(zdept(ji,jj,jk-1), zdept(ji,jj,jk),&
+                                    asp(ji,jj,jk-1),    bsp(ji,jj,jk-1), &
+                                    csp(ji,jj,jk-1),    dsp(ji,jj,jk-1))
+          END DO
+        END DO
+      END DO
+
+      ! Z coordinate of U(ji,jj,1:jpkm1) and V(ji,jj,1:jpkm1)
       DO jj = 2, jpjm1
-         DO ji = fs_2, fs_jpim1   ! vector opt.
-            ! hydrostatic pressure gradient along s-surfaces
-            zhpiorg(ji,jj,1) = zcoef0 / e1u(ji,jj) * (  fse3t(ji+1,jj,1) * rhd(ji+1,jj,1)   &
-               &                                      - fse3t(ji  ,jj,1) * rhd(ji  ,jj,1)  )
-            zhpjorg(ji,jj,1) = zcoef0 / e2v(ji,jj) * (  fse3t(ji,jj+1,1) * rhd(ji,jj+1,1)   &
-               &                                      - fse3t(ji,jj  ,1) * rhd(ji,jj  ,1)  )
-            ! s-coordinate pressure gradient correction
-            zuap = -zcoef0 * ( rhd   (ji+1,jj  ,1) + rhd   (ji,jj,1) )   &
-               &           * ( fsdept(ji+1,jj  ,1) - fsdept(ji,jj,1) ) / e1u(ji,jj)
-            zvap = -zcoef0 * ( rhd   (ji  ,jj+1,1) + rhd   (ji,jj,1) )   &
-               &           * ( fsdept(ji  ,jj+1,1) - fsdept(ji,jj,1) ) / e2v(ji,jj)
-            ! add to the general momentum trend
-            ua(ji,jj,1) = ua(ji,jj,1) + zforg * ( zhpiorg(ji,jj,1) + zuap )
-            va(ji,jj,1) = va(ji,jj,1) + zforg * ( zhpjorg(ji,jj,1) + zvap )
-         END DO
+        DO ji = 2, jpim1
+          zu(ji,jj,1) = - ( fse3u(ji,jj,1) - sshu_n(ji,jj) * znad)
+          zv(ji,jj,1) = - ( fse3v(ji,jj,1) - sshv_n(ji,jj) * znad)
+        END DO
       END DO
 
-      ! compute the pressure gradients in the diagonal directions
-      DO jj = 1, jpjm1
-         DO ji = 1, fs_jpim1   ! vector opt.
-            zmskd1 = tmask(ji+1,jj+1,1) * tmask(ji  ,jj,1)      ! mask in the 1st diagnonal
-            zmskd2 = tmask(ji  ,jj+1,1) * tmask(ji+1,jj,1)      ! mask in the 2nd diagnonal
-            ! hydrostatic pressure gradient along s-surfaces
-            zhpitra(ji,jj,1) = zdistr(ji,jj) * zmskd1 * (  fse3t(ji+1,jj+1,1) * rhd(ji+1,jj+1,1)   &
-               &                                         - fse3t(ji  ,jj  ,1) * rhd(ji  ,jj  ,1)  )
-            zhpjtra(ji,jj,1) = zdistr(ji,jj) * zmskd2 * (  fse3t(ji  ,jj+1,1) * rhd(ji  ,jj+1,1)   &
-               &                                         - fse3t(ji+1,jj  ,1) * rhd(ji+1,jj  ,1)  )
-            ! s-coordinate pressure gradient correction
-            zuap = -zdistr(ji,jj) * zmskd1 * ( rhd   (ji+1,jj+1,1) + rhd   (ji  ,jj,1) )   &
-               &                           * ( fsdept(ji+1,jj+1,1) - fsdept(ji  ,jj,1) )
-            zvap = -zdistr(ji,jj) * zmskd2 * ( rhd   (ji  ,jj+1,1) + rhd   (ji+1,jj,1) )   &
-               &                           * ( fsdept(ji  ,jj+1,1) - fsdept(ji+1,jj,1) )
-            ! back rotation
-            zhpine(ji,jj,1) = zcosa(ji,jj) * ( zhpitra(ji,jj,1) + zuap )   &
-               &            - zsina(ji,jj) * ( zhpjtra(ji,jj,1) + zvap )
-            zhpjne(ji,jj,1) = zsina(ji,jj) * ( zhpitra(ji,jj,1) + zuap )   &
-               &            + zcosa(ji,jj) * ( zhpjtra(ji,jj,1) + zvap )
-         END DO
-      END DO
-
-      ! interpolate and add to the general trend the diagonal gradient
-      DO jj = 2, jpjm1
-         DO ji = fs_2, fs_jpim1   ! vector opt.
-            ! averaging
-            zhpirot(ji,jj,1) = 0.5 * ( zhpine(ji,jj,1) + zhpine(ji  ,jj-1,1) )
-            zhpjrot(ji,jj,1) = 0.5 * ( zhpjne(ji,jj,1) + zhpjne(ji-1,jj  ,1) )
-            ! add to the general momentum trend
-            ua(ji,jj,1) = ua(ji,jj,1) + zfrot * zhpirot(ji,jj,1) 
-            va(ji,jj,1) = va(ji,jj,1) + zfrot * zhpjrot(ji,jj,1) 
-         END DO
-      END DO
-
-      ! -----------------
-      ! 2. interior value (2=<jk=<jpkm1)
-      ! -----------------
-      ! compute and add to the general trend the pressure gradients along the axes
       DO jk = 2, jpkm1
-         DO jj = 2, jpjm1
-            DO ji = fs_2, fs_jpim1   ! vector opt.
-               ! hydrostatic pressure gradient along s-surfaces
-               zhpiorg(ji,jj,jk) = zhpiorg(ji,jj,jk-1)                                                 &
-                  &              +  zcoef0 / e1u(ji,jj) * (  fse3t(ji+1,jj,jk  ) * rhd(ji+1,jj,jk  )   &
-                  &                                        - fse3t(ji  ,jj,jk  ) * rhd(ji  ,jj,jk  )   &
-                  &                                        + fse3t(ji+1,jj,jk-1) * rhd(ji+1,jj,jk-1)   &
-                  &                                        - fse3t(ji  ,jj,jk-1) * rhd(ji  ,jj,jk-1)  )
-               zhpjorg(ji,jj,jk) = zhpjorg(ji,jj,jk-1)                                                 &
-                  &              +  zcoef0 / e2v(ji,jj) * (  fse3t(ji,jj+1,jk  ) * rhd(ji,jj+1,jk  )   &
-                  &                                        - fse3t(ji,jj  ,jk  ) * rhd(ji,jj,  jk  )   &
-                  &                                        + fse3t(ji,jj+1,jk-1) * rhd(ji,jj+1,jk-1)   &
-                  &                                        - fse3t(ji,jj  ,jk-1) * rhd(ji,jj,  jk-1)  )
-               ! s-coordinate pressure gradient correction
-               zuap = - zcoef0 * ( rhd   (ji+1,jj  ,jk) + rhd   (ji,jj,jk) )   &
-                  &            * ( fsdept(ji+1,jj  ,jk) - fsdept(ji,jj,jk) ) / e1u(ji,jj)
-               zvap = - zcoef0 * ( rhd   (ji  ,jj+1,jk) + rhd   (ji,jj,jk) )   &
-                  &            * ( fsdept(ji  ,jj+1,jk) - fsdept(ji,jj,jk) ) / e2v(ji,jj)
-               ! add to the general momentum trend
-               ua(ji,jj,jk) = ua(ji,jj,jk) + zforg*( zhpiorg(ji,jj,jk) + zuap )
-               va(ji,jj,jk) = va(ji,jj,jk) + zforg*( zhpjorg(ji,jj,jk) + zvap )
-            END DO
-         END DO
+        DO jj = 2, jpjm1
+          DO ji = 2, jpim1
+            zu(ji,jj,jk) = zu(ji,jj,jk-1)- fse3u(ji,jj,jk)
+            zv(ji,jj,jk) = zv(ji,jj,jk-1)- fse3v(ji,jj,jk)
+          END DO
+        END DO
       END DO
 
-      ! compute the pressure gradients in the diagonal directions
-      DO jk = 2, jpkm1
-         DO jj = 1, jpjm1
-            DO ji = 1, fs_jpim1   ! vector opt.
-               zmskd1  = tmask(ji+1,jj+1,jk  ) * tmask(ji  ,jj,jk  )      ! level jk   mask in the 1st diagnonal
-               zmskd1m = tmask(ji+1,jj+1,jk-1) * tmask(ji  ,jj,jk-1)      ! level jk-1    "               "     
-               zmskd2  = tmask(ji  ,jj+1,jk  ) * tmask(ji+1,jj,jk  )      ! level jk   mask in the 2nd diagnonal
-               zmskd2m = tmask(ji  ,jj+1,jk-1) * tmask(ji+1,jj,jk-1)      ! level jk-1    "               "     
-               ! hydrostatic pressure gradient along s-surfaces
-               zhpitra(ji,jj,jk) = zhpitra(ji,jj,jk-1)                                                       &
-                  &              + zdistr(ji,jj) * zmskd1  * ( fse3t(ji+1,jj+1,jk  ) * rhd(ji+1,jj+1,jk)     &
-                  &                                           -fse3t(ji  ,jj  ,jk  ) * rhd(ji  ,jj  ,jk) )   &
-                  &              + zdistr(ji,jj) * zmskd1m * ( fse3t(ji+1,jj+1,jk-1) * rhd(ji+1,jj+1,jk-1)   &
-                  &                                           -fse3t(ji  ,jj  ,jk-1) * rhd(ji  ,jj  ,jk-1) )
-               zhpjtra(ji,jj,jk) = zhpjtra(ji,jj,jk-1)                                                       &
-                  &              + zdistr(ji,jj) * zmskd2  * ( fse3t(ji  ,jj+1,jk  ) * rhd(ji  ,jj+1,jk)     &
-                  &                                           -fse3t(ji+1,jj  ,jk  ) * rhd(ji+1,jj,  jk) )   &
-                  &              + zdistr(ji,jj) * zmskd2m * ( fse3t(ji  ,jj+1,jk-1) * rhd(ji  ,jj+1,jk-1)   &
-                  &                                           -fse3t(ji+1,jj  ,jk-1) * rhd(ji+1,jj,  jk-1) )
-               ! s-coordinate pressure gradient correction
-               zuap = - zdistr(ji,jj) * zmskd1 * ( rhd   (ji+1,jj+1,jk) + rhd   (ji  ,jj,jk) )   &
-                  &                            * ( fsdept(ji+1,jj+1,jk) - fsdept(ji  ,jj,jk) )
-               zvap = - zdistr(ji,jj) * zmskd2 * ( rhd   (ji  ,jj+1,jk) + rhd   (ji+1,jj,jk) )   &
-                  &                            * ( fsdept(ji  ,jj+1,jk) - fsdept(ji+1,jj,jk) )
-               ! back rotation
-               zhpine(ji,jj,jk) = zcosa(ji,jj) * ( zhpitra(ji,jj,jk) + zuap )   &
-                  &             - zsina(ji,jj) * ( zhpjtra(ji,jj,jk) + zvap )
-               zhpjne(ji,jj,jk) = zsina(ji,jj) * ( zhpitra(ji,jj,jk) + zuap )   &
-                  &             + zcosa(ji,jj) * ( zhpjtra(ji,jj,jk) + zvap )
-            END DO
-         END DO
+      DO jk = 1, jpkm1
+        DO jj = 2, jpjm1
+          DO ji = 2, jpim1
+            zu(ji,jj,jk) = zu(ji,jj,jk) + 0.5_wp * fse3u(ji,jj,jk)
+            zv(ji,jj,jk) = zv(ji,jj,jk) + 0.5_wp * fse3v(ji,jj,jk)
+          END DO
+        END DO
       END DO
 
-      ! interpolate and add to the general trend
-      DO jk = 2, jpkm1
-         DO jj = 2, jpjm1
-            DO ji = fs_2, fs_jpim1   ! vector opt.
-               ! averaging
-               zhpirot(ji,jj,jk) = 0.5 * ( zhpine(ji,jj,jk) + zhpine(ji  ,jj-1,jk) )
-               zhpjrot(ji,jj,jk) = 0.5 * ( zhpjne(ji,jj,jk) + zhpjne(ji-1,jj  ,jk) )
-               ! add to the general momentum trend
-               ua(ji,jj,jk) = ua(ji,jj,jk) + zfrot * zhpirot(ji,jj,jk) 
-               va(ji,jj,jk) = va(ji,jj,jk) + zfrot * zhpjrot(ji,jj,jk) 
-            END DO
-         END DO
+      DO jk = 1, jpkm1
+        DO jj = 2, jpjm1
+          DO ji = 2, jpim1
+            zu(ji,jj,jk) = min(zu(ji,jj,jk), max(-zdept(ji,jj,jk), -zdept(ji+1,jj,jk)))
+            zu(ji,jj,jk) = max(zu(ji,jj,jk), min(-zdept(ji,jj,jk), -zdept(ji+1,jj,jk)))
+            zv(ji,jj,jk) = min(zv(ji,jj,jk), max(-zdept(ji,jj,jk), -zdept(ji,jj+1,jk)))
+            zv(ji,jj,jk) = max(zv(ji,jj,jk), min(-zdept(ji,jj,jk), -zdept(ji,jj+1,jk)))
+          END DO
+        END DO
+      END DO
+
+
+      DO jk = 1, jpkm1
+        DO jj = 2, jpjm1
+          DO ji = 2, jpim1
+            zpwes = 0._wp; zpwed = 0._wp
+            zpnss = 0._wp; zpnsd = 0._wp
+            zuijk = zu(ji,jj,jk)
+            zvijk = zv(ji,jj,jk)
+
+            !!!!!     for u equation
+            IF( jk <= mbku(ji,jj) ) THEN
+               IF( -zdept(ji+1,jj,jk) >= -zdept(ji,jj,jk) ) THEN
+                 jis = ji + 1; jid = ji
+               ELSE
+                 jis = ji;     jid = ji +1
+               ENDIF
+
+               ! integrate the pressure on the shallow side
+               jk1 = jk
+               DO WHILE ( -zdept(jis,jj,jk1) > zuijk )
+                 IF( jk1 == mbku(ji,jj) ) THEN
+                   zuijk = -zdept(jis,jj,jk1)
+                   EXIT
+                 ENDIF
+                 zdeps = MIN(zdept(jis,jj,jk1+1), -zuijk)
+                 zpwes = zpwes +                                    &
+                      integ_spline(zdept(jis,jj,jk1), zdeps,            &
+                             asp(jis,jj,jk1),    bsp(jis,jj,jk1), &
+                             csp(jis,jj,jk1),    dsp(jis,jj,jk1))
+                 jk1 = jk1 + 1
+               END DO
+
+               ! integrate the pressure on the deep side
+               jk1 = jk
+               DO WHILE ( -zdept(jid,jj,jk1) < zuijk )
+                 IF( jk1 == 1 ) THEN
+                   zdeps = zdept(jid,jj,1) + MIN(zuijk, sshn(jid,jj)*znad)
+                   zrhdt1 = zrhh(jid,jj,1) - interp3(zdept(jid,jj,1), asp(jid,jj,1), &
+                                                     bsp(jid,jj,1),   csp(jid,jj,1), &
+                                                     dsp(jid,jj,1)) * zdeps
+                   zpwed  = zpwed + 0.5_wp * (zrhh(jid,jj,1) + zrhdt1) * zdeps
+                   EXIT
+                 ENDIF
+                 zdeps = MAX(zdept(jid,jj,jk1-1), -zuijk)
+                 zpwed = zpwed +                                        &
+                        integ_spline(zdeps,              zdept(jid,jj,jk1), &
+                               asp(jid,jj,jk1-1), bsp(jid,jj,jk1-1),  &
+                               csp(jid,jj,jk1-1), dsp(jid,jj,jk1-1) )
+                 jk1 = jk1 - 1
+               END DO
+
+               ! update the momentum trends in u direction
+
+               zdpdx1 = zcoef0 / e1u(ji,jj) * (zhpi(ji+1,jj,jk) - zhpi(ji,jj,jk))
+               IF( lk_vvl ) THEN
+                 zdpdx2 = zcoef0 / e1u(ji,jj) * &
+                         ( REAL(jis-jid, wp) * (zpwes + zpwed) + (sshn(ji+1,jj)-sshn(ji,jj)) )
+                ELSE
+                 zdpdx2 = zcoef0 / e1u(ji,jj) * REAL(jis-jid, wp) * (zpwes + zpwed)
+               ENDIF
+
+               ua(ji,jj,jk) = ua(ji,jj,jk) + (zdpdx1 + zdpdx2) * &
+               &           umask(ji,jj,jk) * tmask(ji,jj,jk) * tmask(ji+1,jj,jk)
+            ENDIF
+
+            !!!!!     for v equation
+            IF( jk <= mbkv(ji,jj) ) THEN
+               IF( -zdept(ji,jj+1,jk) >= -zdept(ji,jj,jk) ) THEN
+                 jjs = jj + 1; jjd = jj
+               ELSE
+                 jjs = jj    ; jjd = jj + 1
+               ENDIF
+
+               ! integrate the pressure on the shallow side
+               jk1 = jk
+               DO WHILE ( -zdept(ji,jjs,jk1) > zvijk )
+                 IF( jk1 == mbkv(ji,jj) ) THEN
+                   zvijk = -zdept(ji,jjs,jk1)
+                   EXIT
+                 ENDIF
+                 zdeps = MIN(zdept(ji,jjs,jk1+1), -zvijk)
+                 zpnss = zpnss +                                      &
+                        integ_spline(zdept(ji,jjs,jk1), zdeps,            &
+                               asp(ji,jjs,jk1),    bsp(ji,jjs,jk1), &
+                               csp(ji,jjs,jk1),    dsp(ji,jjs,jk1) )
+                 jk1 = jk1 + 1
+               END DO
+
+               ! integrate the pressure on the deep side
+               jk1 = jk
+               DO WHILE ( -zdept(ji,jjd,jk1) < zvijk )
+                 IF( jk1 == 1 ) THEN
+                   zdeps = zdept(ji,jjd,1) + MIN(zvijk, sshn(ji,jjd)*znad)
+                   zrhdt1 = zrhh(ji,jjd,1) - interp3(zdept(ji,jjd,1), asp(ji,jjd,1), &
+                                                     bsp(ji,jjd,1),   csp(ji,jjd,1), &
+                                                     dsp(ji,jjd,1) ) * zdeps
+                   zpnsd  = zpnsd + 0.5_wp * (zrhh(ji,jjd,1) + zrhdt1) * zdeps
+                   EXIT
+                 ENDIF
+                 zdeps = MAX(zdept(ji,jjd,jk1-1), -zvijk)
+                 zpnsd = zpnsd +                                        &
+                        integ_spline(zdeps,              zdept(ji,jjd,jk1), &
+                               asp(ji,jjd,jk1-1), bsp(ji,jjd,jk1-1), &
+                               csp(ji,jjd,jk1-1), dsp(ji,jjd,jk1-1) )
+                 jk1 = jk1 - 1
+               END DO
+
+
+               ! update the momentum trends in v direction
+
+               zdpdy1 = zcoef0 / e2v(ji,jj) * (zhpi(ji,jj+1,jk) - zhpi(ji,jj,jk))
+               IF( lk_vvl ) THEN
+                   zdpdy2 = zcoef0 / e2v(ji,jj) * &
+                           ( REAL(jjs-jjd, wp) * (zpnss + zpnsd) + (sshn(ji,jj+1)-sshn(ji,jj)) )
+               ELSE
+                   zdpdy2 = zcoef0 / e2v(ji,jj) * REAL(jjs-jjd, wp) * (zpnss + zpnsd )
+               ENDIF
+
+               va(ji,jj,jk) = va(ji,jj,jk) + (zdpdy1 + zdpdy2)*&
+               &              vmask(ji,jj,jk)*tmask(ji,jj,jk)*tmask(ji,jj+1,jk)
+            ENDIF
+
+
+           END DO
+        END DO
       END DO
       !
-      IF( wrk_not_released(2, 1,2,3)           .OR.   &
-          wrk_not_released(3, 1,2,3,4,5,6,7,8) )   CALL ctl_stop('dyn:hpg_rot: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi,jpj,jpk, zhpi, zu, zv, fsp, xsp, asp, bsp, csp, dsp )
+      CALL wrk_dealloc( jpi,jpj,jpk, zdept, zrhh )
       !
-   END SUBROUTINE hpg_rot
+   END SUBROUTINE hpg_prj
+
+   SUBROUTINE cspline(fsp, xsp, asp, bsp, csp, dsp, polynomial_type)
+      !!----------------------------------------------------------------------
+      !!                 ***  ROUTINE cspline  ***
+      !!
+      !! ** Purpose :   constrained cubic spline interpolation
+      !!
+      !! ** Method  :   f(x) = asp + bsp*x + csp*x^2 + dsp*x^3
+      !! Reference: CJC Kruger, Constrained Cubic Spline Interpoltation
+      !!
+      !!----------------------------------------------------------------------
+      IMPLICIT NONE
+      REAL(wp), DIMENSION(:,:,:), INTENT(in)  :: fsp, xsp           ! value and coordinate
+      REAL(wp), DIMENSION(:,:,:), INTENT(out) :: asp, bsp, csp, dsp ! coefficients of
+                                                                    ! the interpoated function
+      INTEGER, INTENT(in) :: polynomial_type                        ! 1: cubic spline
+                                                                    ! 2: Linear
+
+      ! Local Variables
+      INTEGER  ::   ji, jj, jk                 ! dummy loop indices
+      INTEGER  ::   jpi, jpj, jpkm1
+      REAL(wp) ::   zdf1, zdf2, zddf1, zddf2, ztmp1, ztmp2, zdxtmp
+      REAL(wp) ::   zdxtmp1, zdxtmp2, zalpha
+      REAL(wp) ::   zdf(size(fsp,3))
+      !!----------------------------------------------------------------------
+
+      jpi   = size(fsp,1)
+      jpj   = size(fsp,2)
+      jpkm1 = size(fsp,3) - 1
+
+
+      IF (polynomial_type == 1) THEN     ! Constrained Cubic Spline
+         DO ji = 1, jpi
+            DO jj = 1, jpj
+           !!Fritsch&Butland's method, 1984 (preferred, but more computation)
+           !    DO jk = 2, jpkm1-1
+           !       zdxtmp1 = xsp(ji,jj,jk)   - xsp(ji,jj,jk-1)
+           !       zdxtmp2 = xsp(ji,jj,jk+1) - xsp(ji,jj,jk)
+           !       zdf1    = ( fsp(ji,jj,jk)   - fsp(ji,jj,jk-1) ) / zdxtmp1
+           !       zdf2    = ( fsp(ji,jj,jk+1) - fsp(ji,jj,jk)   ) / zdxtmp2
+           !
+           !       zalpha = ( zdxtmp1 + 2._wp * zdxtmp2 ) / ( zdxtmp1 + zdxtmp2 ) / 3._wp
+           !
+           !       IF(zdf1 * zdf2 <= 0._wp) THEN
+           !           zdf(jk) = 0._wp
+           !       ELSE
+           !         zdf(jk) = zdf1 * zdf2 / ( ( 1._wp - zalpha ) * zdf1 + zalpha * zdf2 )
+           !       ENDIF
+           !    END DO
+
+           !!Simply geometric average
+               DO jk = 2, jpkm1-1
+                  zdf1 = (fsp(ji,jj,jk) - fsp(ji,jj,jk-1)) / (xsp(ji,jj,jk) - xsp(ji,jj,jk-1))
+                  zdf2 = (fsp(ji,jj,jk+1) - fsp(ji,jj,jk)) / (xsp(ji,jj,jk+1) - xsp(ji,jj,jk))
+
+                  IF(zdf1 * zdf2 <= 0._wp) THEN
+                     zdf(jk) = 0._wp
+                  ELSE
+                     zdf(jk) = 2._wp * zdf1 * zdf2 / (zdf1 + zdf2)
+                  ENDIF
+               END DO
+
+               zdf(1)     = 1.5_wp * ( fsp(ji,jj,2) - fsp(ji,jj,1) ) / &
+                          &          ( xsp(ji,jj,2) - xsp(ji,jj,1) ) -  0.5_wp * zdf(2)
+               zdf(jpkm1) = 1.5_wp * ( fsp(ji,jj,jpkm1) - fsp(ji,jj,jpkm1-1) ) / &
+                          &          ( xsp(ji,jj,jpkm1) - xsp(ji,jj,jpkm1-1) ) - &
+                          & 0.5_wp * zdf(jpkm1 - 1)
+
+               DO jk = 1, jpkm1 - 1
+                 zdxtmp = xsp(ji,jj,jk+1) - xsp(ji,jj,jk)
+                 ztmp1  = (zdf(jk+1) + 2._wp * zdf(jk)) / zdxtmp
+                 ztmp2  =  6._wp * (fsp(ji,jj,jk+1) - fsp(ji,jj,jk)) / zdxtmp / zdxtmp
+                 zddf1  = -2._wp * ztmp1 + ztmp2
+                 ztmp1  = (2._wp * zdf(jk+1) + zdf(jk)) / zdxtmp
+                 zddf2  =  2._wp * ztmp1 - ztmp2
+
+                 dsp(ji,jj,jk) = (zddf2 - zddf1) / 6._wp / zdxtmp
+                 csp(ji,jj,jk) = ( xsp(ji,jj,jk+1) * zddf1 - xsp(ji,jj,jk)*zddf2 ) / 2._wp / zdxtmp
+                 bsp(ji,jj,jk) = ( fsp(ji,jj,jk+1) - fsp(ji,jj,jk) ) / zdxtmp - &
+                               & csp(ji,jj,jk) * ( xsp(ji,jj,jk+1) + xsp(ji,jj,jk) ) - &
+                               & dsp(ji,jj,jk) * ((xsp(ji,jj,jk+1) + xsp(ji,jj,jk))**2 - &
+                               &                   xsp(ji,jj,jk+1) * xsp(ji,jj,jk))
+                 asp(ji,jj,jk) = fsp(ji,jj,jk) - xsp(ji,jj,jk) * (bsp(ji,jj,jk) + &
+                               &                (xsp(ji,jj,jk) * (csp(ji,jj,jk) + &
+                               &                 dsp(ji,jj,jk) * xsp(ji,jj,jk))))
+               END DO
+            END DO
+         END DO
+
+      ELSE IF (polynomial_type == 2) THEN     ! Linear
+         DO ji = 1, jpi
+            DO jj = 1, jpj
+               DO jk = 1, jpkm1-1
+                  zdxtmp =xsp(ji,jj,jk+1) - xsp(ji,jj,jk)
+                  ztmp1 = fsp(ji,jj,jk+1) - fsp(ji,jj,jk)
+
+                  dsp(ji,jj,jk) = 0._wp
+                  csp(ji,jj,jk) = 0._wp
+                  bsp(ji,jj,jk) = ztmp1 / zdxtmp
+                  asp(ji,jj,jk) = fsp(ji,jj,jk) - bsp(ji,jj,jk) * xsp(ji,jj,jk)
+               END DO
+            END DO
+         END DO
+
+      ELSE
+           CALL ctl_stop( 'invalid polynomial type in cspline' )
+      ENDIF
+
+
+   END SUBROUTINE cspline
+
+
+   FUNCTION interp1(x, xl, xr, fl, fr)  RESULT(f)
+      !!----------------------------------------------------------------------
+      !!                 ***  ROUTINE interp1  ***
+      !!
+      !! ** Purpose :   1-d linear interpolation
+      !!
+      !! ** Method  :
+      !!                interpolation is straight forward
+      !!                extrapolation is also permitted (no value limit)
+      !!
+      !!----------------------------------------------------------------------
+      IMPLICIT NONE
+      REAL(wp), INTENT(in) ::  x, xl, xr, fl, fr
+      REAL(wp)             ::  f ! result of the interpolation (extrapolation)
+      REAL(wp)             ::  zdeltx
+      !!----------------------------------------------------------------------
+
+      zdeltx = xr - xl
+      IF(abs(zdeltx) <= 10._wp * EPSILON(x)) THEN
+        f = 0.5_wp * (fl + fr)
+      ELSE
+        f = ( (x - xl ) * fr - ( x - xr ) * fl ) / zdeltx
+      ENDIF
+
+   END FUNCTION interp1
+
+   FUNCTION interp2(x, a, b, c, d)  RESULT(f)
+      !!----------------------------------------------------------------------
+      !!                 ***  ROUTINE interp1  ***
+      !!
+      !! ** Purpose :   1-d constrained cubic spline interpolation
+      !!
+      !! ** Method  :  cubic spline interpolation
+      !!
+      !!----------------------------------------------------------------------
+      IMPLICIT NONE
+      REAL(wp), INTENT(in) ::  x, a, b, c, d
+      REAL(wp)             ::  f ! value from the interpolation
+      !!----------------------------------------------------------------------
+
+      f = a + x* ( b + x * ( c + d * x ) )
+
+   END FUNCTION interp2
+
+
+   FUNCTION interp3(x, a, b, c, d)  RESULT(f)
+      !!----------------------------------------------------------------------
+      !!                 ***  ROUTINE interp1  ***
+      !!
+      !! ** Purpose :   Calculate the first order of deriavtive of
+      !!                a cubic spline function y=a+b*x+c*x^2+d*x^3
+      !!
+      !! ** Method  :   f=dy/dx=b+2*c*x+3*d*x^2
+      !!
+      !!----------------------------------------------------------------------
+      IMPLICIT NONE
+      REAL(wp), INTENT(in) ::  x, a, b, c, d
+      REAL(wp)             ::  f ! value from the interpolation
+      !!----------------------------------------------------------------------
+
+      f = b + x * ( 2._wp * c + 3._wp * d * x)
+
+   END FUNCTION interp3
+
+
+   FUNCTION integ_spline(xl, xr, a, b, c, d)  RESULT(f)
+      !!----------------------------------------------------------------------
+      !!                 ***  ROUTINE interp1  ***
+      !!
+      !! ** Purpose :   1-d constrained cubic spline integration
+      !!
+      !! ** Method  :  integrate polynomial a+bx+cx^2+dx^3 from xl to xr
+      !!
+      !!----------------------------------------------------------------------
+      IMPLICIT NONE
+      REAL(wp), INTENT(in) ::  xl, xr, a, b, c, d
+      REAL(wp)             ::  za1, za2, za3
+      REAL(wp)             ::  f                   ! integration result
+      !!----------------------------------------------------------------------
+
+      za1 = 0.5_wp * b
+      za2 = c / 3.0_wp
+      za3 = 0.25_wp * d
+
+      f  = xr * ( a + xr * ( za1 + xr * ( za2 + za3 * xr ) ) ) - &
+         & xl * ( a + xl * ( za1 + xl * ( za2 + za3 * xl ) ) )
+
+   END FUNCTION integ_spline
+
 
    !!======================================================================
 END MODULE dynhpg
+

@@ -16,6 +16,7 @@ MODULE floblk
    USE obc_par         ! open boundary condition parameters
    USE in_out_manager  ! I/O manager
    USE lib_mpp         ! distribued memory computing library
+   USE wrk_nemo        ! working array
 
    IMPLICIT NONE
    PRIVATE
@@ -26,7 +27,7 @@ MODULE floblk
 #  include "domzgr_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: floblk.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -46,33 +47,37 @@ CONTAINS
       !!
       INTEGER :: jfl              ! dummy loop arguments
       INTEGER :: ind, ifin, iloop
-      INTEGER , DIMENSION ( jpnfl )  ::   &
-         iil, ijl, ikl,             &     ! index of nearest mesh
-         iiloc , ijloc,             &
-         iiinfl, ijinfl, ikinfl,    &     ! index of input mesh of the float.
-         iioutfl, ijoutfl, ikoutfl        ! index of output mesh of the float.
-      REAL(wp) , DIMENSION ( jpnfl )  ::    &
-         zgifl, zgjfl, zgkfl,       &     ! position of floats, index on 
-                                          ! velocity mesh.
-         ztxfl, ztyfl, ztzfl,       &     ! time for a float to quit the mesh
-                                          ! across one of the face x,y and z 
-         zttfl,                     &     ! time for a float to quit the mesh 
-         zagefl,                    &     ! time during which, trajectorie of 
-                                          ! the float has been computed
-         zagenewfl,                 &     ! new age of float after calculation 
-                                          ! of new position
-         zufl, zvfl, zwfl,          &     ! interpolated vel. at float position
-         zudfl, zvdfl, zwdfl,       &     ! velocity diff input/output of mesh
-         zgidfl, zgjdfl, zgkdfl           ! direction index of float 
       REAL(wp)   ::       &
          zuinfl,zvinfl,zwinfl,      &     ! transport across the input face
          zuoutfl,zvoutfl,zwoutfl,   &     ! transport across the ouput face
          zvol,                      &     ! volume of the mesh
          zsurfz,                    &     ! surface of the face of the mesh 
          zind
+
       REAL(wp), DIMENSION ( 2 )  ::   zsurfx, zsurfy   ! surface of the face of the mesh
+
+      INTEGER  , POINTER, DIMENSION ( : )  ::   iil, ijl, ikl                   ! index of nearest mesh
+      INTEGER  , POINTER, DIMENSION ( : )  ::   iiloc , ijloc              
+      INTEGER  , POINTER, DIMENSION ( : )  ::   iiinfl, ijinfl, ikinfl          ! index of input mesh of the float.
+      INTEGER  , POINTER, DIMENSION ( : )  ::   iioutfl, ijoutfl, ikoutfl       ! index of output mesh of the float.
+      REAL(wp) , POINTER, DIMENSION ( : )  ::   zgifl, zgjfl, zgkfl             ! position of floats, index on 
+      !                                                                         ! velocity mesh.
+      REAL(wp) , POINTER, DIMENSION ( : )  ::    ztxfl, ztyfl, ztzfl            ! time for a float to quit the mesh
+      !                                                                         ! across one of the face x,y and z 
+      REAL(wp) , POINTER, DIMENSION ( : )  ::    zttfl                          ! time for a float to quit the mesh 
+      REAL(wp) , POINTER, DIMENSION ( : )  ::    zagefl                         ! time during which, trajectorie of 
+      !                                                                         ! the float has been computed
+      REAL(wp) , POINTER, DIMENSION ( : )  ::   zagenewfl                       ! new age of float after calculation 
+      !                                                                         ! of new position
+      REAL(wp) , POINTER, DIMENSION ( : )  ::   zufl, zvfl, zwfl                ! interpolated vel. at float position
+      REAL(wp) , POINTER, DIMENSION ( : )  ::   zudfl, zvdfl, zwdfl             ! velocity diff input/output of mesh
+      REAL(wp) , POINTER, DIMENSION ( : )  ::   zgidfl, zgjdfl, zgkdfl          ! direction index of float
       !!---------------------------------------------------------------------
-      
+      CALL wrk_alloc( jpnfl , iil   , ijl   , ikl   , iiloc  ,  ijloc           )
+      CALL wrk_alloc( jpnfl , iiinfl, ijinfl, ikinfl, iioutfl, ijoutfl, ikoutfl )
+      CALL wrk_alloc( jpnfl , zgifl , zgjfl , zgkfl , ztxfl  , ztyfl  , ztzfl   , zttfl , zagefl, zagenewfl) 
+      CALL wrk_alloc( jpnfl , zufl  , zvfl  , zwfl  , zudfl  , zvdfl  , zwdfl   , zgidfl, zgjdfl, zgkdfl   )
+
       IF( kt == nit000 ) THEN
          IF(lwp) WRITE(numout,*)
          IF(lwp) WRITE(numout,*) 'flo_blk : compute Blanke trajectories for floats '
@@ -404,6 +409,11 @@ CONTAINS
          iloop = iloop + 1 
          GO TO 222
       ENDIF
+      !
+      CALL wrk_dealloc( jpnfl , iil   , ijl   , ikl   , iiloc  ,  ijloc           )
+      CALL wrk_dealloc( jpnfl , iiinfl, ijinfl, ikinfl, iioutfl, ijoutfl, ikoutfl )
+      CALL wrk_dealloc( jpnfl , zgifl , zgjfl , zgkfl , ztxfl  , ztyfl  , ztzfl   , zttfl , zagefl, zagenewfl) 
+      CALL wrk_dealloc( jpnfl , zufl  , zvfl  , zwfl  , zudfl  , zvdfl  , zwdfl   , zgidfl, zgjdfl, zgkdfl   )
       !
    END SUBROUTINE flo_blk
 

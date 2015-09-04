@@ -22,6 +22,7 @@ MODULE diahth
    USE in_out_manager  ! I/O manager
    USE lib_mpp         ! MPP library
    USE iom             ! I/O library
+   USE timing          ! preformance summary
 
    IMPLICIT NONE
    PRIVATE
@@ -40,7 +41,7 @@ MODULE diahth
 #  include "domzgr_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 4.0 , NEMO Consortium (2011)
-   !! $Id: diahth.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -108,6 +109,7 @@ CONTAINS
       REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:) ::   zthick     ! vertical integration thickness 
       REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:) ::   zdelr      ! delta rho equivalent to deltaT = 0.2
       !!----------------------------------------------------------------------
+      IF( nn_timing == 1 )   CALL timing_start('dia_hth')
 
       IF( kt == nit000 ) THEN
          !                                      ! allocate dia_hth array
@@ -171,11 +173,13 @@ CONTAINS
       DO jj = 1, jpj
          DO ji = 1, jpi
             IF( tmask(ji,jj,nla10) == 1. ) THEN
-               zu  =  1779.50 + 11.250*tn(ji,jj,nla10) - 3.80*sn(ji,jj,nla10) - 0.0745*tn(ji,jj,nla10)*tn(ji,jj,nla10)   &
-                  &                                                           - 0.0100*tn(ji,jj,nla10)*sn(ji,jj,nla10)
-               zv  =  5891.00 + 38.000*tn(ji,jj,nla10) + 3.00*sn(ji,jj,nla10) - 0.3750*tn(ji,jj,nla10)*tn(ji,jj,nla10)
-               zut =    11.25 -  0.149*tn(ji,jj,nla10) - 0.01*sn(ji,jj,nla10)
-               zvt =    38.00 -  0.750*tn(ji,jj,nla10)
+               zu  =  1779.50 + 11.250 * tsn(ji,jj,nla10,jp_tem) - 3.80   * tsn(ji,jj,nla10,jp_sal)                             &
+                  &                                              - 0.0745 * tsn(ji,jj,nla10,jp_tem) * tsn(ji,jj,nla10,jp_tem)   &
+                  &                                              - 0.0100 * tsn(ji,jj,nla10,jp_tem) * tsn(ji,jj,nla10,jp_sal)
+               zv  =  5891.00 + 38.000 * tsn(ji,jj,nla10,jp_tem) + 3.00   * tsn(ji,jj,nla10,jp_sal)                             &
+                  &                                              - 0.3750 * tsn(ji,jj,nla10,jp_tem) * tsn(ji,jj,nla10,jp_tem)
+               zut =    11.25 -  0.149 * tsn(ji,jj,nla10,jp_tem) - 0.01   * tsn(ji,jj,nla10,jp_sal)
+               zvt =    38.00 -  0.750 * tsn(ji,jj,nla10,jp_tem)
                zw  = (zu + 0.698*zv) * (zu + 0.698*zv)
                zdelr(ji,jj) = ztem2 * (1000.*(zut*zv - zvt*zu)/zw)
             ELSE
@@ -195,7 +199,7 @@ CONTAINS
             DO ji = 1, jpi
                !
                zzdep = fsdepw(ji,jj,jk)
-               zztmp = ( tn(ji,jj,jk-1) - tn(ji,jj,jk) ) / zzdep * tmask(ji,jj,jk)   ! vertical gradient of temperature (dT/dz)
+               zztmp = ( tsn(ji,jj,jk-1,jp_tem) - tsn(ji,jj,jk,jp_tem) ) / zzdep * tmask(ji,jj,jk)   ! vertical gradient of temperature (dT/dz)
                zzdep = zzdep * tmask(ji,jj,1)
 
                IF( zztmp > zmaxdzT(ji,jj) ) THEN                        
@@ -238,7 +242,7 @@ CONTAINS
                !
                zzdep = fsdepw(ji,jj,jk) * tmask(ji,jj,1)
                !
-               zztmp = tn(ji,jj,nla10) - tn(ji,jj,jk)                  ! - delta T(10m)
+               zztmp = tsn(ji,jj,nla10,jp_tem) - tsn(ji,jj,jk,jp_tem)  ! - delta T(10m)
                IF( ABS(zztmp) > ztem2 )      zabs2   (ji,jj) = zzdep   ! abs > 0.2
                IF(     zztmp  > ztem2 )      ztm2    (ji,jj) = zzdep   ! > 0.2
                zztmp = -zztmp                                          ! delta T(10m)
@@ -271,7 +275,7 @@ CONTAINS
       DO jk = 1, jpkm1   ! beware temperature is not always decreasing with depth => loop from top to bottom
          DO jj = 1, jpj
             DO ji = 1, jpi
-               zztmp = tn(ji,jj,jk)
+               zztmp = tsn(ji,jj,jk,jp_tem)
                IF( zztmp >= 20. )   ik20(ji,jj) = jk
                IF( zztmp >= 28. )   ik28(ji,jj) = jk
             END DO
@@ -290,8 +294,8 @@ CONTAINS
             IF( iid /= 1 ) THEN 
                zztmp =      fsdept(ji,jj,iid  )   &                     ! linear interpolation
                   &  + (    fsdept(ji,jj,iid+1) - fsdept(ji,jj,iid)                       )   &
-                  &  * ( 20.*tmask(ji,jj,iid+1) -     tn(ji,jj,iid)                       )   &
-                  &  / (        tn(ji,jj,iid+1) -     tn(ji,jj,iid) + (1.-tmask(ji,jj,1)) )
+                  &  * ( 20.*tmask(ji,jj,iid+1) - tsn(ji,jj,iid,jp_tem)                       )   &
+                  &  / ( tsn(ji,jj,iid+1,jp_tem) - tsn(ji,jj,iid,jp_tem) + (1.-tmask(ji,jj,1)) )
                hd20(ji,jj) = MIN( zztmp , zzdep) * tmask(ji,jj,1)       ! bound by the ocean depth
             ELSE 
                hd20(ji,jj) = 0._wp
@@ -301,8 +305,8 @@ CONTAINS
             IF( iid /= 1 ) THEN 
                zztmp =      fsdept(ji,jj,iid  )   &                     ! linear interpolation
                   &  + (    fsdept(ji,jj,iid+1) - fsdept(ji,jj,iid)                       )   &
-                  &  * ( 28.*tmask(ji,jj,iid+1) -     tn(ji,jj,iid)                       )   &
-                  &  / (        tn(ji,jj,iid+1) -     tn(ji,jj,iid) + (1.-tmask(ji,jj,1)) )
+                  &  * ( 28.*tmask(ji,jj,iid+1) -    tsn(ji,jj,iid,jp_tem)                       )   &
+                  &  / (  tsn(ji,jj,iid+1,jp_tem) -    tsn(ji,jj,iid,jp_tem) + (1.-tmask(ji,jj,1)) )
                hd28(ji,jj) = MIN( zztmp , zzdep ) * tmask(ji,jj,1)      ! bound by the ocean depth
             ELSE 
                hd28(ji,jj) = 0._wp
@@ -326,24 +330,27 @@ CONTAINS
       END DO
       ! surface boundary condition
       IF( lk_vvl ) THEN   ;   zthick(:,:) = 0._wp       ;   htc3(:,:) = 0._wp                                   
-      ELSE                ;   zthick(:,:) = sshn(:,:)   ;   htc3(:,:) = tn(:,:,1) * sshn(:,:) * tmask(:,:,1)   
+      ELSE                ;   zthick(:,:) = sshn(:,:)   ;   htc3(:,:) = tsn(:,:,1,jp_tem) * sshn(:,:) * tmask(:,:,1)   
       ENDIF
       ! integration down to ilevel
       DO jk = 1, ilevel
          zthick(:,:) = zthick(:,:) + fse3t(:,:,jk)
-         htc3  (:,:) = htc3  (:,:) + fse3t(:,:,jk) * tn(:,:,jk) * tmask(:,:,jk)
+         htc3  (:,:) = htc3  (:,:) + fse3t(:,:,jk) * tsn(:,:,jk,jp_tem) * tmask(:,:,jk)
       END DO
       ! deepest layer
       zthick(:,:) = 300. - zthick(:,:)   !   remaining thickness to reach 300m
       DO jj = 1, jpj
          DO ji = 1, jpi
-            htc3(ji,jj) = htc3(ji,jj) + tn(ji,jj,ilevel+1) * MIN( fse3t(ji,jj,ilevel+1), zthick(ji,jj) ) * tmask(ji,jj,ilevel+1)
+            htc3(ji,jj) = htc3(ji,jj) + tsn(ji,jj,ilevel+1,jp_tem) * MIN( fse3t(ji,jj,ilevel+1), zthick(ji,jj) )   &
+               &                                                   * tmask(ji,jj,ilevel+1)
          END DO
       END DO
       ! from temperature to heat contain
       zcoef = rau0 * rcp
       htc3(:,:) = zcoef * htc3(:,:)
       CALL iom_put( "hc300", htc3 )      ! first 300m heat content
+      !
+      IF( nn_timing == 1 )   CALL timing_stop('dia_hth')
       !
    END SUBROUTINE dia_hth
 

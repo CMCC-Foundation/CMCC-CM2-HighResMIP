@@ -6,7 +6,7 @@
 !  wheneq
 !!----------------------------------------------------------------------
 !!  OPA 9.0 , LOCEAN-IPSL (2005) 
-!! $Id: lib_cray.f90 2528 2010-12-27 17:33:53Z rblod $ 
+!! $Id$ 
 !! This software is governed by the CeCILL licence see modipsl/doc/NEMO_CeCILL.txt 
 !!----------------------------------------------------------------------
 SUBROUTINE wheneq ( i, x, j, t, ind, nn )

@@ -8,6 +8,7 @@ MODULE phycst
    !!   NEMO      1.0  !  2002-08  (G. Madec, C. Ethe)  F90, add ice constants
    !!              -   !  2006-08  (G. Madec)  style 
    !!             3.2  !  2006-08  (S. Masson, G. Madec)  suppress useless variables + style 
+   !!             3.4  !  2011-11  (C. Harris)  minor changes for CICE constants 
    !!----------------------------------------------------------------------
 
    !!----------------------------------------------------------------------
@@ -26,9 +27,9 @@ MODULE phycst
 
    REAL(wp), PUBLIC ::   rpi = 3.141592653589793_wp             !: pi
    REAL(wp), PUBLIC ::   rad = 3.141592653589793_wp / 180._wp   !: conversion from degre into radian
-   REAL(wp), PUBLIC ::   rsmall = 0.5_wp * EPSILON( 1.e0_wp )         !: smallest real computer value
+   REAL(wp), PUBLIC ::   rsmall = 0.5 * EPSILON( 1.e0 )         !: smallest real computer value
    
-   REAL(wp), PUBLIC ::   rday = 24._wp*60._wp*60._wp       !: day (s)
+   REAL(wp), PUBLIC ::   rday = 24.*60.*60.       !: day (s)
    REAL(wp), PUBLIC ::   rsiyea                   !: sideral year (s)
    REAL(wp), PUBLIC ::   rsiday                   !: sideral day (s)
    REAL(wp), PUBLIC ::   raamo =  12._wp          !: number of months in one year
@@ -50,7 +51,11 @@ MODULE phycst
    REAL(wp), PUBLIC ::   rt0_ice  = 273.05_wp     !: melting point of ice   (Kelvin)
 #endif
 
+#if defined key_cice
+   REAL(wp), PUBLIC ::   rau0     = 1026._wp      !: reference volumic mass (density)  (kg/m3)
+#else
    REAL(wp), PUBLIC ::   rau0     = 1035._wp      !: reference volumic mass (density)  (kg/m3)
+#endif
    REAL(wp), PUBLIC ::   rau0r                    !: reference specific volume         (m3/kg)
 #if defined CCSMCOUPLED
    REAL(wp), PUBLIC ::   raufw    = SHR_CONST_RHOFW !: density of freshwater (lg/m3)
@@ -60,7 +65,7 @@ MODULE phycst
 #endif
    REAL(wp), PUBLIC ::   ro0cpr                   !: = 1. / ( rau0 * rcp )
 
-#if defined key_lim3
+#if defined key_lim3 || defined key_cice
    REAL(wp), PUBLIC ::   rcdsn   =   0.31_wp      !: thermal conductivity of snow
    REAL(wp), PUBLIC ::   rcdic   =   2.034396_wp  !: thermal conductivity of fresh ice
    REAL(wp), PUBLIC ::   cpic    = 2067.0         !: specific heat of sea ice
@@ -93,12 +98,13 @@ MODULE phycst
    REAL(wp), PUBLIC ::   cevap   =   2.5e+6_wp    !: latent heat of evaporation (water)
 #endif
    REAL(wp), PUBLIC ::   soce    =  34.7_wp       !: reference salinity of sea (psu)
+   REAL(wp), PUBLIC ::   cevap   =   2.5e+6_wp    !: latent heat of evaporation (water)
    REAL(wp), PUBLIC ::   srgamma =   0.9_wp       !: correction factor for solar radiation (Oberhuber, 1974)
    REAL(wp), PUBLIC ::   vkarmn  =   0.4_wp       !: von Karman constant
    REAL(wp), PUBLIC ::   stefan  =   5.67e-8_wp   !: Stefan-Boltzmann constant 
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: phycst.F90 2528 2010-12-27 17:33:53Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
    
@@ -114,12 +120,16 @@ CONTAINS
       !!----------------------------------------------------------------------
 
       !                                   ! Define additional parameters
-      rsiyea = 365.25_wp * rday * 2._wp * rpi / 6.283076_wp
-      rsiday = rday / ( 1._wp + rday / rsiyea )
-      omega  = 2._wp * rpi / rsiday 
+      rsiyea = 365.25 * rday * 2. * rpi / 6.283076
+      rsiday = rday / ( 1. + rday / rsiyea )
+#if defined key_cice
+      omega =  7.292116e-05
+#else
+      omega  = 2. * rpi / rsiday 
+#endif
 
-      rau0r  = 1._wp /   rau0  
-      ro0cpr = 1._wp / ( rau0 * rcp )
+      rau0r  = 1. /   rau0  
+      ro0cpr = 1. / ( rau0 * rcp )
 
 
       IF(lwp) THEN                        ! control print
@@ -171,6 +181,8 @@ CONTAINS
          WRITE(numout,*) '          fresh ice specific heat                   = ', cpic    , ' J/kg/K'
          WRITE(numout,*) '          latent heat of fusion of fresh ice / snow = ', lfus    , ' J/kg'
          WRITE(numout,*) '          latent heat of subl.  of fresh ice / snow = ', lsub    , ' J/kg'
+#elif defined key_cice
+         WRITE(numout,*) '          latent heat of fusion of fresh ice / snow = ', lfus    , ' J/kg'
 #else
          WRITE(numout,*) '          density times specific heat for snow      = ', rcpsn   , ' J/m^3/K' 
          WRITE(numout,*) '          density times specific heat for ice       = ', rcpic   , ' J/m^3/K'

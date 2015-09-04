@@ -7,14 +7,14 @@ MODULE bdytides
    !!            2.3  !  2008-01  (J.Holt)  Add date correction. Origins POLCOMS v6.3 2007
    !!            3.0  !  2008-04  (NEMO team)  add in the reference version
    !!            3.3  !  2010-09  (D.Storkey and E.O'Dea)  bug fixes
+   !!            3.4  !  2011     (D. Storkey) rewrite in preparation for OBC-BDY merge
    !!----------------------------------------------------------------------
 #if defined key_bdy
    !!----------------------------------------------------------------------
-   !!   'key_bdy'     Unstructured Open Boundary Condition
+   !!   'key_bdy'     Open Boundary Condition
    !!----------------------------------------------------------------------
    !!   PUBLIC
-   !!      tide_init     : read of namelist
-   !!      tide_data     : read in and initialisation of tidal constituents at boundary
+   !!      tide_init     : read of namelist and initialisation of tidal harmonics data
    !!      tide_update   : calculation of tidal forcing at each timestep
    !!   PRIVATE
    !!      uvset         :\
@@ -23,6 +23,7 @@ MODULE bdytides
    !!      ufset         : |
    !!      vset          :/
    !!----------------------------------------------------------------------
+   USE timing          ! Timing
    USE oce             ! ocean dynamics and tracers 
    USE dom_oce         ! ocean space and time domain
    USE iom
@@ -32,31 +33,29 @@ MODULE bdytides
    USE bdy_par         ! Unstructured boundary parameters
    USE bdy_oce         ! ocean open boundary conditions
    USE daymod          ! calendar
+   USE fldread, ONLY: fld_map
 
    IMPLICIT NONE
    PRIVATE
 
-   PUBLIC   tide_init     ! routine called in bdyini
-   PUBLIC   tide_data     ! routine called in bdyini
+   PUBLIC   tide_init     ! routine called in nemo_init
    PUBLIC   tide_update   ! routine called in bdydyn
 
-   LOGICAL, PUBLIC            ::   ln_tide_date          !: =T correct tide phases and amplitude for model start date
-   INTEGER, PUBLIC, PARAMETER ::   jptides_max = 15      !: Max number of tidal contituents
-   INTEGER, PUBLIC            ::   ntide                 !: Actual number of tidal constituents
+   TYPE, PUBLIC ::   TIDES_DATA     !: Storage for external tidal harmonics data
+      INTEGER                                ::   ncpt       !: Actual number of tidal components
+      REAL(wp), POINTER, DIMENSION(:)        ::   speed      !: Phase speed of tidal constituent (deg/hr)
+      REAL(wp), POINTER, DIMENSION(:,:,:)    ::   ssh        !: Tidal constituents : SSH
+      REAL(wp), POINTER, DIMENSION(:,:,:)    ::   u          !: Tidal constituents : U
+      REAL(wp), POINTER, DIMENSION(:,:,:)    ::   v          !: Tidal constituents : V
+   END TYPE TIDES_DATA
 
-   CHARACTER(len=80), PUBLIC                         ::   filtide    !: Filename root for tidal input files
-   CHARACTER(len= 4), PUBLIC, DIMENSION(jptides_max) ::   tide_cpt   !: Names of tidal components used.
+   INTEGER, PUBLIC, PARAMETER                  ::   jptides_max = 15      !: Max number of tidal contituents
 
-   INTEGER , PUBLIC, DIMENSION(jptides_max) ::   nindx        !: ???
-   REAL(wp), PUBLIC, DIMENSION(jptides_max) ::   tide_speed   !: Phase speed of tidal constituent (deg/hr)
-   
-   REAL(wp), DIMENSION(jpbdim,jptides_max)  ::   ssh1, ssh2   ! Tidal constituents : SSH
-   REAL(wp), DIMENSION(jpbdim,jptides_max)  ::   u1  , u2     ! Tidal constituents : U
-   REAL(wp), DIMENSION(jpbdim,jptides_max)  ::   v1  , v2     ! Tidal constituents : V
+   TYPE(TIDES_DATA), PUBLIC, DIMENSION(jp_bdy), TARGET ::   tides                 !: External tidal harmonics data
    
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: bdytides.F90 2528 2010-12-27 17:33:53Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -65,278 +64,280 @@ CONTAINS
       !!----------------------------------------------------------------------
       !!                    ***  SUBROUTINE tide_init  ***
       !!                     
-      !! ** Purpose : - Read in namelist for tides
+      !! ** Purpose : - Read in namelist for tides and initialise external
+      !!                tidal harmonics data
       !!
       !!----------------------------------------------------------------------
-      INTEGER ::   itide                  ! dummy loop index 
+      !! namelist variables
+      !!-------------------
+      LOGICAL                                   ::   ln_tide_date !: =T correct tide phases and amplitude for model start date
+      CHARACTER(len=80)                         ::   filtide      !: Filename root for tidal input files
+      CHARACTER(len= 4), DIMENSION(jptides_max) ::   tide_cpt     !: Names of tidal components used.
+      REAL(wp),          DIMENSION(jptides_max) ::   tide_speed   !: Phase speed of tidal constituent (deg/hr)
+      !!
+      INTEGER, DIMENSION(jptides_max)           ::   nindx              !: index of pre-set tidal components
+      INTEGER                                   ::   ib_bdy, itide, ib  !: dummy loop indices
+      INTEGER                                   ::   inum, igrd
+      INTEGER, DIMENSION(3)                     ::   ilen0              !: length of boundary data (from OBC arrays)
+      CHARACTER(len=80)                         ::   clfile             !: full file name for tidal input file 
+      REAL(wp)                                  ::   z_arg, z_atde, z_btde, z1t, z2t           
+      REAL(wp),DIMENSION(jptides_max)           ::   z_vplu, z_ftc
+      REAL(wp),ALLOCATABLE, DIMENSION(:,:,:)    ::   dta_read           !: work space to read in tidal harmonics data
+      !!
+      TYPE(TIDES_DATA),  POINTER                ::   td                 !: local short cut   
       !!
       NAMELIST/nambdy_tide/ln_tide_date, filtide, tide_cpt, tide_speed
       !!----------------------------------------------------------------------
+
+      IF( nn_timing == 1 ) CALL timing_start('tide_init')
 
       IF(lwp) WRITE(numout,*)
       IF(lwp) WRITE(numout,*) 'tide_init : initialization of tidal harmonic forcing at open boundaries'
       IF(lwp) WRITE(numout,*) '~~~~~~~~~'
 
-      ! Namelist nambdy_tide : tidal harmonic forcing at open boundaries
-      ln_tide_date = .false.
-      filtide(:) = ''
-      tide_speed(:) = 0.0
-      tide_cpt(:) = ''
-      REWIND( numnam )                                ! Read namelist parameters
-      READ  ( numnam, nambdy_tide )
-      !                                               ! Count number of components specified
-      ntide = jptides_max
-      DO itide = 1, jptides_max
-        IF( tide_cpt(itide) == '' ) THEN
-           ntide = itide-1
-           exit
-        ENDIF
-      END DO
+      REWIND(numnam)
+      DO ib_bdy = 1, nb_bdy
+         IF( nn_dyn2d_dta(ib_bdy) .ge. 2 ) THEN
 
-      !                                               ! find constituents in standard list
-      DO itide = 1, ntide
-         nindx(itide) = 0
-         IF( TRIM( tide_cpt(itide) ) == 'Q1'  )   nindx(itide) =  1
-         IF( TRIM( tide_cpt(itide) ) == 'O1'  )   nindx(itide) =  2
-         IF( TRIM( tide_cpt(itide) ) == 'P1'  )   nindx(itide) =  3
-         IF( TRIM( tide_cpt(itide) ) == 'S1'  )   nindx(itide) =  4
-         IF( TRIM( tide_cpt(itide) ) == 'K1'  )   nindx(itide) =  5
-         IF( TRIM( tide_cpt(itide) ) == '2N2' )   nindx(itide) =  6
-         IF( TRIM( tide_cpt(itide) ) == 'MU2' )   nindx(itide) =  7
-         IF( TRIM( tide_cpt(itide) ) == 'N2'  )   nindx(itide) =  8
-         IF( TRIM( tide_cpt(itide) ) == 'NU2' )   nindx(itide) =  9
-         IF( TRIM( tide_cpt(itide) ) == 'M2'  )   nindx(itide) = 10
-         IF( TRIM( tide_cpt(itide) ) == 'L2'  )   nindx(itide) = 11
-         IF( TRIM( tide_cpt(itide) ) == 'T2'  )   nindx(itide) = 12
-         IF( TRIM( tide_cpt(itide) ) == 'S2'  )   nindx(itide) = 13
-         IF( TRIM( tide_cpt(itide) ) == 'K2'  )   nindx(itide) = 14
-         IF( TRIM( tide_cpt(itide) ) == 'M4'  )   nindx(itide) = 15
-         IF( nindx(itide) == 0  .AND. lwp ) THEN
-            WRITE(ctmp1,*) 'constitunent', itide,':', tide_cpt(itide), 'not in standard list'
-            CALL ctl_warn( ctmp1 )
-         ENDIF
-      END DO
-      !                                               ! Parameter control and print
-      IF( ntide < 1 ) THEN 
-         CALL ctl_stop( '          Did not find any tidal components in namelist nambdy_tide' )
-      ELSE
-         IF(lwp) WRITE(numout,*) '          Namelist nambdy_tide : tidal harmonic forcing at open boundaries'
-         IF(lwp) WRITE(numout,*) '             tidal components specified ', ntide
-         IF(lwp) WRITE(numout,*) '                ', tide_cpt(1:ntide)
-         IF(lwp) WRITE(numout,*) '             associated phase speeds (deg/hr) : '
-         IF(lwp) WRITE(numout,*) '                ', tide_speed(1:ntide)
-      ENDIF
+            td => tides(ib_bdy)
 
-      ! Initialisation of tidal harmonics arrays
-      sshtide(:) = 0.e0
-      utide  (:) = 0.e0
-      vtide  (:) = 0.e0
-      !
+            ! Namelist nambdy_tide : tidal harmonic forcing at open boundaries
+            ln_tide_date = .false.
+            filtide(:) = ''
+            tide_speed(:) = 0.0
+            tide_cpt(:) = ''
+
+            ! Don't REWIND here - may need to read more than one of these namelists.
+            READ  ( numnam, nambdy_tide )
+            !                                               ! Count number of components specified
+            td%ncpt = 0
+            DO itide = 1, jptides_max
+              IF( tide_cpt(itide) /= '' ) THEN
+                 td%ncpt = td%ncpt + 1
+              ENDIF
+            END DO
+
+            ! Fill in phase speeds from namelist
+            ALLOCATE( td%speed(td%ncpt) )
+            td%speed = tide_speed(1:td%ncpt)
+
+            ! Find constituents in standard list
+            DO itide = 1, td%ncpt
+               nindx(itide) = 0
+               IF( TRIM( tide_cpt(itide) ) == 'Q1'  )   nindx(itide) =  1
+               IF( TRIM( tide_cpt(itide) ) == 'O1'  )   nindx(itide) =  2
+               IF( TRIM( tide_cpt(itide) ) == 'P1'  )   nindx(itide) =  3
+               IF( TRIM( tide_cpt(itide) ) == 'S1'  )   nindx(itide) =  4
+               IF( TRIM( tide_cpt(itide) ) == 'K1'  )   nindx(itide) =  5
+               IF( TRIM( tide_cpt(itide) ) == '2N2' )   nindx(itide) =  6
+               IF( TRIM( tide_cpt(itide) ) == 'MU2' )   nindx(itide) =  7
+               IF( TRIM( tide_cpt(itide) ) == 'N2'  )   nindx(itide) =  8
+               IF( TRIM( tide_cpt(itide) ) == 'NU2' )   nindx(itide) =  9
+               IF( TRIM( tide_cpt(itide) ) == 'M2'  )   nindx(itide) = 10
+               IF( TRIM( tide_cpt(itide) ) == 'L2'  )   nindx(itide) = 11
+               IF( TRIM( tide_cpt(itide) ) == 'T2'  )   nindx(itide) = 12
+               IF( TRIM( tide_cpt(itide) ) == 'S2'  )   nindx(itide) = 13
+               IF( TRIM( tide_cpt(itide) ) == 'K2'  )   nindx(itide) = 14
+               IF( TRIM( tide_cpt(itide) ) == 'M4'  )   nindx(itide) = 15
+               IF( nindx(itide) == 0  .AND. lwp ) THEN
+                  WRITE(ctmp1,*) 'constitunent', itide,':', tide_cpt(itide), 'not in standard list'
+                  CALL ctl_warn( ctmp1 )
+               ENDIF
+            END DO
+            !                                               ! Parameter control and print
+            IF( td%ncpt < 1 ) THEN 
+               CALL ctl_stop( '          Did not find any tidal components in namelist nambdy_tide' )
+            ELSE
+               IF(lwp) WRITE(numout,*) '          Namelist nambdy_tide : tidal harmonic forcing at open boundaries'
+               IF(lwp) WRITE(numout,*) '             tidal components specified ', td%ncpt
+               IF(lwp) WRITE(numout,*) '                ', tide_cpt(1:td%ncpt)
+               IF(lwp) WRITE(numout,*) '             associated phase speeds (deg/hr) : '
+               IF(lwp) WRITE(numout,*) '                ', tide_speed(1:td%ncpt)
+            ENDIF
+
+
+            ! Allocate space for tidal harmonics data - 
+            ! get size from OBC data arrays
+            ! ---------------------------------------
+
+            ilen0(1) = SIZE( dta_bdy(ib_bdy)%ssh ) 
+            ALLOCATE( td%ssh( ilen0(1), td%ncpt, 2 ) )
+
+            ilen0(2) = SIZE( dta_bdy(ib_bdy)%u2d ) 
+            ALLOCATE( td%u( ilen0(2), td%ncpt, 2 ) )
+
+            ilen0(3) = SIZE( dta_bdy(ib_bdy)%v2d ) 
+            ALLOCATE( td%v( ilen0(3), td%ncpt, 2 ) )
+
+            ALLOCATE( dta_read( MAXVAL(ilen0), 1, 1 ) )
+
+
+            ! Open files and read in tidal forcing data
+            ! -----------------------------------------
+
+            DO itide = 1, td%ncpt
+               !                                                              ! SSH fields
+               clfile = TRIM(filtide)//TRIM(tide_cpt(itide))//'_grid_T.nc'
+               IF(lwp) WRITE(numout,*) 'Reading data from file ', clfile
+               CALL iom_open( clfile, inum )
+               CALL fld_map( inum, 'z1' , dta_read(1:ilen0(1),1:1,1:1) , 1, idx_bdy(ib_bdy)%nbmap(:,1) )
+               td%ssh(:,itide,1) = dta_read(1:ilen0(1),1,1)
+               CALL fld_map( inum, 'z2' , dta_read(1:ilen0(1),1:1,1:1) , 1, idx_bdy(ib_bdy)%nbmap(:,1) )
+               td%ssh(:,itide,2) = dta_read(1:ilen0(1),1,1)
+               CALL iom_close( inum )
+               !                                                              ! U fields
+               clfile = TRIM(filtide)//TRIM(tide_cpt(itide))//'_grid_U.nc'
+               IF(lwp) WRITE(numout,*) 'Reading data from file ', clfile
+               CALL iom_open( clfile, inum )
+               CALL fld_map( inum, 'u1' , dta_read(1:ilen0(2),1:1,1:1) , 1, idx_bdy(ib_bdy)%nbmap(:,2) )
+               td%u(:,itide,1) = dta_read(1:ilen0(2),1,1)
+               CALL fld_map( inum, 'u2' , dta_read(1:ilen0(2),1:1,1:1) , 1, idx_bdy(ib_bdy)%nbmap(:,2) )
+               td%u(:,itide,2) = dta_read(1:ilen0(2),1,1)
+               CALL iom_close( inum )
+               !                                                              ! V fields
+               clfile = TRIM(filtide)//TRIM(tide_cpt(itide))//'_grid_V.nc'
+               IF(lwp) WRITE(numout,*) 'Reading data from file ', clfile
+               CALL iom_open( clfile, inum )
+               CALL fld_map( inum, 'v1' , dta_read(1:ilen0(3),1:1,1:1) , 1, idx_bdy(ib_bdy)%nbmap(:,3) )
+               td%v(:,itide,1) = dta_read(1:ilen0(3),1,1)
+               CALL fld_map( inum, 'v2' , dta_read(1:ilen0(3),1:1,1:1) , 1, idx_bdy(ib_bdy)%nbmap(:,3) )
+               td%v(:,itide,2) = dta_read(1:ilen0(3),1,1)
+               CALL iom_close( inum )
+               !
+            END DO ! end loop on tidal components
+
+            IF( ln_tide_date ) THEN      ! correct for date factors
+
+!! used nmonth, nyear and nday from daymod....
+               ! Calculate date corrects for 15 standard consituents
+               ! This is the initialisation step, so nday, nmonth, nyear are the 
+               ! initial date/time of the integration.
+                 print *, nday,nmonth,nyear
+                 nyear  = int(ndate0 / 10000  )                          ! initial year
+                 nmonth = int((ndate0 - nyear * 10000 ) / 100 )          ! initial month
+                 nday   = int(ndate0 - nyear * 10000 - nmonth * 100)
+
+               CALL uvset( 0, nday, nmonth, nyear, z_ftc, z_vplu )
+
+               IF(lwp) WRITE(numout,*) 'Correcting tide for date:', nday, nmonth, nyear
+
+               DO itide = 1, td%ncpt       ! loop on tidal components
+                  !
+                  IF( nindx(itide) /= 0 ) THEN
+!!gm use rpi  and rad global variable  
+                     z_arg = 3.14159265d0 * z_vplu(nindx(itide)) / 180.0d0
+                     z_atde=z_ftc(nindx(itide))*cos(z_arg)
+                     z_btde=z_ftc(nindx(itide))*sin(z_arg)
+                     IF(lwp) WRITE(numout,'(2i5,8f10.6)') itide, nindx(itide), td%speed(itide),   &
+                        &                                 z_ftc(nindx(itide)), z_vplu(nindx(itide))
+                  ELSE
+                     z_atde = 1.0_wp
+                     z_btde = 0.0_wp
+                  ENDIF
+                  !                                         !  elevation         
+                  igrd = 1
+                  DO ib = 1, ilen0(igrd)                
+                     z1t = z_atde * td%ssh(ib,itide,1) + z_btde * td%ssh(ib,itide,2)
+                     z2t = z_atde * td%ssh(ib,itide,2) - z_btde * td%ssh(ib,itide,1)
+                     td%ssh(ib,itide,1) = z1t
+                     td%ssh(ib,itide,2) = z2t
+                  END DO
+                  !                                         !  u       
+                  igrd = 2
+                  DO ib = 1, ilen0(igrd)                
+                     z1t = z_atde * td%u(ib,itide,1) + z_btde * td%u(ib,itide,2)
+                     z2t = z_atde * td%u(ib,itide,2) - z_btde * td%u(ib,itide,1)
+                     td%u(ib,itide,1) = z1t
+                     td%u(ib,itide,2) = z2t
+                  END DO
+                  !                                         !  v       
+                  igrd = 3
+                  DO ib = 1, ilen0(igrd)                
+                     z1t = z_atde * td%v(ib,itide,1) + z_btde * td%v(ib,itide,2)
+                     z2t = z_atde * td%v(ib,itide,2) - z_btde * td%v(ib,itide,1)
+                     td%v(ib,itide,1) = z1t
+                     td%v(ib,itide,2) = z2t
+                  END DO
+                  !
+               END DO   ! end loop on tidal components
+               !
+            ENDIF ! date correction
+            !
+         ENDIF ! nn_dyn2d_dta(ib_bdy) .ge. 2
+         !
+      END DO ! loop on ib_bdy
+
+      IF( nn_timing == 1 ) CALL timing_stop('tide_init')
+
    END SUBROUTINE tide_init
 
 
-   SUBROUTINE tide_data
-      !!----------------------------------------------------------------------
-      !!                    ***  SUBROUTINE tide_data  ***
-      !!                    
-      !! ** Purpose : - Read in tidal harmonics data and adjust for the start 
-      !!                time of the model run. 
-      !!
-      !!----------------------------------------------------------------------
-      INTEGER ::   itide, igrd, ib        ! dummy loop indices
-      CHARACTER(len=80) :: clfile         ! full file name for tidal input file 
-      INTEGER ::   ipi, ipj, inum, idvar  ! temporary integers (netcdf read)
-      INTEGER, DIMENSION(6) :: lendta=0   ! length of data in the file (note may be different from nblendta!)
-      REAL(wp) ::  z_arg, z_atde, z_btde, z1t, z2t           
-      REAL(wp), DIMENSION(jpbdta,1) ::   zdta   ! temporary array for data fields
-      REAL(wp), DIMENSION(jptides_max) :: z_vplu, z_ftc
-      !!------------------------------------------------------------------------------
-
-      ! Open files and read in tidal forcing data
-      ! -----------------------------------------
-
-      ipj = 1
-
-      DO itide = 1, ntide
-         !                                                              ! SSH fields
-         clfile = TRIM(filtide)//TRIM(tide_cpt(itide))//'_grid_T.nc'
-         IF(lwp) WRITE(numout,*) 'Reading data from file ', clfile
-         CALL iom_open( clfile, inum )
-         igrd = 4
-         IF( nblendta(igrd) <= 0 ) THEN 
-            idvar = iom_varid( inum,'z1' )
-            IF(lwp) WRITE(numout,*) 'iom_file(1)%ndims(idvar) : ',iom_file%ndims(idvar)
-            nblendta(igrd) = iom_file(inum)%dimsz(1,idvar)
-            WRITE(numout,*) 'Dim size for z1 is ', nblendta(igrd)
-         ENDIF
-         ipi = nblendta(igrd)
-         CALL iom_get( inum, jpdom_unknown, 'z1', zdta(1:ipi,1:ipj) )
-         DO ib = 1, nblenrim(igrd)
-            ssh1(ib,itide) = zdta(nbmap(ib,igrd),1)
-         END DO
-         CALL iom_get( inum, jpdom_unknown, 'z2', zdta(1:ipi,1:ipj) )
-         DO ib = 1, nblenrim(igrd)
-            ssh2(ib,itide) = zdta(nbmap(ib,igrd),1)
-         END DO
-         CALL iom_close( inum )
-         !
-         !                                                              ! U fields
-         clfile = TRIM(filtide)//TRIM(tide_cpt(itide))//'_grid_U.nc'
-         IF(lwp) WRITE(numout,*) 'Reading data from file ', clfile
-         CALL iom_open( clfile, inum )
-         igrd = 5
-         IF( lendta(igrd) <= 0 ) THEN 
-            idvar = iom_varid( inum,'u1' )
-            lendta(igrd) = iom_file(inum)%dimsz(1,idvar)
-            WRITE(numout,*) 'Dim size for u1 is ',lendta(igrd)
-         ENDIF
-         ipi = lendta(igrd)
-         CALL iom_get( inum, jpdom_unknown, 'u1', zdta(1:ipi,1:ipj) )
-         DO ib = 1, nblenrim(igrd)
-            u1(ib,itide) = zdta(nbmap(ib,igrd),1)
-         END DO
-         CALL iom_get( inum, jpdom_unknown, 'u2', zdta(1:ipi,1:ipj) )
-         DO ib = 1, nblenrim(igrd)
-            u2(ib,itide) = zdta(nbmap(ib,igrd),1)
-         END DO
-         CALL iom_close( inum )
-         !
-         !                                                              ! V fields
-         clfile = TRIM(filtide)//TRIM(tide_cpt(itide))//'_grid_V.nc'
-         if(lwp) write(numout,*) 'Reading data from file ', clfile
-         CALL iom_open( clfile, inum )
-         igrd = 6
-         IF( lendta(igrd) <= 0 ) THEN 
-            idvar = iom_varid( inum,'v1' )
-            lendta(igrd) = iom_file(inum)%dimsz(1,idvar)
-            WRITE(numout,*) 'Dim size for v1 is ', lendta(igrd)
-         ENDIF
-         ipi = lendta(igrd)
-         CALL iom_get( inum, jpdom_unknown, 'v1', zdta(1:ipi,1:ipj) )
-         DO ib = 1, nblenrim(igrd)
-            v1(ib,itide) = zdta(nbmap(ib,igrd),1)
-         END DO
-         CALL iom_get( inum, jpdom_unknown, 'v2', zdta(1:ipi,1:ipj) )
-         DO ib=1, nblenrim(igrd)
-            v2(ib,itide) = zdta(nbmap(ib,igrd),1)
-         END DO
-         CALL iom_close( inum )
-         !
-      END DO ! end loop on tidal components
-
-      IF( ln_tide_date ) THEN      ! correct for date factors
-
-!! used nmonth, nyear and nday from daymod....
-         ! Calculate date corrects for 15 standard consituents
-         ! This is the initialisation step, so nday, nmonth, nyear are the 
-         ! initial date/time of the integration.
-           print *, nday,nmonth,nyear
-           nyear  = int(ndate0 / 10000  )                           ! initial year
-           nmonth = int((ndate0 - nyear * 10000 ) / 100 )          ! initial month
-           nday   = int(ndate0 - nyear * 10000 - nmonth * 100)
-
-         CALL uvset( 0, nday, nmonth, nyear, z_ftc, z_vplu )
-
-         IF(lwp) WRITE(numout,*) 'Correcting tide for date:', nday, nmonth, nyear
-
-         DO itide = 1, ntide       ! loop on tidal components
-            !
-            IF( nindx(itide) /= 0 ) THEN
-!!gm use rpi  and rad global variable  
-               z_arg = 3.14159265d0 * z_vplu(nindx(itide)) / 180.0d0
-               z_atde=z_ftc(nindx(itide))*cos(z_arg)
-               z_btde=z_ftc(nindx(itide))*sin(z_arg)
-               IF(lwp) WRITE(numout,'(2i5,8f10.6)') itide, nindx(itide), tide_speed(itide),   &
-                  &                                 z_ftc(nindx(itide)), z_vplu(nindx(itide))
-            ELSE
-               z_atde = 1.0_wp
-               z_btde = 0.0_wp
-            ENDIF
-            !                                         !  elevation         
-            igrd = 4
-            DO ib = 1, nblenrim(igrd)                
-               z1t = z_atde * ssh1(ib,itide) + z_btde * ssh2(ib,itide)
-               z2t = z_atde * ssh2(ib,itide) - z_btde * ssh1(ib,itide)
-               ssh1(ib,itide) = z1t
-               ssh2(ib,itide) = z2t
-            END DO
-            !                                         !  u       
-            igrd = 5
-            DO ib = 1, nblenrim(igrd)                
-               z1t = z_atde * u1(ib,itide) + z_btde * u2(ib,itide)
-               z2t = z_atde * u2(ib,itide) - z_btde * u1(ib,itide)
-               u1(ib,itide) = z1t
-               u2(ib,itide) = z2t
-            END DO
-            !                                         !  v       
-            igrd = 6
-            DO ib = 1, nblenrim(igrd)                
-               z1t = z_atde * v1(ib,itide) + z_btde * v2(ib,itide)
-               z2t = z_atde * v2(ib,itide) - z_btde * v1(ib,itide)
-               v1(ib,itide) = z1t
-               v2(ib,itide) = z2t
-            END DO
-            !
-         END DO   ! end loop on tidal components
-         !
-      ENDIF ! date correction
-      !
-   END SUBROUTINE tide_data
-
-
-   SUBROUTINE tide_update ( kt, jit )
+   SUBROUTINE tide_update ( kt, idx, dta, td, jit, time_offset )
       !!----------------------------------------------------------------------
       !!                 ***  SUBROUTINE tide_update  ***
       !!                
-      !! ** Purpose : - Add tidal forcing to sshbdy, ubtbdy and vbtbdy arrays. 
+      !! ** Purpose : - Add tidal forcing to ssh, u2d and v2d OBC data arrays. 
       !!                
       !!----------------------------------------------------------------------
-      INTEGER, INTENT( in ) ::   kt      ! Main timestep counter
+      INTEGER, INTENT( in )          ::   kt      ! Main timestep counter
 !!gm doctor jit ==> kit
-      INTEGER, INTENT( in ) ::   jit     ! Barotropic timestep counter (for timesplitting option)
+      TYPE(OBC_INDEX), INTENT( in )  ::   idx     ! OBC indices
+      TYPE(OBC_DATA),  INTENT(inout) ::   dta     ! OBC external data
+      TYPE(TIDES_DATA),INTENT( in )  ::   td      ! tidal harmonics data
+      INTEGER,INTENT(in),OPTIONAL    ::   jit     ! Barotropic timestep counter (for timesplitting option)
+      INTEGER,INTENT( in ), OPTIONAL ::   time_offset  ! time offset in units of timesteps. NB. if jit
+                                                       ! is present then units = subcycle timesteps.
+                                                       ! time_offset = 0 => get data at "now" time level
+                                                       ! time_offset = -1 => get data at "before" time level
+                                                       ! time_offset = +1 => get data at "after" time level
+                                                       ! etc.
       !!
-      INTEGER  ::   itide, igrd, ib      ! dummy loop indices
-      REAL(wp) ::   z_arg, z_sarg            !            
+      INTEGER                          :: itide, igrd, ib      ! dummy loop indices
+      INTEGER                          :: time_add             ! time offset in units of timesteps
+      REAL(wp)                         :: z_arg, z_sarg      
       REAL(wp), DIMENSION(jptides_max) :: z_sist, z_cost
       !!----------------------------------------------------------------------
 
+      IF( nn_timing == 1 ) CALL timing_start('tide_update')
+
+      time_add = 0
+      IF( PRESENT(time_offset) ) THEN
+         time_add = time_offset
+      ENDIF
+         
       ! Note tide phase speeds are in deg/hour, so we need to convert the
       ! elapsed time in seconds to hours by dividing by 3600.0
-      IF( jit == 0 ) THEN  
-         z_arg = kt * rdt * rad / 3600.0
-      ELSE                              ! we are in a barotropic subcycle (for timesplitting option)
-!         z_arg = ( (kt-1) * rdt + jit * rdt / REAL(nn_baro,lwp) ) * rad / 3600.0
-         z_arg = ( (kt-1) * rdt + jit * rdt / REAL(nn_baro,wp) ) * rad / 3600.0
+      IF( PRESENT(jit) ) THEN  
+         z_arg = ( (kt-1) * rdt + (jit+time_add) * rdt / REAL(nn_baro,wp) ) * rad / 3600.0
+      ELSE                              
+         z_arg = (kt+time_add) * rdt * rad / 3600.0
       ENDIF
 
-      DO itide = 1, ntide
-         z_sarg = z_arg * tide_speed(itide)
+      DO itide = 1, td%ncpt
+         z_sarg = z_arg * td%speed(itide)
          z_cost(itide) = COS( z_sarg )
          z_sist(itide) = SIN( z_sarg )
       END DO
 
-      ! summing of tidal constituents into BDY arrays
-      sshtide(:) = 0.0
-      utide (:) = 0.0
-      vtide (:) = 0.0
-      !
-      DO itide = 1, ntide
-         igrd=4                              ! SSH on tracer grid.
-         DO ib = 1, nblenrim(igrd)
-            sshtide(ib) =sshtide(ib)+ ssh1(ib,itide)*z_cost(itide) + ssh2(ib,itide)*z_sist(itide)
-            !    if(lwp) write(numout,*) 'z',ib,itide,sshtide(ib), ssh1(ib,itide),ssh2(ib,itide)
+      DO itide = 1, td%ncpt
+         igrd=1                              ! SSH on tracer grid.
+         DO ib = 1, idx%nblenrim(igrd)
+            dta%ssh(ib) = dta%ssh(ib) + td%ssh(ib,itide,1)*z_cost(itide) + td%ssh(ib,itide,2)*z_sist(itide)
+            !    if(lwp) write(numout,*) 'z', ib, itide, dta%ssh(ib), td%ssh(ib,itide,1),td%ssh(ib,itide,2)
          END DO
-         igrd=5                              ! U grid
-         DO ib=1, nblenrim(igrd)
-            utide(ib) = utide(ib)+ u1(ib,itide)*z_cost(itide) + u2(ib,itide)*z_sist(itide)
-            !    if(lwp) write(numout,*) 'u',ib,itide,utide(ib), u1(ib,itide),u2(ib,itide)
+         igrd=2                              ! U grid
+         DO ib=1, idx%nblenrim(igrd)
+            dta%u2d(ib) = dta%u2d(ib) + td%u(ib,itide,1)*z_cost(itide) + td%u(ib,itide,2)*z_sist(itide)
+            !    if(lwp) write(numout,*) 'u',ib,itide,utide(ib), td%u(ib,itide,1),td%u(ib,itide,2)
          END DO
-         igrd=6                              ! V grid
-         DO ib=1, nblenrim(igrd)
-            vtide(ib) = vtide(ib)+ v1(ib,itide)*z_cost(itide) + v2(ib,itide)*z_sist(itide)
-            !    if(lwp) write(numout,*) 'v',ib,itide,vtide(ib), v1(ib,itide),v2(ib,itide)
+         igrd=3                              ! V grid
+         DO ib=1, idx%nblenrim(igrd)
+            dta%v2d(ib) = dta%v2d(ib) + td%v(ib,itide,1)*z_cost(itide) + td%v(ib,itide,2)*z_sist(itide)
+            !    if(lwp) write(numout,*) 'v',ib,itide,vtide(ib), td%v(ib,itide,1),td%v(ib,itide,2)
          END DO
       END DO
+      !
+      IF( nn_timing == 1 ) CALL timing_stop('tide_update')
       !
    END SUBROUTINE tide_update
 

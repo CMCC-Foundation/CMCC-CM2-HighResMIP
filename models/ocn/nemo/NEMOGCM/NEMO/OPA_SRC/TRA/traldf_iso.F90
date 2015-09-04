@@ -31,6 +31,8 @@ MODULE traldf_iso
    USE phycst          ! physical constants
    USE lbclnk          ! ocean lateral boundary conditions (or mpp link)
 #endif
+   USE wrk_nemo        ! Memory Allocation
+   USE timing          ! Timing
 
    IMPLICIT NONE
    PRIVATE
@@ -43,12 +45,12 @@ MODULE traldf_iso
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: traldf_iso.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
 
-   SUBROUTINE tra_ldf_iso( kt, cdtype, pgu, pgv,              &
+   SUBROUTINE tra_ldf_iso( kt, kit000, cdtype, pgu, pgv,              &
       &                                ptb, pta, kjpt, pahtb0 )
       !!----------------------------------------------------------------------
       !!                  ***  ROUTINE tra_ldf_iso  ***
@@ -89,12 +91,10 @@ CONTAINS
       !!
       !! ** Action :   Update pta arrays with the before rotated diffusion
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
       USE oce     , ONLY:   zftu => ua       , zftv  => va         ! (ua,va) used as workspace
-      USE wrk_nemo, ONLY:   zdkt => wrk_2d_1 , zdk1t => wrk_2d_2 , z2d  => wrk_2d_3   ! 2D workspace
-      USE wrk_nemo, ONLY:   zdit => wrk_3d_6 , zdjt  => wrk_3d_7 , ztfw => wrk_3d_8   ! 3D workspace
       !
       INTEGER                              , INTENT(in   ) ::   kt         ! ocean time-step index
+      INTEGER                              , INTENT(in   ) ::   kit000          ! first time step index
       CHARACTER(len=3)                     , INTENT(in   ) ::   cdtype     ! =TRA or TRC (tracer indicator)
       INTEGER                              , INTENT(in   ) ::   kjpt       ! number of tracers
       REAL(wp), DIMENSION(jpi,jpj    ,kjpt), INTENT(in   ) ::   pgu, pgv   ! tracer gradient at pstep levels
@@ -109,13 +109,17 @@ CONTAINS
 #if defined key_diaar5
       REAL(wp)                         ::   zztmp               ! local scalar
 #endif
+      REAL(wp), POINTER, DIMENSION(:,:  ) ::  zdkt, zdk1t, z2d
+      REAL(wp), POINTER, DIMENSION(:,:,:) ::  zdit, zdjt, ztfw 
       !!----------------------------------------------------------------------
+      !
+      IF( nn_timing == 1 )  CALL timing_start('tra_ldf_iso')
+      !
+      CALL wrk_alloc( jpi, jpj,      zdkt, zdk1t, z2d ) 
+      CALL wrk_alloc( jpi, jpj, jpk, zdit, zdjt, ztfw  ) 
+      !
 
-      IF( wrk_in_use(3, 6,7,8) .OR. wrk_in_use(2, 1,2,3) ) THEN
-          CALL ctl_stop('tra_ldf_iso : requested workspace array unavailable')   ;   RETURN
-      ENDIF
-
-      IF( kt == nit000 )  THEN
+      IF( kt == kit000 )  THEN
          IF(lwp) WRITE(numout,*)
          IF(lwp) WRITE(numout,*) 'tra_ldf_iso : rotated laplacian diffusion operator on ', cdtype
          IF(lwp) WRITE(numout,*) '~~~~~~~~~~~'
@@ -292,8 +296,10 @@ CONTAINS
          !
       END DO
       !
-      IF( wrk_not_released(3, 6,7,8) .OR.   &
-          wrk_not_released(2, 1,2,3) )   CALL ctl_stop('tra_ldf_iso: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi, jpj,      zdkt, zdk1t, z2d ) 
+      CALL wrk_dealloc( jpi, jpj, jpk, zdit, zdjt, ztfw  ) 
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('tra_ldf_iso')
       !
    END SUBROUTINE tra_ldf_iso
 
@@ -302,12 +308,13 @@ CONTAINS
    !!   default option :   Dummy code   NO rotation of the diffusive tensor
    !!----------------------------------------------------------------------
 CONTAINS
-   SUBROUTINE tra_ldf_iso( kt, cdtype, pgu, pgv, ptb, pta, kjpt, pahtb0 )      ! Empty routine
+   SUBROUTINE tra_ldf_iso( kt, kit000,cdtype, pgu, pgv, ptb, pta, kjpt, pahtb0 )      ! Empty routine
+      INTEGER:: kt, kit000
       CHARACTER(len=3) ::   cdtype
       REAL, DIMENSION(:,:,:) ::   pgu, pgv   ! tracer gradient at pstep levels
       REAL, DIMENSION(:,:,:,:) ::   ptb, pta
-      WRITE(*,*) 'tra_ldf_iso: You should not have seen this print! error?', kt, cdtype, pgu(1,1,1), pgv(1,1,1),   &
-         &                                                             ptb(1,1,1,1), pta(1,1,1,1), kjpt, pahtb0
+      WRITE(*,*) 'tra_ldf_iso: You should not have seen this print! error?', kt, kit000, cdtype,   &
+         &                       pgu(1,1,1), pgv(1,1,1), ptb(1,1,1,1), pta(1,1,1,1), kjpt, pahtb0
    END SUBROUTINE tra_ldf_iso
 #endif
 

@@ -9,6 +9,7 @@ MODULE diadimg
    USE dom_oce         ! ocean space and time domain
    USE in_out_manager  ! I/O manager
    USE daymod          ! calendar
+   USE lib_mpp
 
    IMPLICIT NONE
    PRIVATE
@@ -26,7 +27,7 @@ MODULE diadimg
 #  include "domzgr_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: diadimg.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -39,10 +40,18 @@ CONTAINS
       INTEGER :: dia_wri_dimg_alloc   ! return value
       !!---------------------------------------------------------------------
       !
-      ALLOCATE( z42d(jpi,jpj), z4dep(jpk), STAT=dia_wri_dimg_alloc )
-      !
-      IF( lk_mpp                  )   CALL mpp_sum ( dia_wri_dimg_alloc )
-      IF( dia_wri_dimg_alloc /= 0 )   CALL ctl_warn('dia_wri_dimg_alloc: allocation of array failed.')
+      IF( .NOT. ALLOCATED( z42d ) )THEN
+
+         ALLOCATE( z42d(jpi,jpj), z4dep(jpk), STAT=dia_wri_dimg_alloc )
+
+         IF( lk_mpp                  )   CALL mpp_sum ( dia_wri_dimg_alloc )
+         IF( dia_wri_dimg_alloc /= 0 )   CALL ctl_warn('dia_wri_dimg_alloc: allocation of array failed.')
+
+      ELSE
+
+         dia_wri_dimg_alloc = 0
+
+      ENDIF
       !
   END FUNCTION dia_wri_dimg_alloc
 

@@ -44,7 +44,7 @@ MODULE geo2ocean
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: geo2ocean.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -182,12 +182,12 @@ CONTAINS
       !!----------------------------------------------------------------------
 
       IF (.NOT. ALLOCATED(gsint)) THEN
-         ALLOCATE( gsint(jpi,jpj), gcost(jpi,jpj),   & 
-            &      gsinu(jpi,jpj), gcosu(jpi,jpj),   & 
-            &      gsinv(jpi,jpj), gcosv(jpi,jpj),   &  
-            &      gsinf(jpi,jpj), gcosf(jpi,jpj), STAT=ierr )
-         IF(lk_mpp)   CALL mpp_sum( ierr )
-         IF( ierr /= 0 )   CALL ctl_stop('STOP', 'angle_msh_geo: unable to allocate arrays' )
+      ALLOCATE( gsint(jpi,jpj), gcost(jpi,jpj),   & 
+         &      gsinu(jpi,jpj), gcosu(jpi,jpj),   & 
+         &      gsinv(jpi,jpj), gcosv(jpi,jpj),   &  
+         &      gsinf(jpi,jpj), gcosf(jpi,jpj), STAT=ierr )
+      IF(lk_mpp)   CALL mpp_sum( ierr )
+      IF( ierr /= 0 )   CALL ctl_stop('angle: unable to allocate arrays' )
       END IF
 
       ! ============================= !
@@ -202,29 +202,29 @@ CONTAINS
             ! north pole direction & modulous (at t-point)
             zlam = glamt(ji,jj)
             zphi = gphit(ji,jj)
-            zxnpt = 0._wp - 2._wp * COS( rad*zlam ) * TAN( rpi/4._wp - rad*zphi/2._wp )
-            zynpt = 0._wp - 2._wp * SIN( rad*zlam ) * TAN( rpi/4._wp - rad*zphi/2._wp )
+            zxnpt = 0. - 2. * COS( rad*zlam ) * TAN( rpi/4. - rad*zphi/2. )
+            zynpt = 0. - 2. * SIN( rad*zlam ) * TAN( rpi/4. - rad*zphi/2. )
             znnpt = zxnpt*zxnpt + zynpt*zynpt
 
             ! north pole direction & modulous (at u-point)
             zlam = glamu(ji,jj)
             zphi = gphiu(ji,jj)
-            zxnpu = 0._wp - 2._wp * COS( rad*zlam ) * TAN( rpi/4._wp - rad*zphi/2._wp )
-            zynpu = 0._wp - 2._wp * SIN( rad*zlam ) * TAN( rpi/4._wp - rad*zphi/2._wp )
+            zxnpu = 0. - 2. * COS( rad*zlam ) * TAN( rpi/4. - rad*zphi/2. )
+            zynpu = 0. - 2. * SIN( rad*zlam ) * TAN( rpi/4. - rad*zphi/2. )
             znnpu = zxnpu*zxnpu + zynpu*zynpu
 
             ! north pole direction & modulous (at v-point)
             zlam = glamv(ji,jj)
             zphi = gphiv(ji,jj)
-            zxnpv = 0._wp - 2._wp * COS( rad*zlam ) * TAN( rpi/4._wp - rad*zphi/2._wp )
-            zynpv = 0._wp - 2._wp * SIN( rad*zlam ) * TAN( rpi/4._wp - rad*zphi/2._wp )
+            zxnpv = 0. - 2. * COS( rad*zlam ) * TAN( rpi/4. - rad*zphi/2. )
+            zynpv = 0. - 2. * SIN( rad*zlam ) * TAN( rpi/4. - rad*zphi/2. )
             znnpv = zxnpv*zxnpv + zynpv*zynpv
 
             ! north pole direction & modulous (at f-point)
             zlam = glamf(ji,jj)
             zphi = gphif(ji,jj)
-            zxnpf = 0._wp - 2._wp * COS( rad*zlam ) * TAN( rpi/4._wp - rad*zphi/2._wp )
-            zynpf = 0._wp - 2._wp * SIN( rad*zlam ) * TAN( rpi/4._wp - rad*zphi/2._wp )
+            zxnpf = 0. - 2. * COS( rad*zlam ) * TAN( rpi/4. - rad*zphi/2. )
+            zynpf = 0. - 2. * SIN( rad*zlam ) * TAN( rpi/4. - rad*zphi/2. )
             znnpf = zxnpf*zxnpf + zynpf*zynpf
 
             ! j-direction: v-point segment direction (around t-point)
@@ -232,48 +232,48 @@ CONTAINS
             zphi = gphiv(ji,jj  )
             zlan = glamv(ji,jj-1)
             zphh = gphiv(ji,jj-1)
-            zxvvt =  2._wp * COS( rad*zlam ) * TAN( rpi/4._wp - rad*zphi/2._wp )   &
-               &  -  2._wp * COS( rad*zlan ) * TAN( rpi/4._wp - rad*zphh/2._wp )
-            zyvvt =  2._wp * SIN( rad*zlam ) * TAN( rpi/4._wp - rad*zphi/2._wp )   &
-               &  -  2._wp * SIN( rad*zlan ) * TAN( rpi/4._wp - rad*zphh/2._wp )
+            zxvvt =  2. * COS( rad*zlam ) * TAN( rpi/4. - rad*zphi/2. )   &
+               &  -  2. * COS( rad*zlan ) * TAN( rpi/4. - rad*zphh/2. )
+            zyvvt =  2. * SIN( rad*zlam ) * TAN( rpi/4. - rad*zphi/2. )   &
+               &  -  2. * SIN( rad*zlan ) * TAN( rpi/4. - rad*zphh/2. )
             znvvt = SQRT( znnpt * ( zxvvt*zxvvt + zyvvt*zyvvt )  )
-            znvvt = MAX( znvvt, 1.e-14_wp )
+            znvvt = MAX( znvvt, 1.e-14 )
 
             ! j-direction: f-point segment direction (around u-point)
             zlam = glamf(ji,jj  )
             zphi = gphif(ji,jj  )
             zlan = glamf(ji,jj-1)
             zphh = gphif(ji,jj-1)
-            zxffu =  2._wp * COS( rad*zlam ) * TAN( rpi/4._wp - rad*zphi/2._wp )   &
-               &  -  2._wp * COS( rad*zlan ) * TAN( rpi/4._wp - rad*zphh/2._wp )
-            zyffu =  2._wp * SIN( rad*zlam ) * TAN( rpi/4._wp - rad*zphi/2._wp )   &
-               &  -  2._wp * SIN( rad*zlan ) * TAN( rpi/4._wp - rad*zphh/2._wp )
+            zxffu =  2. * COS( rad*zlam ) * TAN( rpi/4. - rad*zphi/2. )   &
+               &  -  2. * COS( rad*zlan ) * TAN( rpi/4. - rad*zphh/2. )
+            zyffu =  2. * SIN( rad*zlam ) * TAN( rpi/4. - rad*zphi/2. )   &
+               &  -  2. * SIN( rad*zlan ) * TAN( rpi/4. - rad*zphh/2. )
             znffu = SQRT( znnpu * ( zxffu*zxffu + zyffu*zyffu )  )
-            znffu = MAX( znffu, 1.e-14_wp )
+            znffu = MAX( znffu, 1.e-14 )
 
             ! i-direction: f-point segment direction (around v-point)
             zlam = glamf(ji  ,jj)
             zphi = gphif(ji  ,jj)
             zlan = glamf(ji-1,jj)
             zphh = gphif(ji-1,jj)
-            zxffv =  2._wp * COS( rad*zlam ) * TAN( rpi/4._wp - rad*zphi/2._wp )   &
-               &  -  2._wp * COS( rad*zlan ) * TAN( rpi/4._wp - rad*zphh/2._wp )
-            zyffv =  2._wp * SIN( rad*zlam ) * TAN( rpi/4._wp - rad*zphi/2._wp )   &
-               &  -  2._wp * SIN( rad*zlan ) * TAN( rpi/4._wp - rad*zphh/2._wp )
+            zxffv =  2. * COS( rad*zlam ) * TAN( rpi/4. - rad*zphi/2. )   &
+               &  -  2. * COS( rad*zlan ) * TAN( rpi/4. - rad*zphh/2. )
+            zyffv =  2. * SIN( rad*zlam ) * TAN( rpi/4. - rad*zphi/2. )   &
+               &  -  2. * SIN( rad*zlan ) * TAN( rpi/4. - rad*zphh/2. )
             znffv = SQRT( znnpv * ( zxffv*zxffv + zyffv*zyffv )  )
-            znffv = MAX( znffv, 1.e-14_wp )
+            znffv = MAX( znffv, 1.e-14 )
 
             ! j-direction: u-point segment direction (around f-point)
             zlam = glamu(ji,jj+1)
             zphi = gphiu(ji,jj+1)
             zlan = glamu(ji,jj  )
             zphh = gphiu(ji,jj  )
-            zxuuf =  2._wp * COS( rad*zlam ) * TAN( rpi/4._wp - rad*zphi/2._wp )   &
-               &  -  2._wp * COS( rad*zlan ) * TAN( rpi/4._wp - rad*zphh/2._wp )
-            zyuuf =  2._wp * SIN( rad*zlam ) * TAN( rpi/4._wp - rad*zphi/2._wp )   &
-               &  -  2._wp * SIN( rad*zlan ) * TAN( rpi/4._wp - rad*zphh/2._wp )
+            zxuuf =  2. * COS( rad*zlam ) * TAN( rpi/4. - rad*zphi/2. )   &
+               &  -  2. * COS( rad*zlan ) * TAN( rpi/4. - rad*zphh/2. )
+            zyuuf =  2. * SIN( rad*zlam ) * TAN( rpi/4. - rad*zphi/2. )   &
+               &  -  2. * SIN( rad*zlan ) * TAN( rpi/4. - rad*zphh/2. )
             znuuf = SQRT( znnpf * ( zxuuf*zxuuf + zyuuf*zyuuf )  )
-            znuuf = MAX( znuuf, 1.e-14_wp )
+            znuuf = MAX( znuuf, 1.e-14 )
 
             ! cosinus and sinus using scalar and vectorial products
             gsint(ji,jj) = ( zxnpt*zyvvt - zynpt*zxvvt ) / znvvt
@@ -298,21 +298,21 @@ CONTAINS
 
       DO jj = 2, jpjm1
          DO ji = fs_2, jpi   ! vector opt.
-            IF( MOD( ABS( glamv(ji,jj) - glamv(ji,jj-1) ), 360._wp ) < 1.e-8_wp ) THEN
-               gsint(ji,jj) = 0._wp
-               gcost(ji,jj) = 1._wp
+            IF( MOD( ABS( glamv(ji,jj) - glamv(ji,jj-1) ), 360. ) < 1.e-8 ) THEN
+               gsint(ji,jj) = 0.
+               gcost(ji,jj) = 1.
             ENDIF
-            IF( MOD( ABS( glamf(ji,jj) - glamf(ji,jj-1) ), 360._wp ) < 1.e-8_wp ) THEN
-               gsinu(ji,jj) = 0._wp
-               gcosu(ji,jj) = 1._wp
+            IF( MOD( ABS( glamf(ji,jj) - glamf(ji,jj-1) ), 360. ) < 1.e-8 ) THEN
+               gsinu(ji,jj) = 0.
+               gcosu(ji,jj) = 1.
             ENDIF
-            IF(      ABS( gphif(ji,jj) - gphif(ji-1,jj) )         < 1.e-8_wp ) THEN
-               gsinv(ji,jj) = 0._wp
-               gcosv(ji,jj) = 1._wp
+            IF(      ABS( gphif(ji,jj) - gphif(ji-1,jj) )         < 1.e-8 ) THEN
+               gsinv(ji,jj) = 0.
+               gcosv(ji,jj) = 1.
             ENDIF
-            IF( MOD( ABS( glamu(ji,jj) - glamu(ji,jj+1) ), 360._wp ) < 1.e-8_wp ) THEN
-               gsinf(ji,jj) = 0._wp
-               gcosf(ji,jj) = 1._wp
+            IF( MOD( ABS( glamu(ji,jj) - glamu(ji,jj+1) ), 360. ) < 1.e-8 ) THEN
+               gsinf(ji,jj) = 0.
+               gcosf(ji,jj) = 1.
             ENDIF
          END DO
       END DO
@@ -322,10 +322,10 @@ CONTAINS
       ! =========================== !
 
       ! lateral boundary cond.: T-, U-, V-, F-pts, sgn
-      CALL lbc_lnk( gcost, 'T', -1._wp )   ;   CALL lbc_lnk( gsint, 'T', -1._wp )
-      CALL lbc_lnk( gcosu, 'U', -1._wp )   ;   CALL lbc_lnk( gsinu, 'U', -1._wp )
-      CALL lbc_lnk( gcosv, 'V', -1._wp )   ;   CALL lbc_lnk( gsinv, 'V', -1._wp )
-      CALL lbc_lnk( gcosf, 'F', -1._wp )   ;   CALL lbc_lnk( gsinf, 'F', -1._wp )
+      CALL lbc_lnk( gcost, 'T', -1. )   ;   CALL lbc_lnk( gsint, 'T', -1. )
+      CALL lbc_lnk( gcosu, 'U', -1. )   ;   CALL lbc_lnk( gsinu, 'U', -1. )
+      CALL lbc_lnk( gcosv, 'V', -1. )   ;   CALL lbc_lnk( gsinv, 'V', -1. )
+      CALL lbc_lnk( gcosf, 'F', -1. )   ;   CALL lbc_lnk( gsinf, 'F', -1. )
 
    END SUBROUTINE angle
 
@@ -362,7 +362,7 @@ CONTAINS
          ALLOCATE( gsinlon(jpi,jpj,4) , gcoslon(jpi,jpj,4) ,   &
             &      gsinlat(jpi,jpj,4) , gcoslat(jpi,jpj,4) , STAT=ierr )
          IF( lk_mpp    )   CALL mpp_sum( ierr )
-         IF( ierr /= 0 )   CALL ctl_stop('STOP', 'angle_msh_geo: unable to allocate arrays' )
+         IF( ierr /= 0 )   CALL ctl_stop('geo2oce: unable to allocate arrays' )
       ENDIF
 
       SELECT CASE( cgrid)
@@ -443,7 +443,7 @@ CONTAINS
          ALLOCATE( gsinlon(jpi,jpj,4) , gcoslon(jpi,jpj,4) ,   &
             &      gsinlat(jpi,jpj,4) , gcoslat(jpi,jpj,4) , STAT=ierr )
          IF( lk_mpp    )   CALL mpp_sum( ierr )
-         IF( ierr /= 0 )   CALL ctl_stop('STOP', 'angle_msh_geo: unable to allocate arrays' )
+         IF( ierr /= 0 )   CALL ctl_stop('oce2geo: unable to allocate arrays' )
       ENDIF
 
       SELECT CASE( cgrid)

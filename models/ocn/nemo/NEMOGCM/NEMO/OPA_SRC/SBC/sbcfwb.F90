@@ -21,6 +21,8 @@ MODULE sbcfwb
    USE sbcssr          ! SS damping terms
    USE in_out_manager  ! I/O manager
    USE lib_mpp         ! distribued memory computing library
+   USE wrk_nemo        ! work arrays
+   USE timing          ! Timing
    USE lbclnk          ! ocean lateral boundary conditions
    USE lib_fortran
 
@@ -39,7 +41,7 @@ MODULE sbcfwb
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: sbcfwb.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -57,11 +59,6 @@ CONTAINS
       !!                =3 global mean of emp set to zero at each nn_fsbc time step
       !!                   & spread out over erp area depending its sign
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   ztmsk_neg      => wrk_2d_1 , ztmsk_pos => wrk_2d_2
-      USE wrk_nemo, ONLY:   ztmsk_tospread => wrk_2d_3
-      USE wrk_nemo, ONLY:   z_wgt          => wrk_2d_4 , zerp_cor  => wrk_2d_5
-      !
       INTEGER, INTENT( in ) ::   kt       ! ocean time-step index
       INTEGER, INTENT( in ) ::   kn_fsbc  ! 
       INTEGER, INTENT( in ) ::   kn_fwb   ! ocean time-step index
@@ -69,11 +66,12 @@ CONTAINS
       INTEGER  ::   inum, ikty, iyear   ! local integers
       REAL(wp) ::   z_fwf, z_fwf_nsrf, zsum_fwf, zsum_erp   ! local scalars
       REAL(wp) ::   zsurf_neg, zsurf_pos, zsurf_tospread    !   -      -
+      REAL(wp), POINTER, DIMENSION(:,:) ::   ztmsk_neg, ztmsk_pos, ztmsk_tospread, z_wgt, zerp_cor
       !!----------------------------------------------------------------------
       !
-      IF( wrk_in_use(2, 1,2,3,4,5) ) THEN
-         CALL ctl_stop('sbc_fwb: requested workspace arrays are unavailable')   ;   RETURN
-      ENDIF
+      IF( nn_timing == 1 )  CALL timing_start('sbc_fwb')
+      !
+      CALL wrk_alloc( jpi,jpj, ztmsk_neg, ztmsk_pos, ztmsk_tospread, z_wgt, zerp_cor )
       !
       IF( kt == nit000 ) THEN
          IF(lwp) THEN
@@ -194,7 +192,9 @@ CONTAINS
          !
       END SELECT
       !
-      IF( wrk_not_released(2, 1,2,3,4,5) )   CALL ctl_stop('sbc_fwb: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi,jpj, ztmsk_neg, ztmsk_pos, ztmsk_tospread, z_wgt, zerp_cor )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('sbc_fwb')
       !
    END SUBROUTINE sbc_fwb
 

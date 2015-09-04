@@ -22,6 +22,8 @@ MODULE dynldf_bilap
    USE trdmod          ! ocean dynamics trends 
    USE trdmod_oce      ! ocean variables trends
    USE lbclnk          ! ocean lateral boundary conditions (or mpp link)
+   USE wrk_nemo        ! Memory Allocation
+   USE timing          ! Timing
 
    IMPLICIT NONE
    PRIVATE
@@ -34,7 +36,7 @@ MODULE dynldf_bilap
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: dynldf_bilap.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -73,21 +75,20 @@ CONTAINS
       !! ** Action : - Update (ua,va) with the before iso-level biharmonic
       !!               mixing trend.
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zcu => wrk_2d_1 , zcv => wrk_2d_2   ! 3D workspace
-      USE wrk_nemo, ONLY:   zuf => wrk_3d_3 , zut => wrk_3d_4   ! 3D workspace
-      USE wrk_nemo, ONLY:   zlu => wrk_3d_5 , zlv => wrk_3d_6
       !
       INTEGER, INTENT(in) ::   kt   ! ocean time-step index
       !
       INTEGER  ::   ji, jj, jk                  ! dummy loop indices
       REAL(wp) ::   zua, zva, zbt, ze2u, ze2v   ! temporary scalar
+      REAL(wp), POINTER, DIMENSION(:,:  ) :: zcu, zcv
+      REAL(wp), POINTER, DIMENSION(:,:,:) :: zuf, zut, zlu, zlv
       !!----------------------------------------------------------------------
-
-      IF( wrk_in_use(2, 1,2) .OR. wrk_in_use(3, 3,4,5,6) ) THEN
-         CALL ctl_stop('dyn_ldf_bilap : requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('dyn_ldf_bilap')
+      !
+      CALL wrk_alloc( jpi, jpj,      zcu, zcv           )
+      CALL wrk_alloc( jpi, jpj, jpk, zuf, zut, zlu, zlv ) 
+      !
       IF( kt == nit000 .AND. lwp ) THEN
          WRITE(numout,*)
          WRITE(numout,*) 'dyn_ldf_bilap : iso-level bilaplacian operator'
@@ -206,8 +207,10 @@ CONTAINS
          !                                             ! ===============
       END DO                                           !   End of slab
       !                                                ! ===============
-      IF( wrk_not_released(2, 1,2)     .OR.   &
-          wrk_not_released(3, 3,4,5,6) )   CALL ctl_stop('dyn_ldf_bilap: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi, jpj,      zcu, zcv           )
+      CALL wrk_dealloc( jpi, jpj, jpk, zuf, zut, zlu, zlv ) 
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('dyn_ldf_bilap')
       !
    END SUBROUTINE dyn_ldf_bilap
 

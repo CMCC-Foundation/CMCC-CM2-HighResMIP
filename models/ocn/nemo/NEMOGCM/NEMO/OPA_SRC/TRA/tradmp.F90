@@ -13,10 +13,9 @@ MODULE tradmp
    !!  NEMO      1.0  ! 2002-08  (G. Madec, E. Durand)  free form + modules
    !!            3.2  ! 2009-08  (G. Madec, C. Talandier)  DOCTOR norm for namelist parameter
    !!            3.3  ! 2010-06  (C. Ethe, G. Madec) merge TRA-TRC 
+   !!            3.4  ! 2011-04  (G. Madec, C. Ethe) Merge of dtatem and dtasal + suppression of CPP keys
    !!----------------------------------------------------------------------
-#if   defined key_tradmp   ||   defined key_esopa
-   !!----------------------------------------------------------------------
-   !!   'key_tradmp'                                       internal damping
+
    !!----------------------------------------------------------------------
    !!   tra_dmp_alloc : allocate tradmp arrays
    !!   tra_dmp       : update the tracer trend with the internal damping
@@ -31,12 +30,13 @@ MODULE tradmp
    USE trdtra         ! active tracers: trends
    USE zdf_oce        ! ocean: vertical physics
    USE phycst         ! physical constants
-   USE dtatem         ! data: temperature
-   USE dtasal         ! data: salinity
+   USE dtatsd         ! data: temperature & salinity
    USE zdfmxl         ! vertical physics: mixed layer depth
    USE in_out_manager ! I/O manager
    USE lib_mpp        ! MPP library
    USE prtctl         ! Print control
+   USE wrk_nemo       ! Memory allocation
+   USE timing         ! Timing
 
    IMPLICIT NONE
    PRIVATE
@@ -46,41 +46,38 @@ MODULE tradmp
    PUBLIC   dtacof       ! routine called by in both tradmp.F90 and trcdmp.F90
    PUBLIC   dtacof_zoom  ! routine called by in both tradmp.F90 and trcdmp.F90
 
-#if ! defined key_agrif
-   LOGICAL, PUBLIC, PARAMETER ::   lk_tradmp = .TRUE.     !: internal damping flag
-#else
-   LOGICAL, PUBLIC            ::   lk_tradmp = .TRUE.     !: internal damping flag
-#endif
+   !                                !!* Namelist namtra_dmp : T & S newtonian damping *
+   LOGICAL, PUBLIC ::   ln_tradmp = .TRUE.    !: internal damping flag
+   INTEGER         ::   nn_hdmp   =   -1      ! = 0/-1/'latitude' for damping over T and S
+   INTEGER         ::   nn_zdmp   =    0      ! = 0/1/2 flag for damping in the mixed layer
+   REAL(wp)        ::   rn_surf   =   50._wp  ! surface time scale for internal damping        [days]
+   REAL(wp)        ::   rn_bot    =  360._wp  ! bottom time scale for internal damping         [days]
+   REAL(wp)        ::   rn_dep    =  800._wp  ! depth of transition between rn_surf and rn_bot [meters]
+   INTEGER         ::   nn_file   =    2      ! = 1 create a damping.coeff NetCDF file 
+
    REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   strdmp   !: damping salinity trend (psu/s)
    REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   ttrdmp   !: damping temperature trend (Celcius/s)
    REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   resto    !: restoring coeff. on T and S (s-1)
-   
-   !                                !!* Namelist namtra_dmp : T & S newtonian damping *
-   INTEGER  ::   nn_hdmp =   -1      ! = 0/-1/'latitude' for damping over T and S
-   INTEGER  ::   nn_zdmp =    0      ! = 0/1/2 flag for damping in the mixed layer
-   REAL(wp) ::   rn_surf =   50._wp  ! surface time scale for internal damping        [days]
-   REAL(wp) ::   rn_bot  =  360._wp  ! bottom time scale for internal damping         [days]
-   REAL(wp) ::   rn_dep  =  800._wp  ! depth of transition between rn_surf and rn_bot [meters]
-   INTEGER  ::   nn_file =    2      ! = 1 create a damping.coeff NetCDF file 
 
    !! * Substitutions
 #  include "domzgr_substitute.h90"
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: tradmp.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
 
    INTEGER FUNCTION tra_dmp_alloc()
       !!----------------------------------------------------------------------
-      !!                ***  FUNCTION tra_bbl_alloc  ***
+      !!                ***  FUNCTION tra_dmp_alloc  ***
       !!----------------------------------------------------------------------
-      ALLOCATE( strdmp(jpi,jpj,jpk) , ttrdmp(jpi,jpj,jpk) , resto(jpi,jpj,jpk), STAT= tra_dmp_alloc )
+      ALLOCATE( strdmp(jpi,jpj,jpk) , ttrdmp(jpi,jpj,jpk), resto(jpi,jpj,jpk), STAT= tra_dmp_alloc )
       !
       IF( lk_mpp            )   CALL mpp_sum ( tra_dmp_alloc )
       IF( tra_dmp_alloc > 0 )   CALL ctl_warn('tra_dmp_alloc: allocation of arrays failed')
+      !
    END FUNCTION tra_dmp_alloc
 
 
@@ -102,11 +99,19 @@ CONTAINS
       !!
       !! ** Action  : - (ta,sa)   tracer trends updated with the damping trend
       !!----------------------------------------------------------------------
+      !
       INTEGER, INTENT(in) ::   kt   ! ocean time-step index
       !!
       INTEGER  ::   ji, jj, jk   ! dummy loop indices
-      REAL(wp) ::   zta, zsa     ! local scalars
+      REAL(wp) ::   zta, zsa             ! local scalars
+      REAL(wp), POINTER, DIMENSION(:,:,:,:) ::  zts_dta 
       !!----------------------------------------------------------------------
+      !
+      IF( nn_timing == 1 )  CALL timing_start( 'tra_dmp')
+      !
+      CALL wrk_alloc( jpi, jpj, jpk, jpts,  zts_dta )
+      !                           !==   input T-S data at kt   ==!
+      CALL dta_tsd( kt, zts_dta )            ! read and interpolates T-S data at kt
       !
       SELECT CASE ( nn_zdmp )     !==    type of damping   ==!
       !
@@ -114,12 +119,12 @@ CONTAINS
          DO jk = 1, jpkm1
             DO jj = 2, jpjm1
                DO ji = fs_2, fs_jpim1   ! vector opt.
-                  zta = resto(ji,jj,jk) * ( t_dta(ji,jj,jk) - tsb(ji,jj,jk,jp_tem) )
-                  zsa = resto(ji,jj,jk) * ( s_dta(ji,jj,jk) - tsb(ji,jj,jk,jp_sal) )
+                  zta = resto(ji,jj,jk) * ( zts_dta(ji,jj,jk,jp_tem) - tsb(ji,jj,jk,jp_tem) )
+                  zsa = resto(ji,jj,jk) * ( zts_dta(ji,jj,jk,jp_sal) - tsb(ji,jj,jk,jp_sal) )
                   tsa(ji,jj,jk,jp_tem) = tsa(ji,jj,jk,jp_tem) + zta
                   tsa(ji,jj,jk,jp_sal) = tsa(ji,jj,jk,jp_sal) + zsa
-                  strdmp(ji,jj,jk) = zsa           ! save the salinity trend (used in asmtrj)
-                  ttrdmp(ji,jj,jk) = zta
+                  strdmp(ji,jj,jk) = zsa           ! save the trend (used in asmtrj)
+                  ttrdmp(ji,jj,jk) = zta      
                END DO
             END DO
          END DO
@@ -129,8 +134,8 @@ CONTAINS
             DO jj = 2, jpjm1
                DO ji = fs_2, fs_jpim1   ! vector opt.
                   IF( avt(ji,jj,jk) <= 5.e-4_wp ) THEN
-                     zta = resto(ji,jj,jk) * ( t_dta(ji,jj,jk) - tsb(ji,jj,jk,jp_tem) )
-                     zsa = resto(ji,jj,jk) * ( s_dta(ji,jj,jk) - tsb(ji,jj,jk,jp_sal) )
+                     zta = resto(ji,jj,jk) * ( zts_dta(ji,jj,jk,jp_tem) - tsb(ji,jj,jk,jp_tem) )
+                     zsa = resto(ji,jj,jk) * ( zts_dta(ji,jj,jk,jp_sal) - tsb(ji,jj,jk,jp_sal) )
                   ELSE
                      zta = 0._wp
                      zsa = 0._wp  
@@ -148,8 +153,8 @@ CONTAINS
             DO jj = 2, jpjm1
                DO ji = fs_2, fs_jpim1   ! vector opt.
                   IF( fsdept(ji,jj,jk) >= hmlp (ji,jj) ) THEN
-                     zta = resto(ji,jj,jk) * ( t_dta(ji,jj,jk) - tsb(ji,jj,jk,jp_tem) )
-                     zsa = resto(ji,jj,jk) * ( s_dta(ji,jj,jk) - tsb(ji,jj,jk,jp_sal) )
+                     zta = resto(ji,jj,jk) * ( zts_dta(ji,jj,jk,jp_tem) - tsb(ji,jj,jk,jp_tem) )
+                     zsa = resto(ji,jj,jk) * ( zts_dta(ji,jj,jk,jp_sal) - tsb(ji,jj,jk,jp_sal) )
                   ELSE
                      zta = 0._wp
                      zsa = 0._wp  
@@ -172,6 +177,10 @@ CONTAINS
       IF(ln_ctl)   CALL prt_ctl( tab3d_1=tsa(:,:,:,jp_tem), clinfo1=' dmp  - Ta: ', mask1=tmask,   &
          &                       tab3d_2=tsa(:,:,:,jp_sal), clinfo2=       ' Sa: ', mask2=tmask, clinfo3='tra' )
       !
+      CALL wrk_dealloc( jpi, jpj, jpk, jpts,  zts_dta )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop( 'tra_dmp')
+      !
    END SUBROUTINE tra_dmp
 
 
@@ -183,7 +192,7 @@ CONTAINS
       !!
       !! ** Method  :   read the nammbf namelist and check the parameters
       !!----------------------------------------------------------------------
-      NAMELIST/namtra_dmp/ nn_hdmp, nn_zdmp, rn_surf, rn_bot, rn_dep, nn_file
+      NAMELIST/namtra_dmp/ ln_tradmp, nn_hdmp, nn_zdmp, rn_surf, rn_bot, rn_dep, nn_file
       !!----------------------------------------------------------------------
 
       REWIND ( numnam )                  ! Read Namelist namtra_dmp : temperature and salinity damping term
@@ -193,46 +202,52 @@ CONTAINS
 
       IF(lwp) THEN                       ! Namelist print
          WRITE(numout,*)
-         WRITE(numout,*) 'tra_dmp : T and S newtonian damping'
+         WRITE(numout,*) 'tra_dmp_init : T and S newtonian damping'
          WRITE(numout,*) '~~~~~~~'
          WRITE(numout,*) '   Namelist namtra_dmp : set damping parameter'
-         WRITE(numout,*) '      T and S damping option         nn_hdmp = ', nn_hdmp
-         WRITE(numout,*) '      mixed layer damping option     nn_zdmp = ', nn_zdmp, '(zoom: forced to 0)'
-         WRITE(numout,*) '      surface time scale (days)      rn_surf = ', rn_surf
-         WRITE(numout,*) '      bottom time scale (days)       rn_bot  = ', rn_bot
-         WRITE(numout,*) '      depth of transition (meters)   rn_dep  = ', rn_dep
-         WRITE(numout,*) '      create a damping.coeff file    nn_file = ', nn_file
+         WRITE(numout,*) '      add a damping termn or not      ln_tradmp = ', ln_tradmp
+         WRITE(numout,*) '      T and S damping option          nn_hdmp   = ', nn_hdmp
+         WRITE(numout,*) '      mixed layer damping option      nn_zdmp   = ', nn_zdmp, '(zoom: forced to 0)'
+         WRITE(numout,*) '      surface time scale (days)       rn_surf   = ', rn_surf
+         WRITE(numout,*) '      bottom time scale (days)        rn_bot    = ', rn_bot
+         WRITE(numout,*) '      depth of transition (meters)    rn_dep    = ', rn_dep
+         WRITE(numout,*) '      create a damping.coeff file     nn_file   = ', nn_file
+         WRITE(numout,*)
       ENDIF
 
-      !                              ! allocate tradmp arrays
-      IF( tra_dmp_alloc() /= 0 )   CALL ctl_stop( 'STOP', 'tra_dmp_init: unable to allocate arrays' )
-
-      SELECT CASE ( nn_hdmp )
-      CASE (  -1  )   ;   IF(lwp) WRITE(numout,*) '   tracer damping in the Med & Red seas only'
-      CASE ( 1:90 )   ;   IF(lwp) WRITE(numout,*) '   tracer damping poleward of', nn_hdmp, ' degrees'
-      CASE DEFAULT
-         WRITE(ctmp1,*) '          bad flag value for nn_hdmp = ', nn_hdmp
-         CALL ctl_stop(ctmp1)
-      END SELECT
-
-      SELECT CASE ( nn_zdmp )
-      CASE ( 0 )   ;   IF(lwp) WRITE(numout,*) '   tracer damping throughout the water column'
-      CASE ( 1 )   ;   IF(lwp) WRITE(numout,*) '   no tracer damping in the turbocline (avt > 5 cm2/s)'
-      CASE ( 2 )   ;   IF(lwp) WRITE(numout,*) '   no tracer damping in the mixed layer'
-      CASE DEFAULT
-         WRITE(ctmp1,*) 'bad flag value for nn_zdmp = ', nn_zdmp
-         CALL ctl_stop(ctmp1)
-      END SELECT
-
-      IF( .NOT.lk_dtasal .OR. .NOT.lk_dtatem )   &
-         &   CALL ctl_stop( 'no temperature and/or salinity data define key_dtatem and key_dtasal' )
-
-      strdmp(:,:,:) = 0._wp       ! internal damping salinity trend (used in asmtrj)
-      ttrdmp(:,:,:) = 0._wp
-      !                          ! Damping coefficients initialization
-      IF( lzoom ) THEN   ;   CALL dtacof_zoom( resto )
-      ELSE               ;   CALL dtacof( nn_hdmp, rn_surf, rn_bot, rn_dep,  &
-                             &            nn_file, 'TRA'  , resto            )
+      IF( ln_tradmp ) THEN               ! initialization for T-S damping
+         !
+         IF( tra_dmp_alloc() /= 0 )   CALL ctl_stop( 'STOP', 'tra_dmp_init: unable to allocate arrays' )
+         !
+         SELECT CASE ( nn_hdmp )
+         CASE (  -1  )   ;   IF(lwp) WRITE(numout,*) '   tracer damping in the Med & Red seas only'
+         CASE ( 1:90 )   ;   IF(lwp) WRITE(numout,*) '   tracer damping poleward of', nn_hdmp, ' degrees'
+         CASE DEFAULT
+            WRITE(ctmp1,*) '          bad flag value for nn_hdmp = ', nn_hdmp
+            CALL ctl_stop(ctmp1)
+         END SELECT
+         !
+         SELECT CASE ( nn_zdmp )
+         CASE ( 0 )   ;   IF(lwp) WRITE(numout,*) '   tracer damping throughout the water column'
+         CASE ( 1 )   ;   IF(lwp) WRITE(numout,*) '   no tracer damping in the turbocline (avt > 5 cm2/s)'
+         CASE ( 2 )   ;   IF(lwp) WRITE(numout,*) '   no tracer damping in the mixed layer'
+         CASE DEFAULT
+            WRITE(ctmp1,*) 'bad flag value for nn_zdmp = ', nn_zdmp
+            CALL ctl_stop(ctmp1)
+         END SELECT
+         !
+         IF( .NOT.ln_tsd_tradmp ) THEN
+            CALL ctl_warn( 'tra_dmp_init: read T-S data not initialized, we force ln_tsd_tradmp=T' )
+            CALL dta_tsd_init( ld_tradmp=ln_tradmp )        ! forces the initialisation of T-S data
+         ENDIF
+         !
+         strdmp(:,:,:) = 0._wp       ! internal damping salinity trend (used in asmtrj)
+         ttrdmp(:,:,:) = 0._wp
+         !                          ! Damping coefficients initialization
+         IF( lzoom ) THEN   ;   CALL dtacof_zoom( resto )
+         ELSE               ;   CALL dtacof( nn_hdmp, rn_surf, rn_bot, rn_dep, nn_file, 'TRA', resto )
+         ENDIF
+         !
       ENDIF
       !
    END SUBROUTINE tra_dmp_init
@@ -257,6 +272,9 @@ CONTAINS
       REAL(wp) ::   zlat, zlat0, zlat1, zlat2, z1_5d   ! local scalar
       REAL(wp), DIMENSION(6)  ::   zfact               ! 1Dworkspace
       !!----------------------------------------------------------------------
+      !
+      IF( nn_timing == 1 )  CALL timing_start( 'dtacof_zoom')
+      !
 
       zfact(1) =  1._wp
       zfact(2) =  1._wp
@@ -308,6 +326,8 @@ CONTAINS
       !                             ! Mask resto array
       presto(:,:,:) = presto(:,:,:) * tmask(:,:,:)
       !
+      IF( nn_timing == 1 )  CALL timing_stop( 'dtacof_zoom')
+      !
    END SUBROUTINE dtacof_zoom
 
 
@@ -326,8 +346,6 @@ CONTAINS
       !!----------------------------------------------------------------------
       USE iom
       USE ioipsl
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zhfac => wrk_1d_1, zmrs => wrk_2d_1 , zdct  => wrk_3d_1   ! 1D, 2D, 3D workspace
       !!
       INTEGER                         , INTENT(in   )  ::  kn_hdmp    ! damping option
       REAL(wp)                        , INTENT(in   )  ::  pn_surf    ! surface time scale (days)
@@ -343,14 +361,17 @@ CONTAINS
       REAL(wp) ::   zinfl, zlon                 ! local scalars
       REAL(wp) ::   zlat, zlat0, zlat1, zlat2   !   -      -
       REAL(wp) ::   zsdmp, zbdmp                !   -      -
-      CHARACTER(len=20)                ::   cfile
+      CHARACTER(len=20)                   :: cfile
+      REAL(wp), POINTER, DIMENSION(:    ) :: zhfac 
+      REAL(wp), POINTER, DIMENSION(:,:  ) :: zmrs 
+      REAL(wp), POINTER, DIMENSION(:,:,:) :: zdct 
       !!----------------------------------------------------------------------
-
-      IF( wrk_in_use(1, 1) .OR.   &
-          wrk_in_use(2, 1) .OR.   &
-          wrk_in_use(3, 1)   ) THEN
-          CALL ctl_stop('dtacof: requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
+      !
+      IF( nn_timing == 1 )  CALL timing_start('dtacof')
+      !
+      CALL wrk_alloc( jpk, zhfac          )
+      CALL wrk_alloc( jpi, jpj, zmrs      )
+      CALL wrk_alloc( jpi, jpj, jpk, zdct )
       !                                   ! ====================
       !                                   !  ORCA configuration : global domain
       !                                   ! ====================
@@ -528,7 +549,7 @@ CONTAINS
          !                         !--------------------!
       ELSE                         !     No damping     !
          !                         !--------------------!
-         CALL ctl_stop( 'Choose a correct value of nn_hdmp or DO NOT defined key_tradmp' )
+         CALL ctl_stop( 'Choose a correct value of nn_hdmp or put ln_tradmp to FALSE' )
       ENDIF
 
       !                            !--------------------------------!
@@ -543,9 +564,11 @@ CONTAINS
          CALL iom_close ( inum0 )
       ENDIF
       !
-      IF( wrk_not_released(1, 1) .OR.   &
-          wrk_not_released(2, 1) .OR.   &
-          wrk_not_released(3, 1) )   CALL ctl_stop('dtacof: failed to release workspace arrays')
+      CALL wrk_dealloc( jpk, zhfac)
+      CALL wrk_dealloc( jpi, jpj, zmrs )
+      CALL wrk_dealloc( jpi, jpj, jpk, zdct )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('dtacof')
       !
    END SUBROUTINE dtacof
 
@@ -571,8 +594,6 @@ CONTAINS
       !!              - NetCDF file 'dist.coast.nc' 
       !!----------------------------------------------------------------------
       USE ioipsl      ! IOipsl librairy
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zxt => wrk_2d_1 , zyt => wrk_2d_2 , zzt => wrk_2d_3, zmask => wrk_2d_4
       !!
       REAL(wp), DIMENSION(jpi,jpj,jpk), INTENT( out ) ::   pdct   ! distance to the coastline
       !!
@@ -580,19 +601,17 @@ CONTAINS
       INTEGER ::   iju, ijt, icoast, itime, ierr, icot   ! local integers
       CHARACTER (len=32) ::   clname                     ! local name
       REAL(wp) ::   zdate0                               ! local scalar
-      LOGICAL , ALLOCATABLE, DIMENSION(:,:) ::   llcotu, llcotv, llcotf   ! 2D logical workspace
-      REAL(wp), ALLOCATABLE, DIMENSION(:)   ::   zxc, zyc, zzc, zdis    ! temporary workspace
+      REAL(wp), POINTER, DIMENSION(:,:) ::  zxt, zyt, zzt, zmask
+      REAL(wp), POINTER, DIMENSION(:  ) ::  zxc, zyc, zzc, zdis    ! temporary workspace
+      LOGICAL , ALLOCATABLE, DIMENSION(:,:) ::  llcotu, llcotv, llcotf   ! 2D logical workspace
       !!----------------------------------------------------------------------
-
-!      IF( wrk_in_use(2, 1,2,3,4) .OR.  &
-!          wrk_in_use(1, 1,2,3,4)  ) THEN
-      IF( wrk_in_use(2, 2,3,4,5) .OR.  &
-          wrk_in_use(1, 2,3,4,5)  ) THEN
-          CALL ctl_stop('cofdis: requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
-
-      ALLOCATE( llcotu(jpi,jpj) , llcotv(jpi,jpj) , llcotf(jpi,jpj) ,                        &
-         &      zxc (3*jpi*jpj) , zyc (3*jpi*jpj) , zzc (3*jpi*jpj) , zdis (3*jpi*jpj) , STAT=ierr )
+      !
+      IF( nn_timing == 1 )  CALL timing_start('cofdis')
+      !
+      CALL wrk_alloc( jpi, jpj , zxt, zyt, zzt, zmask    )
+      CALL wrk_alloc( 3*jpi*jpj, zxc, zyc, zzc, zdis     )
+      ALLOCATE( llcotu(jpi,jpj), llcotv(jpi,jpj), llcotf(jpi,jpj)  )
+      !
       IF( lk_mpp    )   CALL mpp_sum( ierr )
       IF( ierr /= 0 )   CALL ctl_stop( 'STOP', 'cofdis: requested local arrays unavailable')
 
@@ -746,27 +765,12 @@ CONTAINS
       CALL restput( icot, 'Tcoast', jpi, jpj, jpk, 0, pdct )
       CALL restclo( icot )
       !
-!      IF( wrk_not_released(2, 1,2,3,4) .OR. & 
-!          wrk_not_released(1, 1,2,3,4)  )   CALL ctl_stop('cofdis: failed to release workspace arrays')
-      IF( wrk_not_released(2, 2,3,4,5) .OR. & 
-          wrk_not_released(1, 2,3,4,5)  )   CALL ctl_stop('cofdis: failed to release workspace arrays')
-      DEALLOCATE( llcotu , llcotv , llcotf ,      &
-         &        zxc    , zyc    , zzc    , zdis )
+      CALL wrk_dealloc( jpi, jpj , zxt, zyt, zzt, zmask    )
+      CALL wrk_dealloc( 3*jpi*jpj, zxc, zyc, zzc, zdis     )
+      DEALLOCATE( llcotu, llcotv, llcotf  )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('cofdis')
       !
    END SUBROUTINE cofdis
-
-#else
-   !!----------------------------------------------------------------------
-   !!   Default key                                     NO internal damping
-   !!----------------------------------------------------------------------
-   LOGICAL , PUBLIC, PARAMETER ::   lk_tradmp = .FALSE.    !: internal damping flag
-CONTAINS
-   SUBROUTINE tra_dmp( kt )        ! Empty routine
-      WRITE(*,*) 'tra_dmp: You should not have seen this print! error?', kt
-   END SUBROUTINE tra_dmp
-   SUBROUTINE tra_dmp_init        ! Empty routine
-   END SUBROUTINE tra_dmp_init
-#endif
-
    !!======================================================================
 END MODULE tradmp

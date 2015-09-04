@@ -49,6 +49,9 @@ MODULE zdftke
    USE in_out_manager ! I/O manager
    USE iom            ! I/O manager library
    USE lib_mpp        ! MPP library
+   USE wrk_nemo       ! work arrays
+   USE timing         ! Timing
+   USE lib_fortran    ! Fortran utilities (allows no signed zero when 'key_nosignedzero' defined)
 
    IMPLICIT NONE
    PRIVATE
@@ -97,7 +100,7 @@ MODULE zdftke
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 4.0 , NEMO Consortium (2011)
-   !! $Id: zdftke.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -111,9 +114,9 @@ CONTAINS
          &      e_dis(jpi,jpj,jpk) , e_mix(jpi,jpj,jpk) ,                          &
          &      e_pdl(jpi,jpj,jpk) , e_ric(jpi,jpj,jpk) ,                          &
 #endif
-         &      en    (jpi,jpj,jpk) , htau (jpi,jpj)     , dissl(jpi,jpj,jpk) ,    &
-         &      avt_k (jpi,jpj,jpk) , avm_k (jpi,jpj,jpk),                         &
-         &      avmu_k(jpi,jpj,jpk) , avmv_k(jpi,jpj,jpk), STAT= zdf_tke_alloc     )
+         &      en    (jpi,jpj,jpk) , htau  (jpi,jpj)    , dissl(jpi,jpj,jpk) ,     & 
+         &      avt_k (jpi,jpj,jpk) , avm_k (jpi,jpj,jpk),                          &
+         &      avmu_k(jpi,jpj,jpk) , avmv_k(jpi,jpj,jpk), STAT= zdf_tke_alloc      )
          !
       IF( lk_mpp             )   CALL mpp_sum ( zdf_tke_alloc )
       IF( zdf_tke_alloc /= 0 )   CALL ctl_warn('zdf_tke_alloc: failed to allocate arrays')
@@ -169,21 +172,21 @@ CONTAINS
       INTEGER, INTENT(in) ::   kt   ! ocean time step
       !!----------------------------------------------------------------------
       !
-      IF( kt /= nit000 ) THEN   ! restore before value to compute tke 
-         avt (:,:,:) = avt_k (:,:,:)  
-         avm (:,:,:) = avm_k (:,:,:)  
-         avmu(:,:,:) = avmu_k(:,:,:)  
-         avmv(:,:,:) = avmv_k(:,:,:)  
-      ENDIF  
-      ! 
+      IF( kt /= nit000 ) THEN   ! restore before value to compute tke
+         avt (:,:,:) = avt_k (:,:,:) 
+         avm (:,:,:) = avm_k (:,:,:) 
+         avmu(:,:,:) = avmu_k(:,:,:) 
+         avmv(:,:,:) = avmv_k(:,:,:) 
+      ENDIF 
+      !
       CALL tke_tke      ! now tke (en)
       !
       CALL tke_avn      ! now avt, avm, avmu, avmv
-      ! 
-      avt_k (:,:,:) = avt (:,:,:)  
-      avm_k (:,:,:) = avm (:,:,:)  
-      avmu_k(:,:,:) = avmu(:,:,:)  
-      avmv_k(:,:,:) = avmv(:,:,:)  
+      !
+      avt_k (:,:,:) = avt (:,:,:) 
+      avm_k (:,:,:) = avm (:,:,:) 
+      avmu_k(:,:,:) = avmu(:,:,:) 
+      avmv_k(:,:,:) = avmv(:,:,:) 
       !
    END SUBROUTINE zdf_tke
 
@@ -205,15 +208,6 @@ CONTAINS
       !!              - avmu, avmv : production of TKE by shear at u and v-points
       !!                (= Kz dz[Ub] * dz[Un] )
       !! ---------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released, iwrk_in_use, iwrk_not_released
-      USE oce     , ONLY:   zdiag => ua , zd_up => va , zd_lw => ta   ! (ua,va,ta) used as workspace
-      USE wrk_nemo, ONLY:   imlc  => iwrk_2d_1   ! 2D INTEGER workspace
-      USE wrk_nemo, ONLY:   zhlc  =>  wrk_2d_1   ! 2D REAL workspace
-#if defined CCSMCOUPLED
-      USE wrk_nemo, ONLY:   zfri  =>  wrk_2d_2   ! 2D REAL workspace
-#endif
-      USE wrk_nemo, ONLY:   zpelc =>  wrk_3d_1   ! 3D REAL workspace
-      !
       INTEGER  ::   ji, jj, jk                      ! dummy loop arguments
 !!bfr      INTEGER  ::   ikbu, ikbv, ikbum1, ikbvm1      ! temporary scalar
 !!bfr      INTEGER  ::   ikbt, ikbumm1, ikbvmm1          ! temporary scalar
@@ -226,17 +220,17 @@ CONTAINS
       REAL(wp) ::   zus   , zwlc  , zind            !    -         -
       REAL(wp) ::   zzd_up, zzd_lw                  !    -         -
 !!bfr      REAL(wp) ::   zebot                           !    -         -
+      INTEGER , POINTER, DIMENSION(:,:  ) :: imlc
+      REAL(wp), POINTER, DIMENSION(:,:  ) :: zhlc
+      REAL(wp), POINTER, DIMENSION(:,:,:) :: zpelc, zdiag, zd_up, zd_lw
       !!--------------------------------------------------------------------
       !
-      IF( iwrk_in_use(2, 1) .OR.   &
-           wrk_in_use(2, 1) .OR.   &
-#if defined CCSMCOUPLED
-           wrk_in_use(2, 2) .OR.   &
-#endif
-           wrk_in_use(3, 1)   ) THEN
-         CALL ctl_stop('tke_tke: requested workspace arrays unavailable')   ;   RETURN
-      END IF
-
+      IF( nn_timing == 1 )  CALL timing_start('tke_tke')
+      !
+      CALL wrk_alloc( jpi,jpj, imlc )    ! integer
+      CALL wrk_alloc( jpi,jpj, zhlc ) 
+      CALL wrk_alloc( jpi,jpj,jpk, zpelc, zdiag, zd_up, zd_lw ) 
+      !
 #if defined CCSMCOUPLED
       zfri = fr_i
       fr_i = 0.0_wp
@@ -458,13 +452,11 @@ CONTAINS
 #if defined CCSMCOUPLED
       fr_i = zfri
 #endif
+      CALL wrk_dealloc( jpi,jpj, imlc )    ! integer
+      CALL wrk_dealloc( jpi,jpj, zhlc ) 
+      CALL wrk_dealloc( jpi,jpj,jpk, zpelc, zdiag, zd_up, zd_lw ) 
       !
-      IF( iwrk_not_released(2 ,1) .OR.   &
-           wrk_not_released(2, 1) .OR.   &
-#if defined CCSMCOUPLED
-           wrk_not_released(2, 2) .OR.   &
-#endif
-           wrk_not_released(3, 1)  )   CALL ctl_stop( 'tke_tke: failed to release workspace arrays' )
+      IF( nn_timing == 1 )  CALL timing_stop('tke_tke')
       !
    END SUBROUTINE tke_tke
 
@@ -504,13 +496,16 @@ CONTAINS
       !! ** Action  : - avt : now vertical eddy diffusivity (w-point)
       !!              - avmu, avmv : now vertical eddy viscosity at uw- and vw-points
       !!----------------------------------------------------------------------
-      USE oce, ONLY:   zmpdl => ua , zmxlm => va , zmxld => ta   ! (ua,va,ta) used as workspace
-      !!
       INTEGER  ::   ji, jj, jk   ! dummy loop indices
       REAL(wp) ::   zrn2, zraug, zcoef, zav     ! local scalars
       REAL(wp) ::   zdku, zpdlr, zri, zsqen     !   -      -
       REAL(wp) ::   zdkv, zemxl, zemlm, zemlp   !   -      -
+      REAL(wp), POINTER, DIMENSION(:,:,:) :: zmpdl, zmxlm, zmxld
       !!--------------------------------------------------------------------
+      !
+      IF( nn_timing == 1 )  CALL timing_start('tke_avn')
+
+      CALL wrk_alloc( jpi,jpj,jpk, zmpdl, zmxlm, zmxld ) 
 
       !                     !<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
       !                     !  Mixing length
@@ -684,6 +679,10 @@ CONTAINS
             &          tab3d_2=avmv, clinfo2=       ' v: ', mask2=vmask, ovlap=1, kdim=jpk )
       ENDIF
       !
+      CALL wrk_dealloc( jpi,jpj,jpk, zmpdl, zmxlm, zmxld ) 
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('tke_avn')
+      !
    END SUBROUTINE tke_avn
 
 
@@ -745,7 +744,7 @@ CONTAINS
       !                               !* Check of some namelist values
       IF( nn_mxl  < 0  .OR.  nn_mxl  > 3 )   CALL ctl_stop( 'bad flag: nn_mxl is  0, 1 or 2 ' )
       IF( nn_pdl  < 0  .OR.  nn_pdl  > 1 )   CALL ctl_stop( 'bad flag: nn_pdl is  0 or 1    ' )
-      IF( nn_htau < 0  .OR.  nn_htau > 1 )   CALL ctl_stop( 'bad flag: nn_htau is 0 or 1 ' )
+      IF( nn_htau < 0  .OR.  nn_htau > 1 )   CALL ctl_stop( 'bad flag: nn_htau is 0, 1 or 2 ' )
 #if ! key_coupled
       IF( nn_etau == 3 )   CALL ctl_stop( 'nn_etau == 3 : HF taum only known in coupled mode' )
 #endif
@@ -822,6 +821,12 @@ CONTAINS
               IF(lwp) WRITE(numout,*) ' ===>>>> : previous run without tke scheme, en computed by iterative loop'
               en (:,:,:) = rn_emin * tmask(:,:,:)
               CALL tke_avn                               ! recompute avt, avm, avmu, avmv and dissl (approximation)
+              !
+              avt_k (:,:,:) = avt (:,:,:)
+              avm_k (:,:,:) = avm (:,:,:)
+              avmu_k(:,:,:) = avmu(:,:,:)
+              avmv_k(:,:,:) = avmv(:,:,:)
+              !
               DO jit = nit000 + 1, nit000 + 10   ;   CALL zdf_tke( jit )   ;   END DO
            ENDIF
         ELSE                                   !* Start from rest

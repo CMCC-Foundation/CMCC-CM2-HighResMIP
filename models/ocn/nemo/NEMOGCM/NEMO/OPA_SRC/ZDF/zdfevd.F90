@@ -18,9 +18,11 @@ MODULE zdfevd
    USE dom_oce         ! ocean space and time domain variables
    USE zdf_oce         ! ocean vertical physics variables
    USE zdfkpp          ! KPP vertical mixing
+   USE zdfgls          ! GLS vertical mixing
    USE in_out_manager  ! I/O manager
    USE iom             ! for iom_put
    USE lbclnk          ! ocean lateral boundary conditions (or mpp link)
+   USE timing          ! Timing
 
    IMPLICIT NONE
    PRIVATE
@@ -31,7 +33,7 @@ MODULE zdfevd
 #  include "domzgr_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 4.0 , NEMO Consortium (2011)
-   !! $Id: zdfevd.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -57,12 +59,17 @@ CONTAINS
       !
       INTEGER ::   ji, jj, jk   ! dummy loop indices
       !!----------------------------------------------------------------------
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('zdf_evd')
+      !
       IF( kt == nit000 ) THEN
          IF(lwp) WRITE(numout,*)
          IF(lwp) WRITE(numout,*) 'zdf_evd : Enhanced Vertical Diffusion (evd)'
          IF(lwp) WRITE(numout,*) '~~~~~~~ '
          IF(lwp) WRITE(numout,*)
+         !
+         IF(lwp .AND. lk_zdfgls )   CALL ctl_warn(' No need zdf_evd with GLS closures ')
+         !
       ENDIF
 
       zavt_evd(:,:,:) = avt(:,:,:)           ! set avt prior to evd application
@@ -128,6 +135,8 @@ CONTAINS
 
       zavt_evd(:,:,:) = avt(:,:,:) - zavt_evd(:,:,:)   ! change in avt due to evd
       CALL iom_put( "avt_evd", zavt_evd )              ! output this change
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('zdf_evd')
       !
    END SUBROUTINE zdf_evd
 

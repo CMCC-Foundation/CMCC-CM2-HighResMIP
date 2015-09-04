@@ -4,7 +4,6 @@ MODULE diahsb
    !! Ocean diagnostics: Heat, salt and volume budgets
    !!======================================================================
    !! History :  3.3  ! 2010-09  (M. Leclair)  Original code 
-   !!                 ! 2012-10  (C. Rousset)  add iom_put
    !!----------------------------------------------------------------------
 
    !!----------------------------------------------------------------------
@@ -18,12 +17,14 @@ MODULE diahsb
    USE trabbc          ! bottom boundary condition 
    USE lib_mpp         ! distributed memory computing library
    USE trabbc          ! bottom boundary condition
+   USE obc_par         ! (for lk_obc)
    USE bdy_par         ! (for lk_bdy)
+   USE timing          ! preformance summary
    USE iom             ! I/O manager
-   USE lib_fortran     ! glob_sum
+   USE lib_fortran
    USE restart         ! ocean restart
-   USE wrk_nemo        ! work arrays
-   USE sbcrnf          ! river runoffd
+   USE sbcrnf
+
 #if defined CCSMCOUPLED
    USE qflxice         ! frazil ice formation
 #endif
@@ -37,10 +38,13 @@ MODULE diahsb
 
    LOGICAL, PUBLIC ::   ln_diahsb   !: check the heat and salt budgets
 
-   REAL(dp)                                ::   surf_tot         !
-   REAL(dp)                                ::   vol_tot          ! volume
+   INTEGER                                 ::   numhsb                           !
+   REAL(dp)                                ::   surf_tot   , vol_tot             !
    REAL(dp), SAVE                          ::   frc_t      , frc_s     , frc_v   ! global forcing trends
    REAL(dp), SAVE                          ::   frc_wn_t      , frc_wn_s ! global forcing trends
+   REAL(dp)                                ::   fact1                            ! conversion factors
+   REAL(dp)                                ::   fact21    , fact22               !     -         -
+   REAL(dp)                                ::   fact31    , fact32               !     -         -
    REAL(dp), DIMENSION(:,:)  , ALLOCATABLE ::   surf      , ssh_ini              !
    REAL(dp), DIMENSION(:,:,:), ALLOCATABLE ::   hc_loc_ini, sc_loc_ini, e3t_ini  !
    REAL(dp), DIMENSION(:,:)  , ALLOCATABLE ::   ssh_hc_loc_ini, ssh_sc_loc_ini
@@ -51,7 +55,7 @@ MODULE diahsb
 
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: diahsb.F90 4624 2014-04-28 12:09:03Z acc $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 
@@ -67,26 +71,31 @@ CONTAINS
       !!	            at the current time step from their values at nit000
       !!	            - Compute the contribution of forcing and remove it from these deviations
       !!
+      !! ** Action : Write the results in the 'heat_salt_volume_budgets.txt' ASCII file
       !!---------------------------------------------------------------------------
       INTEGER, INTENT(in) ::   kt   ! ocean time-step index
       !!
       INTEGER    ::   jk                          ! dummy loop indice
       REAL(dp)   ::   zdiff_hc    , zdiff_sc      ! heat and salt content variations
-      REAL(dp)   ::   zdiff_hc1   , zdiff_sc1     ! -   -   -   -   -   -   -   - 
+      REAL(dp)   ::   zdiff_hc1   , zdiff_sc1     ! heat and salt content variations of ssh
       REAL(dp)   ::   zdiff_v1    , zdiff_v2      ! volume variation
-      REAL(dp)   ::   zerr_hc1    , zerr_sc1       ! heat and salt content misfit
+      REAL(dp)   ::   zerr_hc1    , zerr_sc1      ! Non conservation due to free surface
+      REAL(dp)   ::   z1_rau0                     ! local scalars
+      REAL(dp)   ::   zdeltat                     !    -     -
       REAL(dp)   ::   z_frc_trd_t , z_frc_trd_s   !    -     -
       REAL(dp)   ::   z_frc_trd_v                 !    -     -
       REAL(dp)   ::   z_wn_trd_t , z_wn_trd_s   !    -     -
       REAL(dp)   ::   z_ssh_hc , z_ssh_sc   !    -     -
       !!---------------------------------------------------------------------------
+      IF( nn_timing == 1 )   CALL timing_start('dia_hsb')
 
       ! ------------------------- !
       ! 1 - Trends due to forcing !
       ! ------------------------- !
-      z_frc_trd_v = - rau0r * glob_sum( ( emp(:,:) - rnf(:,:) ) * surf(:,:) ) ! volume fluxes
-      z_frc_trd_t =           glob_sum( sbc_tsc(:,:,jp_tem) * surf(:,:) )       ! heat fluxes
-      z_frc_trd_s =           glob_sum( sbc_tsc(:,:,jp_sal) * surf(:,:) )       ! salt fluxes
+      z1_rau0 = 1.e0 / rau0
+      z_frc_trd_v = - rau0r * glob_sum( ( emp(:,:) - rnf(:,:) ) * surf(:,:) )     ! volume fluxes
+      z_frc_trd_t =           glob_sum( sbc_tsc(:,:,jp_tem) * surf(:,:) )     ! heat fluxes
+      z_frc_trd_s =           glob_sum( sbc_tsc(:,:,jp_sal) * surf(:,:) )     ! salt fluxes
       ! Add runoff heat & salt input
 #if defined CCSMCOUPLED
       IF( ln_rnf_cpl)   z_frc_trd_t = z_frc_trd_t + glob_sum( rnf_tsc(:,:,jp_tem) * surf(:,:) )
@@ -94,12 +103,10 @@ CONTAINS
       IF( ln_rnf    )   z_frc_trd_t = z_frc_trd_t + glob_sum( rnf_tsc(:,:,jp_tem) * surf(:,:) )
 #endif
       IF( ln_rnf_sal)   z_frc_trd_s = z_frc_trd_s + glob_sum( rnf_tsc(:,:,jp_sal) * surf(:,:) )
-
       ! Add penetrative solar radiation
-      IF( ln_traqsr )   z_frc_trd_t = z_frc_trd_t + ro0cpr * glob_sum( qsr(:,:) * surf(:,:) )
+      IF( ln_traqsr )   z_frc_trd_t = z_frc_trd_t + ro0cpr * glob_sum( qsr     (:,:) * surf(:,:) )
       ! Add geothermal heat flux
-      IF( ln_trabbc )   z_frc_trd_t = z_frc_trd_t +     glob_sum( qgh_trd0(:,:) * surf(:,:) )
-      !
+      IF( ln_trabbc )   z_frc_trd_t = z_frc_trd_t +  glob_sum( qgh_trd0(:,:) * surf(:,:) )
       IF( .NOT. lk_vvl ) THEN
          z_wn_trd_t = - glob_sum( surf(:,:) * wn(:,:,1) * tsb(:,:,1,jp_tem) )
          z_wn_trd_s = - glob_sum( surf(:,:) * wn(:,:,1) * tsb(:,:,1,jp_sal) )
@@ -121,12 +128,12 @@ CONTAINS
          frc_wn_s = frc_wn_s + z_wn_trd_s * rdt
       ENDIF
 
-      ! ------------------------ !
+      ! ----------------------- !
       ! 2 -  Content variations !
-      ! ------------------------ !
-      zdiff_v2 = 0.0_wp
-      zdiff_hc = 0.0_wp
-      zdiff_sc = 0.0_wp
+      ! ----------------------- !
+      zdiff_v2 = 0.d0
+      zdiff_hc = 0.d0
+      zdiff_sc = 0.d0
 
       ! volume variation (calculated with ssh)
       zdiff_v1 = glob_sum( surf(:,:) * ( sshn(:,:) - ssh_ini(:,:) ) )
@@ -137,30 +144,20 @@ CONTAINS
          z_ssh_sc = glob_sum( surf(:,:) * ( tsn(:,:,1,jp_sal) * sshn(:,:) - ssh_sc_loc_ini(:,:) ) )
       ENDIF
 
-      IF( lk_vvl ) THEN
-         DO jk = 1, jpkm1
-            ! volume variation (calculated with scale factors)
-            zdiff_v2 = zdiff_v2 + sum( surf(:,:) * tmask(:,:,jk) &
-               &                       * ( fse3t_n(:,:,jk) - e3t_ini(:,:,jk) ) )
-         ENDDO
-         IF (lk_mpp) THEN
-            CALL mpp_sum( zdiff_v2 )
-         ENDIF
-      ENDIF
-
       DO jk = 1, jpkm1
+        ! volume variation (calculated with scale factors)
+         zdiff_v2 = zdiff_v2 + glob_sum( surf(:,:) * tmask(:,:,jk)   &
+            &                       * ( fse3t_n(:,:,jk)         &
+            &                           - e3t_ini(:,:,jk) ) )
          ! heat content variation
-         zdiff_hc = zdiff_hc + sum(  surf(:,:) * tmask(:,:,jk) & 
-            &                      * ( fse3t_n(:,:,jk) * tsn(:,:,jk,jp_tem) - hc_loc_ini(:,:,jk) ) )
+         zdiff_hc = zdiff_hc + glob_sum( surf(:,:) * tmask(:,:,jk)          &
+            &                       * ( fse3t_n(:,:,jk) * tsn(:,:,jk,jp_tem)   &
+            &                           - hc_loc_ini(:,:,jk) ) )
          ! salt content variation
-         zdiff_sc = zdiff_sc + sum(  surf(:,:) * tmask(:,:,jk)   &
-            &                      * ( fse3t_n(:,:,jk) * tsn(:,:,jk,jp_sal) - sc_loc_ini(:,:,jk) ) )
+         zdiff_sc = zdiff_sc + glob_sum( surf(:,:) * tmask(:,:,jk)          &
+            &                       * ( fse3t_n(:,:,jk) * tsn(:,:,jk,jp_sal)   &
+            &                           - sc_loc_ini(:,:,jk) ) )
       ENDDO
-
-      IF (lk_mpp) THEN
-         CALL mpp_sum( zdiff_hc )
-         CALL mpp_sum( zdiff_sc )
-      ENDIF
 
       ! Substract forcing from heat content, salt content and volume variations
       zdiff_v1 = zdiff_v1 - frc_v
@@ -173,10 +170,11 @@ CONTAINS
          zerr_hc1  = z_ssh_hc - frc_wn_t
          zerr_sc1  = z_ssh_sc - frc_wn_s
       ENDIF
-
+      
       ! ----------------------- !
       ! 3 - Diagnostics writing !
       ! ----------------------- !
+      zdeltat  = 1.e0 / ( ( kt - nit000 + 1 ) * rdt )
       IF( lk_vvl ) THEN
          vol_tot   = 0.0_wp                                                   ! total ocean volume
          DO jk = 1, jpkm1
@@ -212,6 +210,9 @@ CONTAINS
       !
       IF( lrst_oce )   CALL dia_hsb_rst( kt, 'WRITE' )
 
+      IF( nn_timing == 1 )   CALL timing_stop('dia_hsb')
+
+      !
    END SUBROUTINE dia_hsb
 
 
@@ -227,19 +228,15 @@ CONTAINS
       !!             - Initialize forcing trends
       !!             - Compute coefficients for conversion
       !!---------------------------------------------------------------------------
+      CHARACTER (len=32) ::   cl_name  ! output file name
       INTEGER            ::   jk       ! dummy loop indice
       INTEGER            ::   ierror   ! local integer
       !!
       NAMELIST/namhsb/ ln_diahsb
-      !
       !!----------------------------------------------------------------------
-
-      REWIND( numnam)              ! Namelist namhsb in reference namelist
-      READ  ( numnam, namhsb, IOSTAT = ierror, ERR = 901)
-901   IF( ierror /= 0 ) CALL ctl_stop ( 'dia_hsb: namhsb in namelist' )
-
-      IF(lwp) WRITE ( numout, namhsb )
-
+      !
+      REWIND ( numnam )              ! Read Namelist namhsb 
+      READ   ( numnam, namhsb )
       !
       IF(lwp) THEN                   ! Control print
          WRITE(numout,*)
@@ -260,12 +257,9 @@ CONTAINS
       ! 1 - Allocate memory !
       ! ------------------- !
       ALLOCATE( hc_loc_ini(jpi,jpj,jpk), sc_loc_ini(jpi,jpj,jpk), &
-         &      e3t_ini(jpi,jpj,jpk), surf(jpi,jpj),  ssh_ini(jpi,jpj), STAT=ierror )
-      IF( ierror > 0 ) THEN
-         CALL ctl_stop( 'dia_hsb: unable to allocate hc_loc_ini' )   ;   RETURN
-      ENDIF
-
-      IF(.NOT. lk_vvl ) ALLOCATE( ssh_hc_loc_ini(jpi,jpj), ssh_sc_loc_ini(jpi,jpj),STAT=ierror )
+         &      ssh_hc_loc_ini(jpi,jpj), ssh_sc_loc_ini(jpi,jpj), &
+         &      e3t_ini(jpi,jpj,jpk)                            , &
+         &      surf(jpi,jpj),  ssh_ini(jpi,jpj), STAT=ierror )
       IF( ierror > 0 ) THEN
          CALL ctl_stop( 'dia_hsb: unable to allocate hc_loc_ini' )   ;   RETURN
       ENDIF
@@ -274,23 +268,51 @@ CONTAINS
       ! 2 - Time independant variables and file opening !
       ! ----------------------------------------------- !
       IF(lwp) WRITE(numout,*) "dia_hsb: heat salt volume budgets activated"
-      IF(lwp) WRITE(numout,*) '~~~~~~~'
-      surf(:,:) = e1e2t(:,:) * tmask(:,:,1) * tmask_i(:,:)      ! masked surface grid cell area
-      surf_tot  = glob_sum( surf(:,:) )                                       ! total ocean surface area
-
-      vol_tot   = 0.0_wp                                                   ! total ocean volume
-      DO jk = 1, jpkm1
-         vol_tot  = vol_tot + sum( surf(:,:) * tmask(:,:,jk) * fse3t_n(:,:,jk) )
-      END DO
-      IF (lk_mpp) THEN
-         CALL mpp_sum( vol_tot )
+      IF(lwp) WRITE(numout,*) "~~~~~~~"
+      IF( lk_obc .or. lk_bdy ) THEN
+         CALL ctl_warn( 'dia_hsb does not take open boundary fluxes into account' )         
       ENDIF
 
-      IF( lk_bdy ) CALL ctl_warn( 'dia_hsb does not take open boundary fluxes into account' )         
-      !
+      surf(:,:) = e1t(:,:) * e2t(:,:) * tmask(:,:,1) * tmask_i(:,:)      ! masked surface grid cell area
+      surf_tot  = glob_sum( surf(:,:) )                                       ! total ocean surface area
+      vol_tot   = 0.d0                                                   ! total ocean volume
+      DO jk = 1, jpkm1
+         vol_tot  = vol_tot + glob_sum( surf(:,:) * tmask(:,:,jk)     &
+            &                         * fse3t_n(:,:,jk)         )
+      END DO
+      ENDIF
+      ! --------------- !
+      ! 3 - Conversions ! (factors will be multiplied by duration afterwards)
+      ! --------------- !
+
+      ! heat content variation   =>   equivalent heat flux:
+      fact1  = rau0 * rcp / surf_tot                                         ! [C*m3]   ->  [W/m2]
+      ! salt content variation   =>   equivalent EMP and equivalent "flow": 
+      fact21 = 1.e3  / ( soce * surf_tot )                                   ! [psu*m3] ->  [mm/s]
+      fact22 = 1.e-6 / soce                                                  ! [psu*m3] ->  [Sv]
+      ! volume variation         =>   equivalent EMP and equivalent "flow":
+      fact31 = 1.e3  / surf_tot                                              ! [m3]     ->  [mm/s]
+      fact32 = 1.e-6                                                         ! [m3]     ->  [SV]
+
       ! ---------------------------------- !
       ! 4 - initial conservation variables !
       ! ---------------------------------- !
+      ssh_ini(:,:) = sshn(:,:)                                       ! initial ssh
+      DO jk = 1, jpk
+         e3t_ini   (:,:,jk) = fse3t_n(:,:,jk)                        ! initial vertical scale factors
+         hc_loc_ini(:,:,jk) = tsn(:,:,jk,jp_tem) * fse3t_n(:,:,jk)   ! initial heat content
+         sc_loc_ini(:,:,jk) = tsn(:,:,jk,jp_sal) * fse3t_n(:,:,jk)   ! initial salt content
+      END DO
+      frc_v = 0.d0                                           ! volume       trend due to forcing
+      frc_t = 0.d0                                           ! heat content   -    -   -    -   
+      frc_s = 0.d0                                           ! salt content   -    -   -    -         
+      IF( .NOT. lk_vvl ) THEN
+         ssh_hc_loc_ini(:,:) = tsn(:,:,1,jp_tem) * ssh_ini(:,:)   ! initial heat content associated with ssh
+         ssh_sc_loc_ini(:,:) = tsn(:,:,1,jp_sal) * ssh_ini(:,:)   ! initial salt content associated with ssh
+         frc_wn_t = 0.d0
+         frc_wn_s = 0.d0
+      ENDIF
+      !
       CALL dia_hsb_rst( nit000, 'READ' )  !* read or initialize all required files
       !
    END SUBROUTINE dia_hsb_init

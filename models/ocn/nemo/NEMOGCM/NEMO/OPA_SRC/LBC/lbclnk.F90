@@ -6,8 +6,9 @@ MODULE lbclnk
    !! History :  OPA  ! 1997-06  (G. Madec)     Original code
    !!   NEMO     1.0  ! 2002-09  (G. Madec)     F90: Free form and module
    !!            3.2  ! 2009-03  (R. Benshila)  External north fold treatment  
+   !!            3.4  ! 2012-12  (R. Bourdalle-Badie and G. Reffray)  add a C1D case  
    !!----------------------------------------------------------------------
-#if   defined key_mpp_mpi
+#if defined key_mpp_mpi
    !!----------------------------------------------------------------------
    !!   'key_mpp_mpi'             MPI massively parallel processing library
    !!----------------------------------------------------------------------
@@ -29,7 +30,7 @@ MODULE lbclnk
 
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: lbclnk.F90 2442 2010-11-27 18:05:38Z gm $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 
@@ -62,10 +63,87 @@ MODULE lbclnk
    
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: lbclnk.F90 2442 2010-11-27 18:05:38Z gm $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
+
+# if defined key_c1d
+   !!----------------------------------------------------------------------
+   !!   'key_c1d'                                          1D configuration
+   !!----------------------------------------------------------------------
+
+   SUBROUTINE lbc_lnk_3d_gather( pt3d1, cd_type1, pt3d2, cd_type2, psgn )
+      !!---------------------------------------------------------------------
+      !!                  ***  ROUTINE lbc_lnk_3d_gather  ***
+      !!
+      !! ** Purpose :   set lateral boundary conditions on two 3D arrays (C1D case)
+      !!
+      !! ** Method  :   call lbc_lnk_3d on pt3d1 and pt3d2
+      !!----------------------------------------------------------------------
+      CHARACTER(len=1)                , INTENT(in   ) ::   cd_type1, cd_type2   ! nature of pt3d grid-points
+      REAL(wp), DIMENSION(jpi,jpj,jpk), INTENT(inout) ::   pt3d1   , pt3d2      ! 3D array on which the lbc is applied
+      REAL(wp)                        , INTENT(in   ) ::   psgn                 ! control of the sign 
+      !!----------------------------------------------------------------------
+      !
+      CALL lbc_lnk_3d( pt3d1, cd_type1, psgn)
+      CALL lbc_lnk_3d( pt3d2, cd_type2, psgn)
+      !
+   END SUBROUTINE lbc_lnk_3d_gather
+
+
+   SUBROUTINE lbc_lnk_3d( pt3d, cd_type, psgn, cd_mpp, pval )
+      !!---------------------------------------------------------------------
+      !!                  ***  ROUTINE lbc_lnk_3d  ***
+      !!
+      !! ** Purpose :   set lateral boundary conditions on a 3D array (C1D case)
+      !!
+      !! ** Method  :   1D case, the central water column is set everywhere
+      !!----------------------------------------------------------------------
+      CHARACTER(len=1)                , INTENT(in   )           ::   cd_type   ! nature of pt3d grid-points
+      REAL(wp), DIMENSION(jpi,jpj,jpk), INTENT(inout)           ::   pt3d      ! 3D array on which the lbc is applied
+      REAL(wp)                        , INTENT(in   )           ::   psgn      ! control of the sign 
+      CHARACTER(len=3)                , INTENT(in   ), OPTIONAL ::   cd_mpp    ! MPP only (here do nothing)
+      REAL(wp)                        , INTENT(in   ), OPTIONAL ::   pval      ! background value (for closed boundaries)
+      !
+      INTEGER  ::   jk     ! dummy loop index
+      REAL(wp) ::   ztab   ! local scalar
+      !!----------------------------------------------------------------------
+      !
+      DO jk = 1, jpk
+         ztab = pt3d(2,2,jk)
+         pt3d(:,:,jk) = ztab
+      END DO
+      !
+   END SUBROUTINE lbc_lnk_3d
+
+
+   SUBROUTINE lbc_lnk_2d( pt2d, cd_type, psgn, cd_mpp, pval )
+      !!---------------------------------------------------------------------
+      !!                 ***  ROUTINE lbc_lnk_2d  ***
+      !!
+      !! ** Purpose :   set lateral boundary conditions on a 2D array (non mpp case)
+      !!
+      !! ** Method  :   1D case, the central water column is set everywhere
+      !!----------------------------------------------------------------------
+      CHARACTER(len=1)            , INTENT(in   )           ::   cd_type   ! nature of pt3d grid-points
+      REAL(wp), DIMENSION(jpi,jpj), INTENT(inout)           ::   pt2d      ! 2D array on which the lbc is applied
+      REAL(wp)                    , INTENT(in   )           ::   psgn      ! control of the sign 
+      CHARACTER(len=3)            , INTENT(in   ), OPTIONAL ::   cd_mpp    ! MPP only (here do nothing)
+      REAL(wp)                    , INTENT(in   ), OPTIONAL ::   pval      ! background value (for closed boundaries)
+      !
+      REAL(wp) ::   ztab   ! local scalar
+      !!----------------------------------------------------------------------
+      !
+      ztab = pt2d(2,2)
+      pt2d(:,:) = ztab
+      !
+   END SUBROUTINE lbc_lnk_2d
+
+#else
+   !!----------------------------------------------------------------------
+   !!   Default option                           3D shared memory computing
+   !!----------------------------------------------------------------------
 
    SUBROUTINE lbc_lnk_3d_gather( pt3d1, cd_type1, pt3d2, cd_type2, psgn )
       !!---------------------------------------------------------------------
@@ -112,7 +190,7 @@ CONTAINS
       !!----------------------------------------------------------------------
 
       IF( PRESENT( pval ) ) THEN   ;   zland = pval      ! set land value (zero by default)
-      ELSE                         ;   zland = 0.e0
+      ELSE                         ;   zland = 0._wp
       ENDIF
 
 
@@ -202,7 +280,7 @@ CONTAINS
       !!----------------------------------------------------------------------
 
       IF( PRESENT( pval ) ) THEN   ;   zland = pval      ! set land value (zero by default)
-      ELSE                         ;   zland = 0.e0
+      ELSE                         ;   zland = 0._wp
       ENDIF
 
       IF (PRESENT(cd_mpp)) THEN
@@ -269,6 +347,7 @@ CONTAINS
       !    
    END SUBROUTINE lbc_lnk_2d
 
+# endif
 #endif
 
    !!======================================================================

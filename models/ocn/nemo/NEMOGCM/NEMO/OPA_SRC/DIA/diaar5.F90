@@ -18,6 +18,8 @@ MODULE diaar5
    USE eosbn2         ! equation of state                (eos_bn2 routine)
    USE lib_mpp        ! distribued memory computing library
    USE iom            ! I/O manager library
+   USE timing         ! preformance summary
+   USE wrk_nemo       ! working arrays
 
    IMPLICIT NONE
    PRIVATE
@@ -38,7 +40,7 @@ MODULE diaar5
 #  include "domzgr_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: diaar5.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -64,22 +66,21 @@ CONTAINS
       !!
       !! ** Purpose :   compute and output some AR5 diagnostics
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zarea_ssh => wrk_2d_1 , zbotpres => wrk_2d_2   ! 2D workspace
-      USE wrk_nemo, ONLY:   zrhd      => wrk_3d_1 , zrhop    => wrk_3d_2   ! 3D      -
-      USE wrk_nemo, ONLY:   ztsn      => wrk_4d_1                          ! 4D      -
       !
       INTEGER, INTENT( in ) ::   kt   ! ocean time-step index
       !
       INTEGER  ::   ji, jj, jk                      ! dummy loop arguments
       REAL(wp) ::   zvolssh, zvol, zssh_steric, zztmp, zarho, ztemp, zsal, zmass
+      !
+      REAL(wp), POINTER, DIMENSION(:,:)     :: zarea_ssh , zbotpres       ! 2D workspace 
+      REAL(wp), POINTER, DIMENSION(:,:,:)   :: zrhd , zrhop               ! 3D workspace
+      REAL(wp), POINTER, DIMENSION(:,:,:,:) :: ztsn                       ! 4D workspace
       !!--------------------------------------------------------------------
-
-      IF( wrk_in_use(2, 1,2) .OR.   &
-          wrk_in_use(3, 1,2) .OR.   &
-          wrk_in_use(4, 1)   ) THEN
-         CALL ctl_stop('dia_ar5: requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
+      IF( nn_timing == 1 )   CALL timing_start('dia_ar5')
+ 
+      CALL wrk_alloc( jpi , jpj              , zarea_ssh , zbotpres )
+      CALL wrk_alloc( jpi , jpj , jpk        , zrhd      , zrhop    )
+      CALL wrk_alloc( jpi , jpj , jpk , jpts , ztsn                 )
 
       CALL iom_put( 'cellthc', fse3t(:,:,:) )
 
@@ -93,8 +94,8 @@ CONTAINS
       CALL iom_put( 'voltot', zvol               )
       CALL iom_put( 'sshtot', zvolssh / area_tot )
 
-      !                                         ! thermosteric ssh
-      ztsn(:,:,:,jp_tem) = tn (:,:,:)
+      !                     
+      ztsn(:,:,:,jp_tem) = tsn(:,:,:,jp_tem)                    ! thermosteric ssh
       ztsn(:,:,:,jp_sal) = sn0(:,:,:)
       CALL eos( ztsn, zrhd )                       ! now in situ density using initial salinity
       !
@@ -142,14 +143,14 @@ CONTAINS
          DO jj = 1, jpj
             DO ji = 1, jpi
                zztmp = area(ji,jj) * fse3t(ji,jj,jk)
-               ztemp = ztemp + zztmp * tn(ji,jj,jk)
-               zsal  = zsal  + zztmp * sn(ji,jj,jk)
+               ztemp = ztemp + zztmp * tsn(ji,jj,jk,jp_tem)
+               zsal  = zsal  + zztmp * tsn(ji,jj,jk,jp_sal)
             END DO
          END DO
       END DO
       IF( .NOT.lk_vvl ) THEN
-         ztemp = ztemp + SUM( zarea_ssh(:,:) * tn(:,:,1) )
-         zsal  = zsal  + SUM( zarea_ssh(:,:) * sn(:,:,1) )
+         ztemp = ztemp + SUM( zarea_ssh(:,:) * tsn(:,:,1,jp_tem) )
+         zsal  = zsal  + SUM( zarea_ssh(:,:) * tsn(:,:,1,jp_sal) )
       ENDIF
       IF( lk_mpp ) THEN  
          CALL mpp_sum( ztemp )
@@ -164,9 +165,11 @@ CONTAINS
       CALL iom_put( 'temptot', ztemp )
       CALL iom_put( 'saltot' , zsal  )
       !
-      IF( wrk_not_released(2, 1,2) .OR.   &
-          wrk_not_released(3, 1,2) .OR.   &
-          wrk_not_released(4, 1)   )   CALL ctl_stop('dia_ar5: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi , jpj              , zarea_ssh , zbotpres )
+      CALL wrk_dealloc( jpi , jpj , jpk        , zrhd      , zrhop    )
+      CALL wrk_dealloc( jpi , jpj , jpk , jpts , ztsn                 )
+      !
+      IF( nn_timing == 1 )   CALL timing_stop('dia_ar5')
       !
    END SUBROUTINE dia_ar5
 
@@ -177,9 +180,6 @@ CONTAINS
       !!                   
       !! ** Purpose :   initialization for AR5 diagnostic computation
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   wrk_4d_1      ! 4D workspace
-      !
       INTEGER  ::   inum
       INTEGER  ::   ik
       INTEGER  ::   ji, jj, jk  ! dummy loop indices
@@ -187,11 +187,9 @@ CONTAINS
       REAL(wp), POINTER, DIMENSION(:,:,:,:) ::   zsaldta   ! Jan/Dec levitus salinity
       !!----------------------------------------------------------------------
       !
-      IF(wrk_in_use(4, 1) ) THEN
-         CALL ctl_stop('dia_ar5_init: requested workspace array unavailable.')   ;   RETURN
-      ENDIF
-      zsaldta => wrk_4d_1(:,:,:,1:2)
-
+      IF( nn_timing == 1 )   CALL timing_start('dia_ar5_init')
+      !
+      CALL wrk_alloc( jpi , jpj , jpk, jpts, zsaldta )
       !                                      ! allocate dia_ar5 arrays
       IF( dia_ar5_alloc() /= 0 )   CALL ctl_stop( 'STOP', 'dia_ar5_init : unable to allocate arrays' )
 
@@ -225,7 +223,9 @@ CONTAINS
          END DO
       ENDIF
       !
-      IF( wrk_not_released(4, 1) )   CALL ctl_stop('dia_ar5_init: failed to release workspace array')
+      CALL wrk_dealloc( jpi , jpj , jpk, jpts, zsaldta )
+      !
+      IF( nn_timing == 1 )   CALL timing_stop('dia_ar5_init')
       !
    END SUBROUTINE dia_ar5_init
 

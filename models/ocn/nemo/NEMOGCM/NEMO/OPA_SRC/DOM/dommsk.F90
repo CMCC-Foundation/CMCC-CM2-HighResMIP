@@ -24,11 +24,12 @@ MODULE dommsk
    !!----------------------------------------------------------------------
    USE oce             ! ocean dynamics and tracers
    USE dom_oce         ! ocean space and time domain
-   USE obc_oce         ! ocean open boundary conditions
    USE in_out_manager  ! I/O manager
    USE lbclnk          ! ocean lateral boundary conditions (or mpp link)
    USE lib_mpp
    USE dynspg_oce      ! choice/control of key cpp for surface pressure gradient
+   USE wrk_nemo        ! Memory allocation
+   USE timing          ! Timing
 
    IMPLICIT NONE
    PRIVATE
@@ -37,7 +38,10 @@ MODULE dommsk
    PUBLIC   dom_msk_alloc   ! routine called by nemogcm.F90
 
    !                            !!* Namelist namlbc : lateral boundary condition *
-   REAL(wp) ::   rn_shlat = 2.   ! type of lateral boundary condition on velocity
+   REAL(wp)        :: rn_shlat   = 2.   ! type of lateral boundary condition on velocity
+   LOGICAL, PUBLIC :: ln_vorlat  = .false.   !  consistency of vorticity boundary condition 
+   !                                            with analytical eqs.
+
 
    INTEGER, ALLOCATABLE, SAVE, DIMENSION(:,:) ::  icoord ! Workspace for dom_msk_nsa()
 
@@ -45,7 +49,7 @@ MODULE dommsk
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.2 , LODYC-IPSL  (2009)
-   !! $Id: dommsk.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -124,21 +128,21 @@ CONTAINS
       !!                          function point (=0. or 1.) and set to 0 along lateral boundaries
       !!               tmask_i  : interior ocean mask
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released, iwrk_in_use, iwrk_not_released
-      USE wrk_nemo, ONLY:   zwf  =>  wrk_2d_1      ! 2D real    workspace
-      USE wrk_nemo, ONLY:   imsk => iwrk_2d_1      ! 2D integer workspace
       !
       INTEGER  ::   ji, jj, jk      ! dummy loop indices
       INTEGER  ::   iif, iil, ii0, ii1, ii   ! local integers
       INTEGER  ::   ijf, ijl, ij0, ij1       !   -       -
+      INTEGER , POINTER, DIMENSION(:,:) ::  imsk
+      REAL(wp), POINTER, DIMENSION(:,:) ::  zwf
       !!
-      NAMELIST/namlbc/ rn_shlat
+      NAMELIST/namlbc/ rn_shlat, ln_vorlat
       !!---------------------------------------------------------------------
-      
-      IF( wrk_in_use(2, 1) .OR. iwrk_in_use(2, 1) ) THEN
-         CALL ctl_stop('dom_msk: requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('dom_msk')
+      !
+      CALL wrk_alloc( jpi, jpj, imsk )
+      CALL wrk_alloc( jpi, jpj, zwf  )
+      !
       REWIND( numnam )              ! Namelist namlbc : lateral momentum boundary condition
       READ  ( numnam, namlbc )
       
@@ -147,7 +151,8 @@ CONTAINS
          WRITE(numout,*) 'dommsk : ocean mask '
          WRITE(numout,*) '~~~~~~'
          WRITE(numout,*) '   Namelist namlbc'
-         WRITE(numout,*) '      lateral momentum boundary cond.    rn_shlat = ',rn_shlat
+         WRITE(numout,*) '      lateral momentum boundary cond.    rn_shlat  = ',rn_shlat
+         WRITE(numout,*) '      consistency with analytical form   ln_vorlat = ',ln_vorlat 
       ENDIF
 
       IF     (      rn_shlat == 0.               ) THEN   ;   IF(lwp) WRITE(numout,*) '   ocean lateral  free-slip '
@@ -389,6 +394,7 @@ CONTAINS
       !
       CALL lbc_lnk( fmask, 'F', 1._wp )      ! Lateral boundary conditions on fmask
 
+      ! CAUTION : The fmask may be further modified in dyn_vor_init ( dynvor.F90 )
             
       IF( nprint == 1 .AND. lwp ) THEN      ! Control print
          imsk(:,:) = INT( tmask_i(:,:) )
@@ -435,8 +441,10 @@ CONTAINS
             &                              1, jpj, 1, 1, numout )
       ENDIF
       !
-      IF( wrk_not_released(2, 1)  .OR.   &
-         iwrk_not_released(2, 1)  )   CALL ctl_stop('dom_msk: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi, jpj, imsk )
+      CALL wrk_dealloc( jpi, jpj, zwf  )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('dom_msk')
       !
    END SUBROUTINE dom_msk
 
@@ -459,7 +467,9 @@ CONTAINS
       INTEGER  ::   ine, inw, ins, inn, itest, ierror, iind, ijnd
       REAL(wp) ::   zaa
       !!---------------------------------------------------------------------
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('dom_msk_nsa')
+      !
       IF(lwp) WRITE(numout,*)
       IF(lwp) WRITE(numout,*) 'dom_msk_nsa : noslip accurate boundary condition'
       IF(lwp) WRITE(numout,*) '~~~~~~~~~~~   using Schchepetkin and O Brian scheme'
@@ -618,6 +628,8 @@ CONTAINS
          END DO
          CALL ctl_stop( 'We stop...' )
       ENDIF
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('dom_msk_nsa')
       !
    END SUBROUTINE dom_msk_nsa
 

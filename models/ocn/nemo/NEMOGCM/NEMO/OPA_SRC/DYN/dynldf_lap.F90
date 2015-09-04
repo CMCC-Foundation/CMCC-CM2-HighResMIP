@@ -22,6 +22,7 @@ MODULE dynldf_lap
    USE trdmod          ! ocean dynamics trends 
    USE trdmod_oce      ! ocean variables trends
    USE ldfslp          ! iso-neutral slopes 
+   USE timing          ! Timing
 
    IMPLICIT NONE
    PRIVATE
@@ -34,7 +35,7 @@ MODULE dynldf_lap
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: dynldf_lap.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -67,6 +68,8 @@ CONTAINS
       REAL(wp) ::   zua, zva, ze2u, ze1v   ! local scalars
       !!----------------------------------------------------------------------
       !
+      IF( nn_timing == 1 )  CALL timing_start('dyn_ldf_lap')
+      !
       IF( kt == nit000 ) THEN
          IF(lwp) WRITE(numout,*)
          IF(lwp) WRITE(numout,*) 'dyn_ldf : iso-level harmonic (laplacian) operator'
@@ -94,6 +97,8 @@ CONTAINS
          !                                             ! ===============
       END DO                                           !   End of slab
       !                                                ! ===============
+      IF( nn_timing == 1 )  CALL timing_stop('dyn_ldf_lap')
+      !
    END SUBROUTINE dyn_ldf_lap
 
    !!======================================================================

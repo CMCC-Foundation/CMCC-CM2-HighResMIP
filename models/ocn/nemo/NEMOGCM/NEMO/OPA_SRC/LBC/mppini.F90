@@ -26,7 +26,7 @@ MODULE mppini
 #  include "domzgr_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: mppini.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -124,6 +124,7 @@ CONTAINS
       !!        !  98-02  (M. Guyon)  FETI method
       !!        !  98-05  (M. Imbard, J. Escobar, L. Colombet )  SHMEM and MPI versions
       !!   8.5  !  02-08  (G. Madec)  F90 : free form
+      !!   3.4  !  11-11  (C. Harris) decomposition changes for running with CICE
       !!----------------------------------------------------------------------
       INTEGER  ::   ji, jj, jn   ! dummy loop indices
       INTEGER  ::   ii, ij, ifreq, il1, il2            ! local integers
@@ -151,6 +152,20 @@ CONTAINS
       irestj = MOD( jpjglo - nrecj , jpnj )
 
       IF(  iresti == 0 )   iresti = jpni
+
+#if defined key_nemocice_decomp
+      ! In order to match CICE the size of domains in NEMO has to be changed
+      ! The last line of blocks (west) will have fewer points
+
+      DO jj = 1, jpnj
+         DO ji=1, jpni-1
+            ilcit(ji,jj) = jpi
+         END DO
+         ilcit(jpni,jj) = jpiglo - (jpni - 1) * (jpi - nreci)
+      END DO
+
+#else
+
       DO jj = 1, jpnj
          DO ji = 1, iresti
             ilcit(ji,jj) = jpi
@@ -160,7 +175,20 @@ CONTAINS
          END DO
       END DO
       
+#endif
       IF( irestj == 0 )   irestj = jpnj
+
+#if defined key_nemocice_decomp
+      ! Same change to domains in North-South direction as in East-West. 
+      DO ji=1,jpni
+         DO jj=1,jpnj-1
+            ilcjt(ji,jj) = jpj
+         END DO
+         ilcjt(ji,jpnj) = jpjglo - (jpnj - 1) * (jpj - nrecj)
+      END DO
+
+#else
+
       DO ji = 1, jpni
          DO jj = 1, irestj
             ilcjt(ji,jj) = jpj
@@ -170,6 +198,7 @@ CONTAINS
          END DO
       END DO
       
+#endif
       IF(lwp) THEN
          WRITE(numout,*)
          WRITE(numout,*) '           defines mpp subdomains'

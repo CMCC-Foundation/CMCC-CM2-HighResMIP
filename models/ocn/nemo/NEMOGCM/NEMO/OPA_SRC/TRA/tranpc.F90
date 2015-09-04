@@ -22,6 +22,8 @@ MODULE tranpc
    USE lbclnk          ! lateral boundary conditions (or mpp link)
    USE in_out_manager  ! I/O manager
    USE lib_mpp         ! MPP library
+   USE wrk_nemo        ! Memory Allocation
+   USE timing          ! Timing
 
    IMPLICIT NONE
    PRIVATE
@@ -32,7 +34,7 @@ MODULE tranpc
 #  include "domzgr_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: tranpc.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -55,9 +57,6 @@ CONTAINS
       !!
       !! References : Madec, et al., 1991, JPO, 21, 9, 1349-1371.
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released, wrk_in_use_xz, wrk_not_released_xz
-      USE wrk_nemo, ONLY:   ztrdt => wrk_3d_1 , ztrds => wrk_3d_2 , zrhop => wrk_3d_3
-      USE wrk_nemo, ONLY:   zwx   => wrk_xz_1 , zwy   => wrk_xz_2 , zwz   => wrk_xz_3
       !
       INTEGER, INTENT(in) ::   kt   ! ocean time-step index
       !
@@ -67,14 +66,15 @@ CONTAINS
       INTEGER  ::   jiter, jkdown, jkp        ! ???
       INTEGER  ::   ikbot, ik, ikup, ikdown   ! ???
       REAL(wp) ::   ze3tot, zta, zsa, zraua, ze3dwn
+      REAL(wp), POINTER, DIMENSION(:,:  ) :: zwx, zwy, zwz
+      REAL(wp), POINTER, DIMENSION(:,:,:) :: ztrdt, ztrds, zrhop
       !!----------------------------------------------------------------------
-
-      ! Strictly 1 and 2 3D workspaces only needed if(l_trdtra) but it doesn't 
-      ! cost us anything and makes code simpler.
-      IF( wrk_in_use(3, 1,2,3) .OR. wrk_in_use_xz(1,2,3) ) THEN
-         CALL ctl_stop('tra_npc: requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
-
+      !
+      IF( nn_timing == 1 )  CALL timing_start('tra_npc')
+      !
+      CALL wrk_alloc(jpi, jpj, jpk, zrhop )
+      CALL wrk_alloc(jpi, jpk, zwx, zwy, zwz )
+      !
       IF( MOD( kt, nn_npc ) == 0 ) THEN
 
          inpcc = 0
@@ -83,6 +83,7 @@ CONTAINS
          CALL eos( tsa, rhd, zrhop )         ! Potential density
 
          IF( l_trdtra )   THEN                    !* Save ta and sa trends
+            CALL wrk_alloc( jpi, jpj, jpk, ztrdt, ztrds )
             ztrdt(:,:,:) = tsa(:,:,:,jp_tem) 
             ztrds(:,:,:) = tsa(:,:,:,jp_sal)
          ENDIF
@@ -199,6 +200,7 @@ CONTAINS
             ztrds(:,:,:) = tsa(:,:,:,jp_sal) - ztrds(:,:,:)
             CALL trd_tra( kt, 'TRA', jp_tem, jptra_trd_npc, ztrdt )
             CALL trd_tra( kt, 'TRA', jp_sal, jptra_trd_npc, ztrds )
+            CALL wrk_dealloc( jpi, jpj, jpk, ztrdt, ztrds )
          ENDIF
       
          ! Lateral boundary conditions on ( ta, sa )   ( Unchanged sign)
@@ -215,8 +217,10 @@ CONTAINS
          !
       ENDIF
       !
-      IF( wrk_not_released(3, 1,2,3) .OR.   &
-          wrk_not_released_xz(1,2,3) )   CALL ctl_stop('tra_npc: failed to release workspace arrays')
+      CALL wrk_dealloc(jpi, jpj, jpk, zrhop )
+      CALL wrk_dealloc(jpi, jpk, zwx, zwy, zwz )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('tra_npc')
       !
    END SUBROUTINE tra_npc
 

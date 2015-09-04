@@ -4,10 +4,12 @@ MODULE prtctl
    !! Ocean system : print all SUM trends for each processor domain
    !!======================================================================
    !! History :  9.0  !  05-07  (C. Talandier) original code
+   !!            3.4  !  11-11  (C. Harris) decomposition changes for running with CICE
    !!----------------------------------------------------------------------
    USE dom_oce          ! ocean space and time domain variables
    USE in_out_manager   ! I/O manager
    USE lib_mpp          ! distributed memory computing
+   USE wrk_nemo         ! work arrays
 
    IMPLICIT NONE
    PRIVATE
@@ -30,7 +32,7 @@ MODULE prtctl
 
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: prtctl.F90 2715 2011-03-30 15:58:35Z rblod $ 
+   !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -72,11 +74,6 @@ CONTAINS
       !!                    kdim    : k- direction for 3D arrays 
       !!                    clinfo3 : additional information 
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   ztab2d_1 => wrk_2d_30 , ztab2d_2 => wrk_2d_31
-      USE wrk_nemo, ONLY:   zmask1   => wrk_3d_11 , zmask2   => wrk_3d_12 
-      USE wrk_nemo, ONLY:   ztab3d_1 => wrk_3d_13 , ztab3d_2 => wrk_3d_14
-      !
       REAL(wp), DIMENSION(:,:)  , INTENT(in), OPTIONAL ::   tab2d_1
       REAL(wp), DIMENSION(:,:,:), INTENT(in), OPTIONAL ::   tab3d_1
       REAL(wp), DIMENSION(:,:,:), INTENT(in), OPTIONAL ::   mask1
@@ -92,11 +89,12 @@ CONTAINS
       CHARACTER (len=15) :: cl2
       INTEGER ::   overlap, jn, sind, eind, kdir,j_id
       REAL(wp) :: zsum1, zsum2, zvctl1, zvctl2
+      REAL(wp), POINTER, DIMENSION(:,:)   :: ztab2d_1, ztab2d_2
+      REAL(wp), POINTER, DIMENSION(:,:,:) :: zmask1, zmask2, ztab3d_1, ztab3d_2
       !!----------------------------------------------------------------------
 
-      IF( wrk_in_use(2, 30,31) .OR. wrk_in_use(3, 11,12,13,14) ) THEN
-         CALL ctl_stop('prt_ctl : requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
+      CALL wrk_alloc( jpi,jpj, ztab2d_1, ztab2d_2 )
+      CALL wrk_alloc( jpi,jpj,jpk, zmask1, zmask2, ztab3d_1, ztab3d_2 )
 
       ! Arrays, scalars initialization 
       overlap   = 0
@@ -124,10 +122,10 @@ CONTAINS
       IF( PRESENT(mask1)   )   zmask1  (:,:,:)      = mask1  (:,:,:)
       IF( PRESENT(mask2)   )   zmask2  (:,:,:)      = mask2  (:,:,:)
 
-      IF( lk_mpp ) THEN       ! processor number
+      IF( lk_mpp .AND. jpnij > 1 ) THEN       ! processor number
          sind = narea
          eind = narea
-      ELSE                    ! processors total number
+      ELSE                                    ! processors total number
          sind = 1
          eind = ijsplt
       ENDIF
@@ -138,7 +136,7 @@ CONTAINS
          j_id = numid(jn - narea + 1)
          ! Set indices for the SUM control
          IF( .NOT. lsp_area ) THEN
-            IF (lk_mpp )   THEN
+            IF (lk_mpp .AND. jpnij > 1)   THEN
                nictls = MAX( 1, nlditl(jn) - overlap )
                nictle = nleitl(jn) + overlap * MIN( 1, nlcitl(jn) - nleitl(jn)) 
                njctls = MAX( 1, nldjtl(jn) - overlap )
@@ -203,8 +201,8 @@ CONTAINS
 
       ENDDO
 
-      IF( wrk_not_released(2, 30,31)     .OR.   &
-          wrk_not_released(3, 11,12,13,14) )   CALL ctl_stop('prt_ctl: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi,jpj, ztab2d_1, ztab2d_2 )
+      CALL wrk_dealloc( jpi,jpj,jpk, zmask1, zmask2, ztab3d_1, ztab3d_2 )
       !
    END SUBROUTINE prt_ctl
 
@@ -230,10 +228,10 @@ CONTAINS
       INTEGER :: jn, sind, eind, iltime, j_id
       !!----------------------------------------------------------------------
 
-      IF( lk_mpp ) THEN       ! processor number
+      IF( lk_mpp .AND. jpnij > 1 ) THEN       ! processor number
          sind = narea
          eind = narea
-      ELSE                    ! total number of processors
+      ELSE                                    ! total number of processors
          sind = 1
          eind = ijsplt
       ENDIF
@@ -295,7 +293,7 @@ CONTAINS
       v_ctll(:) = 0.e0
       ktime = 1
 
-      IF( lk_mpp ) THEN
+      IF( lk_mpp .AND. jpnij > 1 ) THEN
          sind = narea
          eind = narea
          clb_name = "('mpp.output_',I4.4)"
@@ -433,7 +431,11 @@ CONTAINS
       !  array (cf. par_oce.F90).
 
       ijpi = ( jpiglo-2*jpreci + (isplt-1) ) / isplt + 2*jpreci
+#if defined key_nemocice_decomp
+      ijpj = ( jpjglo+1-2*jprecj + (jsplt-1) ) / jsplt + 2*jprecj 
+#else
       ijpj = ( jpjglo-2*jprecj + (jsplt-1) ) / jsplt + 2*jprecj
+#endif
 
       ALLOCATE(ilcitl (isplt,jsplt))
       ALLOCATE(ilcjtl (isplt,jsplt))
@@ -444,6 +446,19 @@ CONTAINS
       irestjl = MOD( jpjglo - nrecjl , jsplt )
 
       IF(  irestil == 0 )   irestil = isplt
+#if defined key_nemocice_decomp
+
+      ! In order to match CICE the size of domains in NEMO has to be changed
+      ! The last line of blocks (west) will have fewer points 
+      DO jj = 1, jsplt 
+         DO ji=1, isplt-1 
+            ilcitl(ji,jj) = ijpi 
+         END DO 
+         ilcitl(isplt,jj) = jpiglo - (isplt - 1) * (ijpi - nrecil)
+      END DO 
+
+#else 
+
       DO jj = 1, jsplt
          DO ji = 1, irestil
             ilcitl(ji,jj) = ijpi
@@ -452,8 +467,22 @@ CONTAINS
             ilcitl(ji,jj) = ijpi -1
          END DO
       END DO
+
+#endif
       
       IF( irestjl == 0 )   irestjl = jsplt
+#if defined key_nemocice_decomp 
+
+      ! Same change to domains in North-South direction as in East-West. 
+      DO ji = 1, isplt 
+         DO jj=1, jsplt-1 
+            ilcjtl(ji,jj) = ijpj 
+         END DO 
+         ilcjtl(ji,jsplt) = jpjglo - (jsplt - 1) * (ijpj - nrecjl)
+      END DO 
+
+#else 
+
       DO ji = 1, isplt
          DO jj = 1, irestjl
             ilcjtl(ji,jj) = ijpj
@@ -462,7 +491,8 @@ CONTAINS
             ilcjtl(ji,jj) = ijpj -1
          END DO
       END DO
-      
+
+#endif
       zidom = nrecil
       DO ji = 1, isplt
          zidom = zidom + ilcitl(ji,1) - nrecil

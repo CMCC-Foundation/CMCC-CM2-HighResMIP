@@ -31,7 +31,9 @@ MODULE traadv_tvd
    USE lbclnk          ! ocean lateral boundary condition (or mpp link) 
    USE diaptr          ! poleward transport diagnostics
    USE trc_oce         ! share passive tracers/Ocean variables
-
+   USE wrk_nemo        ! Memory Allocation
+   USE timing          ! Timing
+   USE lib_fortran     ! Fortran utilities (allows no signed zero when 'key_nosignedzero' defined)
 
    IMPLICIT NONE
    PRIVATE
@@ -45,12 +47,12 @@ MODULE traadv_tvd
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: traadv_tvd.F90 2715 2011-03-30 15:58:35Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
 
-   SUBROUTINE tra_adv_tvd ( kt, cdtype, p2dt, pun, pvn, pwn,      &
+   SUBROUTINE tra_adv_tvd ( kt, kit000, cdtype, p2dt, pun, pvn, pwn,      &
       &                                       ptb, ptn, pta, kjpt )
       !!----------------------------------------------------------------------
       !!                  ***  ROUTINE tra_adv_tvd  ***
@@ -65,11 +67,10 @@ CONTAINS
       !! ** Action : - update (pta) with the now advective tracer trends
       !!             - save the trends 
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
       USE oce     , ONLY:   zwx => ua        , zwy => va          ! (ua,va) used as workspace
-      USE wrk_nemo, ONLY:   zwi => wrk_3d_12 , zwz => wrk_3d_13   ! 3D workspace
       !
       INTEGER                              , INTENT(in   ) ::   kt              ! ocean time-step index
+      INTEGER                              , INTENT(in   ) ::   kit000          ! first time step index
       CHARACTER(len=3)                     , INTENT(in   ) ::   cdtype          ! =TRA or TRC (tracer indicator)
       INTEGER                              , INTENT(in   ) ::   kjpt            ! number of tracers
       REAL(wp), DIMENSION(        jpk     ), INTENT(in   ) ::   p2dt            ! vertical profile of tracer time-step
@@ -81,27 +82,27 @@ CONTAINS
       REAL(wp) ::   z2dtt, zbtr, ztra        ! local scalar
       REAL(wp) ::   zfp_ui, zfp_vj, zfp_wk   !   -      -
       REAL(wp) ::   zfm_ui, zfm_vj, zfm_wk   !   -      -
-      REAL(wp), DIMENSION (:,:,:), ALLOCATABLE ::   ztrdx, ztrdy, ztrdz
+      REAL(wp), POINTER, DIMENSION(:,:,:) :: zwi, zwz
+      REAL(wp), POINTER, DIMENSION(:,:,:) :: ztrdx, ztrdy, ztrdz
       !!----------------------------------------------------------------------
-
-      IF( wrk_in_use(3, 12,13) ) THEN
-         CALL ctl_stop('tra_adv_tvd: requested workspace arrays unavailable')   ;   RETURN
-      ENDIF
-
-      IF( kt == nit000 )  THEN
+      !
+      IF( nn_timing == 1 )  CALL timing_start('tra_adv_tvd')
+      !
+      CALL wrk_alloc( jpi, jpj, jpk, zwi, zwz )
+      !
+      IF( kt == kit000 )  THEN
          IF(lwp) WRITE(numout,*)
          IF(lwp) WRITE(numout,*) 'tra_adv_tvd : TVD advection scheme on ', cdtype
          IF(lwp) WRITE(numout,*) '~~~~~~~~~~~'
-         !
-         l_trd = .FALSE.
-         IF( ( cdtype == 'TRA' .AND. l_trdtra ) .OR. ( cdtype == 'TRC' .AND. l_trdtrc ) ) l_trd = .TRUE.
       ENDIF
       !
+      l_trd = .FALSE.
+      IF( ( cdtype == 'TRA' .AND. l_trdtra ) .OR. ( cdtype == 'TRC' .AND. l_trdtrc ) ) l_trd = .TRUE.
+      !
       IF( l_trd )  THEN
-        ALLOCATE( ztrdx(jpi,jpj,jpk) )      ;      ztrdx(:,:,:) = 0.e0
-        ALLOCATE( ztrdy(jpi,jpj,jpk) )      ;      ztrdy(:,:,:) = 0.e0
-        ALLOCATE( ztrdz(jpi,jpj,jpk) )      ;      ztrdz(:,:,:) = 0.e0
-      END IF
+         CALL wrk_alloc( jpi, jpj, jpk, ztrdx, ztrdy, ztrdz )
+         ztrdx(:,:,:) = 0.e0   ;    ztrdy(:,:,:) = 0.e0   ;   ztrdz(:,:,:) = 0.e0
+      ENDIF
       !
       zwi(:,:,:) = 0.e0
       !
@@ -240,11 +241,10 @@ CONTAINS
          !
       END DO
       !
-      IF( l_trd )  THEN
-        DEALLOCATE( ztrdx )     ;     DEALLOCATE( ztrdy )     ;      DEALLOCATE( ztrdz )  
-      END IF
+                   CALL wrk_dealloc( jpi, jpj, jpk, zwi, zwz )
+      IF( l_trd )  CALL wrk_dealloc( jpi, jpj, jpk, ztrdx, ztrdy, ztrdz )
       !
-      IF( wrk_not_released(3, 12,13) )   CALL ctl_stop('tra_adv_tvd: failed to release workspace arrays')
+      IF( nn_timing == 1 )  CALL timing_stop('tra_adv_tvd')
       !
    END SUBROUTINE tra_adv_tvd
 
@@ -262,10 +262,8 @@ CONTAINS
       !!       drange (1995) multi-dimensional forward-in-time and upstream-
       !!       in-space based differencing for fluid
       !!----------------------------------------------------------------------
-      USE wrk_nemo, ONLY:   wrk_in_use, wrk_not_released
-      USE wrk_nemo, ONLY:   zbetup => wrk_3d_8  , zbetdo => wrk_3d_9    ! 3D workspace
-      USE wrk_nemo, ONLY:   zbup   => wrk_3d_10 , zbdo   => wrk_3d_11   !  -     -
       !
+      !!----------------------------------------------------------------------
       REAL(wp), DIMENSION(jpk)         , INTENT(in   ) ::   p2dt            ! vertical profile of tracer time-step
       REAL(wp), DIMENSION (jpi,jpj,jpk), INTENT(in   ) ::   pbef, paft      ! before & after field
       REAL(wp), DIMENSION (jpi,jpj,jpk), INTENT(inout) ::   paa, pbb, pcc   ! monotonic fluxes in the 3 directions
@@ -274,11 +272,13 @@ CONTAINS
       INTEGER ::   ikm1         ! local integer
       REAL(wp) ::   zpos, zneg, zbt, za, zb, zc, zbig, zrtrn, z2dtt   ! local scalars
       REAL(wp) ::   zau, zbu, zcu, zav, zbv, zcv, zup, zdo            !   -      -
+      REAL(wp), POINTER, DIMENSION(:,:,:) :: zbetup, zbetdo, zbup, zbdo
       !!----------------------------------------------------------------------
-
-      IF( wrk_in_use(3, 8,9,10,11) ) THEN
-         CALL ctl_stop('nonosc: requested workspace array unavailable')   ;   RETURN
-      ENDIF
+      !
+      IF( nn_timing == 1 )  CALL timing_start('nonosc')
+      !
+      CALL wrk_alloc( jpi, jpj, jpk, zbetup, zbetdo, zbup, zbdo )
+      !
 
       zbig  = 1.e+40_wp
       zrtrn = 1.e-15_wp
@@ -330,8 +330,6 @@ CONTAINS
       END DO
       CALL lbc_lnk( zbetup, 'T', 1. )   ;   CALL lbc_lnk( zbetdo, 'T', 1. )   ! lateral boundary cond. (unchanged sign)
 
-
-
       ! 3. monotonic flux in the i & j direction (paa & pbb)
       ! ----------------------------------------
       DO jk = 1, jpkm1
@@ -358,7 +356,9 @@ CONTAINS
       END DO
       CALL lbc_lnk( paa, 'U', -1. )   ;   CALL lbc_lnk( pbb, 'V', -1. )   ! lateral boundary condition (changed sign)
       !
-      IF( wrk_not_released(3, 8,9,10,11) )   CALL ctl_stop('nonosc: failed to release workspace arrays')
+      CALL wrk_dealloc( jpi, jpj, jpk, zbetup, zbetdo, zbup, zbdo )
+      !
+      IF( nn_timing == 1 )  CALL timing_stop('nonosc')
       !
    END SUBROUTINE nonosc
 

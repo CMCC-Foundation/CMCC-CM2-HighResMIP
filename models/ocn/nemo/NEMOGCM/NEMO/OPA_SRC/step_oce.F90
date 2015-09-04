@@ -6,7 +6,7 @@ MODULE step_oce
    !! History :   3.3  ! 2010-08  (C. Ethe)  Original code - reorganisation of the initial phase
    !!----------------------------------------------------------------------
    USE oce              ! ocean dynamics and tracers variables
-   USE dom_oce          ! ocean space and time domain variables 
+   USE dom_oce          ! ocean space and time domain variables
    USE zdf_oce          ! ocean vertical physics variables
    USE ldftra_oce       ! ocean tracer   - trends
    USE ldfdyn_oce       ! ocean dynamics - trends
@@ -16,8 +16,6 @@ MODULE step_oce
 
    USE daymod           ! calendar                         (day     routine)
 
-   USE dtatem           ! ocean temperature data           (dta_tem routine)
-   USE dtasal           ! ocean salinity    data           (dta_sal routine)
    USE sbcmod           ! surface boundary condition       (sbc     routine)
    USE sbcrnf           ! surface boundary condition: runoff variables
    USE sbccpl           ! surface boundary condition: coupled formulation (call send at end of step)
@@ -26,6 +24,7 @@ MODULE step_oce
    USE sbccpl_cesm      ! surface boundary condition: NCAR CESM coupled formulation
    USE qflxice          ! sea ice freezing/melting potential computation
 #endif
+   USE sbctide          ! Tide initialisation
 
    USE traqsr           ! solar radiation penetration      (tra_qsr routine)
    USE trasbc           ! surface boundary condition       (tra_sbc routine)
@@ -49,6 +48,8 @@ MODULE step_oce
    USE dynzdf           ! vertical diffusion               (dyn_zdf routine)
    USE dynspg_oce       ! surface pressure gradient        (dyn_spg routine)
    USE dynspg           ! surface pressure gradient        (dyn_spg routine)
+   USE dynnept          ! simp. form of Neptune effect(dyn_nept_cor routine)
+
    USE dynnxt           ! time-stepping                    (dyn_nxt routine)
 
    USE obc_par          ! open boundary condition variables
@@ -56,8 +57,8 @@ MODULE step_oce
    USE obcrst           ! open boundary cond. restart      (obc_rst routine)
    USE obcrad           ! open boundary cond. radiation    (obc_rad routine)
 
-   USE bdy_par          ! unstructured open boundary data variables
-   USE bdydta           ! unstructured open boundary data  (bdy_dta routine)
+   USE bdy_par          ! for lk_bdy
+   USE bdydta           ! open boundary condition data     (bdy_dta routine)
 
    USE sshwzv           ! vertical velocity and ssh        (ssh_wzv routine)
 
@@ -81,30 +82,36 @@ MODULE step_oce
    USE trdmld           ! mixed-layer trends               (trd_mld routine)
    USE trdmld_rst       ! restart for mixed-layer trends
    USE trdmod_oce       ! ocean momentum/tracers trends
-   USE trdmod           ! momentum/tracers trends   
+   USE trdmod           ! momentum/tracers trends
    USE trdvor           ! vorticity budget                 (trd_vor routine)
    USE diaptr           ! poleward transports              (dia_ptr routine)
+   USE diadct           ! sections transports              (dia_dct routine)
    USE diaar5           ! AR5 diagnosics                   (dia_ar5 routine)
    USE diahth           ! thermocline depth                (dia_hth routine)
    USE diafwb           ! freshwater budget                (dia_fwb routine)
    USE diahsb           ! heat, salt and volume budgets    (dia_hsb routine)
+   USE diaharm
    USE flo_oce          ! floats variables
    USE floats           ! floats computation               (flo_stp routine)
 
+   USE asminc           ! assimilation increments      (tra_asm_inc routine)
+   !                                                   (dyn_asm_inc routine)
+   USE asmbkg
    USE stpctl           ! time stepping control            (stp_ctl routine)
    USE restart          ! ocean restart                    (rst_wri routine)
    USE prtctl           ! Print control                    (prt_ctl routine)
 
-   USE traswp           ! Swap arrays           (tra_swp, tra_unswp routine)
-
    USE diaobs           ! Observation operator
+
+   USE timing           ! Timing
+   USE tamtrj           ! Needed by TAM
 
 #if defined key_agrif
    USE agrif_opa_sponge ! Momemtum and tracers sponges
 #endif
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id: step_oce.F90 2528 2010-12-27 17:33:53Z rblod $
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!======================================================================
 END MODULE step_oce
