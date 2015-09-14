@@ -605,7 +605,7 @@ contains
     logical :: lsnd, lrcv
 
 !-----------------------------------------------------------------------
-
+nitrst_old = 0
 #if (defined _MEMTRACE)
     if (nproc==0) then
        lbnum=1
