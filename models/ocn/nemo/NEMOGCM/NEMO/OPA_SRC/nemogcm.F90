@@ -1,5 +1,5 @@
 #if !defined CCSMCOUPLED
-MODULE nemogcm
+MODULE nemogcm_orig
    !!======================================================================
    !!                       ***  MODULE nemogcm   ***
    !! Ocean system   : NEMO GCM (ocean dynamics, on-line tracers, biochemistry and sea-ice)
@@ -810,5 +810,5 @@ CONTAINS
    END SUBROUTINE nemo_northcomms
 #endif
    !!======================================================================
-END MODULE nemogcm
+END MODULE nemogcm_orig
 #endif

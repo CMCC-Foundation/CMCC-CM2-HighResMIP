@@ -77,6 +77,7 @@ MODULE nemogcm
 #endif
    USE tamtrj          ! Output trajectory, needed for TAM
    USE asminc
+   USE shr_sys_mod,   ONLY: shr_sys_abort
 
    IMPLICIT NONE
    PRIVATE
@@ -85,7 +86,6 @@ MODULE nemogcm
    PUBLIC   nemo_cesm_init   ! needed by ocn_comp_mct.F90
    PUBLIC   nemo_closefile   ! needed by ocn_comp_mct.F90
    PUBLIC   cform_aaa        ! needed by ocn_comp_mct.F90
-   PUBLIC   nemo_closefile ! Needed by NEMOTAM
    PUBLIC   nemo_partition ! needed by NEMOTAM
 
    CHARACTER(lc) :: diri
@@ -314,7 +314,7 @@ CONTAINS
                             CALL tra_qsr_init   ! penetrative solar radiation qsr
                             CALL tra_bbc_init   ! bottom heat flux
       IF( lk_trabbl     )   CALL tra_bbl_init   ! advective (and/or diffusive) bottom boundary layer scheme
-      IF( lk_tradmp     )   CALL tra_dmp_init   ! internal damping trends
+      IF( ln_tradmp     )   CALL tra_dmp_init   ! internal damping trends
                             CALL tra_adv_init   ! horizontal & vertical advection
                             CALL tra_ldf_init   ! lateral mixing
                             CALL tra_zdf_init   ! vertical mixing and after tracer fields

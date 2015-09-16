@@ -112,10 +112,8 @@ CONTAINS
 #if defined CCSMCOUPLED
       ! Temp rude fixer for SSS<0. due to excessive runoff
       DO jj = 2, jpjm1
-!      DO jj = jpjm1, 2, -1
          DO ji = 2, jpim1
-!         DO ji = jpim1, 2, -1
-            zsmin = tsn(ji,jj,jp_sal)*tmask(ji,jj,1)
+            zsmin = tsn(ji,jj,1,jp_sal)*tmask(ji,jj,1)
             IF (zsmin < 0._wp .AND. zsmin > -0.25_wp) THEN
                nnp  = 1
                nji1 = MAX(ji-nnp,1)
@@ -123,7 +121,7 @@ CONTAINS
                njj1 = MAX(jj-nnp,1)
                njj2 = MIN(jj+nnp,jpj)
                nsp  = SUM(tmask(nji1:nji2,njj1:njj2,1))
-               zsm  = SUM(tsn(nji1:nji2,njj1:njj2,jp_sal)*tmask(nji1:nji2,njj1:njj2,1))/nsp
+               zsm  = SUM(tsn(nji1:nji2,njj1:njj2,1,jp_sal)*tmask(nji1:nji2,njj1:njj2,1))/nsp
                if (zsm<0.0_wp) then
                  nnp  = 2
                  nji1 = MAX(ji-nnp,1)
@@ -131,7 +129,7 @@ CONTAINS
                  njj1 = MAX(jj-nnp,1)
                  njj2 = MIN(jj+nnp,jpj)
                  nsp  = SUM(tmask(nji1:nji2,njj1:njj2,1))
-                 zsm  = SUM(tsn(nji1:nji2,njj1:njj2,jp_sal)*tmask(nji1:nji2,njj1:njj2,1))/nsp
+                 zsm  = SUM(tsn(nji1:nji2,njj1:njj2,1,jp_sal)*tmask(nji1:nji2,njj1:njj2,1))/nsp
                  if (zsm<0.0_wp) then
                    nnp  = 3
                    nji1 = MAX(ji-nnp,1)
@@ -139,19 +137,19 @@ CONTAINS
                    njj1 = MAX(jj-nnp,1)
                    njj2 = MIN(jj+nnp,jpj)
                    nsp  = SUM(tmask(nji1:nji2,njj1:njj2,1))
-                   zsm  = SUM(tsn(nji1:nji2,njj1:njj2,jp_sal)*tmask(nji1:nji2,njj1:njj2,1))/nsp
+                   zsm  = SUM(tsn(nji1:nji2,njj1:njj2,1,jp_sal)*tmask(nji1:nji2,njj1:njj2,1))/nsp
                  end if
                end if
 !method 1               znsm = (zsm*nsp - zsmin)/(nsp-1.0_wp)
 !method 1               zns = (zsm - zsmin)/(nsp-1.0_wp)
-!method 1               tsn(ji-1:ji+1,jj-1:jj+1,jp_sal) = (tsn(ji-1:ji+1,jj-1:jj+1,jp_sal)-zns)*tmask(ji-1:ji+1,jj-1:jj+1,1)
+!method 1               tsn(ji-1:ji+1,jj-1:jj+1,1,jp_sal) = (tsn(ji-1:ji+1,jj-1:jj+1,1,jp_sal)-zns)*tmask(ji-1:ji+1,jj-1:jj+1,1)
                znsm = (zsm*nsp - zsmin)
                zns = 1.0_wp - (zsm-zsmin)/znsm
-               tsn(nji1:nji2,njj1:njj2,jp_sal) = tsn(nji1:nji2,njj1:njj2,jp_sal)* &
+               tsn(nji1:nji2,njj1:njj2,1,jp_sal) = tsn(nji1:nji2,njj1:njj2,1,jp_sal)* &
                                            tmask(nji1:nji2,njj1:njj2,1)*zns
-               tsn(ji,jj,jp_sal) = zsm
+               tsn(ji,jj,1,jp_sal) = zsm
                !
-               znsm = SUM(tsn(nji1:nji2,njj1:njj2,jp_sal)*tmask(nji1:nji2,njj1:njj2,1))/nsp
+               znsm = SUM(tsn(nji1:nji2,njj1:njj2,1,jp_sal)*tmask(nji1:nji2,njj1:njj2,1))/nsp
                !
                WRITE(numout,cform_war)
                WRITE(numout,*) 'stp_ctl : NEGATIVE SSS CORRECTED !'

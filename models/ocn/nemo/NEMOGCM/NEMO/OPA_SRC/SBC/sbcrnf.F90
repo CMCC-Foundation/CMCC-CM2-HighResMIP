@@ -1,5 +1,5 @@
 #if ! defined CCSMCOUPLED
-MODULE sbcrnf
+MODULE sbcrnf_orig
    !!======================================================================
    !!                       ***  MODULE  sbcrnf  ***
    !! Ocean forcing:  river runoff
@@ -469,5 +469,5 @@ CONTAINS
    END SUBROUTINE rnf_mouth
 
    !!======================================================================
-END MODULE sbcrnf
+END MODULE sbcrnf_orig
 #endif

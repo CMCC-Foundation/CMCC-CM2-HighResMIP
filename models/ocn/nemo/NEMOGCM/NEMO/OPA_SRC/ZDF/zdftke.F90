@@ -223,6 +223,9 @@ CONTAINS
       INTEGER , POINTER, DIMENSION(:,:  ) :: imlc
       REAL(wp), POINTER, DIMENSION(:,:  ) :: zhlc
       REAL(wp), POINTER, DIMENSION(:,:,:) :: zpelc, zdiag, zd_up, zd_lw
+#if defined CCSMCOUPLED
+      REAL(wp), POINTER, DIMENSION(:,:  ) :: zfri
+#endif
       !!--------------------------------------------------------------------
       !
       IF( nn_timing == 1 )  CALL timing_start('tke_tke')
@@ -232,6 +235,7 @@ CONTAINS
       CALL wrk_alloc( jpi,jpj,jpk, zpelc, zdiag, zd_up, zd_lw ) 
       !
 #if defined CCSMCOUPLED
+      CALL wrk_alloc( jpi,jpj, zfri )
       zfri = fr_i
       fr_i = 0.0_wp
 #endif
@@ -451,6 +455,7 @@ CONTAINS
       !
 #if defined CCSMCOUPLED
       fr_i = zfri
+      CALL wrk_dealloc( jpi,jpj, zfri )
 #endif
       CALL wrk_dealloc( jpi,jpj, imlc )    ! integer
       CALL wrk_dealloc( jpi,jpj, zhlc ) 

@@ -515,6 +515,7 @@ CONTAINS
                END DO
             END DO
          END SELECT
+      ENDIF
 #endif
       !                       
       IF ( .not. ln_sco ) THEN                                !==  set a minimum depth  ==!

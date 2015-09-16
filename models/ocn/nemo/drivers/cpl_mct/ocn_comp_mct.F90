@@ -1833,10 +1833,10 @@ contains
       SBUFF_SUM(:,:,index_o2x_So_v) +  delt*vn(:,:,1)
 
    SBUFF_SUM(:,:,index_o2x_So_t) =    &
-      SBUFF_SUM(:,:,index_o2x_So_t) + delt*tn(:,:,1)
+      SBUFF_SUM(:,:,index_o2x_So_t) + delt*tsn(:,:,1,jp_tem)
 
    SBUFF_SUM(:,:,index_o2x_So_s) =    &
-      SBUFF_SUM(:,:,index_o2x_So_s) + delt*sn(:,:,1)
+      SBUFF_SUM(:,:,index_o2x_So_s) + delt*tsn(:,:,1,jp_sal)
 
    SBUFF_SUM(:,:,index_o2x_So_dhdx) =    &
       SBUFF_SUM(:,:,index_o2x_So_dhdx) + delt*ssgu(:,:)

@@ -98,7 +98,7 @@ CONTAINS
                                  ! ( d rho / dt ) / ( d rho / ds )      ( s = 34, t = -1.8 )
          
          fr_i(:,:) = tfreez( sss_m ) * tmask(:,:,1)      ! sea surface freezing temperature [Celcius]
-#if defined key_coupled 
+#if defined key_coupled && ! defined CCSMCOUPLED
          a_i(:,:,1) = fr_i(:,:)         
 #endif
 

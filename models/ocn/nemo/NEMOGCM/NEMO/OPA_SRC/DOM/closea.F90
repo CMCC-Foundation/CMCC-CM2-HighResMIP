@@ -104,7 +104,7 @@ CONTAINS
             ncsir(1,1) =   1  ;  ncsjr(1,1) =   1 
             !                                            ! Great North American Lakes
 #if defined CCSMCOUPLED
-            IF (nclosea == 0) THEN       ! to be consistent with zgr_bat
+            IF (nn_closea == 0) THEN       ! to be consistent with zgr_bat
 #endif
             ncsnr(2)   =   1  ;  ncstt(2)   =   2           ! put at St Laurent mouth
             ncsi1(2)   =  97  ;  ncsj1(2)   = 107

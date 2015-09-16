@@ -98,7 +98,6 @@ MODULE phycst
    REAL(wp), PUBLIC ::   cevap   =   2.5e+6_wp    !: latent heat of evaporation (water)
 #endif
    REAL(wp), PUBLIC ::   soce    =  34.7_wp       !: reference salinity of sea (psu)
-   REAL(wp), PUBLIC ::   cevap   =   2.5e+6_wp    !: latent heat of evaporation (water)
    REAL(wp), PUBLIC ::   srgamma =   0.9_wp       !: correction factor for solar radiation (Oberhuber, 1974)
    REAL(wp), PUBLIC ::   vkarmn  =   0.4_wp       !: von Karman constant
    REAL(wp), PUBLIC ::   stefan  =   5.67e-8_wp   !: Stefan-Boltzmann constant 

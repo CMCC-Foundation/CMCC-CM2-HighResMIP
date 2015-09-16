@@ -280,7 +280,7 @@ CONTAINS
          vol_tot  = vol_tot + glob_sum( surf(:,:) * tmask(:,:,jk)     &
             &                         * fse3t_n(:,:,jk)         )
       END DO
-      ENDIF
+
       ! --------------- !
       ! 3 - Conversions ! (factors will be multiplied by duration afterwards)
       ! --------------- !
