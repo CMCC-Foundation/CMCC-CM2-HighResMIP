@@ -12,7 +12,7 @@ if (${COMP_INTERFACE} == 'ESMF') set comp = esmf
 #######################################################################
 
 # Resolution independent CPP keys
-set nemodefs = "-Dkey_diaar5 -Dkey_diahth -Dkey_dynspg_flt -Dkey_ldfslp -Dkey_trabbl -Dkey_traldf_c2d -Dkey_zdfddm -Dkey_zdftke -Dkey_mpp_mpi -Dkey_vectopt_loop -Dkey_iomput -Dkey_coupled -DCCSMCOUPLED"
+set nemodefs = "-Dkey_diaar5 -Dkey_diahth -Dkey_dynspg_flt -Dkey_ldfslp -Dkey_trabbl -Dkey_traldf_c2d -Dkey_zdfddm -Dkey_zdftke -Dkey_mpp_mpi -Dkey_iomput -Dkey_coupled -DCCSMCOUPLED"
 
 # Resolution dependent CPP keys
 set res_cpp =

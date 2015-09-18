@@ -145,6 +145,7 @@ CONTAINS
                rnfmsk(:,:) = 0.5_wp
             END WHERE
          ENDIF
+            CALL iom_put( "runoffs", rnf )         ! output runoffs arrays
       ENDIF
       !
       IF( kt == nit000 ) THEN                          !   set the forcing field at nit000 - 1    !

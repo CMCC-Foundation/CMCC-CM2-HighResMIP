@@ -35,9 +35,9 @@ MODULE sbcmod
    USE sbcice_lim_2     ! surface boundary condition: LIM 2.0 sea-ice model
    USE sbcice_cice      ! surface boundary condition: CICE    sea-ice model
    USE sbccpl           ! surface boundary condition: coupled florulation
-!#if defined CCSMCOUPLED
+#if defined CCSMCOUPLED
    USE sbccpl_cesm      ! surface boundary condition: NCAR CESM coupled framework
-!#endif
+#endif
    USE cpl_oasis3, ONLY:lk_cpl      ! are we in coupled mode?
    USE sbcssr           ! surface boundary condition: sea surface restoring
    USE sbcrnf           ! surface boundary condition: runoffs
