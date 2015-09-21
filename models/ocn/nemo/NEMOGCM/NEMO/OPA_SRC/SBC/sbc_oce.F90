@@ -76,9 +76,7 @@ MODULE sbc_oce
    REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:) ::   tprecip           !: total precipitation                          [Kg/m2/s]
    REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:) ::   sprecip           !: solid precipitation                          [Kg/m2/s]
    REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:) ::   fr_i              !: ice fraction = 1 - lead fraction      (between 0 to 1)
-#if defined key_cpl_carbon_cycle
    REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:) ::   atm_co2           !: atmospheric pCO2                             [ppm]
-#endif
 
    !!----------------------------------------------------------------------
    !!                     Sea Surface Mean fields
@@ -119,9 +117,7 @@ CONTAINS
          &      rnf_b(jpi,jpj) , sbc_tsc_b(jpi,jpj,jpts) , qsr_hc_b(jpi,jpj,jpk) , STAT=ierr(3) )
          !
       ALLOCATE( tprecip(jpi,jpj) , sprecip(jpi,jpj) , fr_i(jpi,jpj) ,     &
-#if defined key_cpl_carbon_cycle
          &      atm_co2(jpi,jpj) ,                                        &
-#endif
          &      ssu_m  (jpi,jpj) , sst_m(jpi,jpj) ,                       &
          &      ssv_m  (jpi,jpj) , sss_m  (jpi,jpj), ssh_m(jpi,jpj) , STAT=ierr(4) )
          !

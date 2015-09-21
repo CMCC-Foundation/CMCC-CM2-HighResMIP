@@ -26,6 +26,7 @@ MODULE sbccpl_cesm
    USE in_out_manager
    USE lib_fortran
    USE wrk_nemo        ! work arrays
+   USE sbcapr, only: apr
    !!
    IMPLICIT NONE
    PRIVATE
@@ -80,9 +81,8 @@ CONTAINS
                 duu10n_x2o(jpi,jpj), &
                 STAT=ierr(1) )
       !
-#if defined key_cpl_carbon_cycle
-      ALLOCATE( co2_x2o(jpi,jpj), STAT=ierr(2) )
-#endif
+      ALLOCATE( co2_x2o(jpi,jpj), apr (jpi,jpj),  STAT=ierr(2) )
+      !
       istat = MAXVAL( ierr )
       IF( lk_mpp    )   CALL mpp_sum ( istat )
       IF( istat > 0 )   CALL ctl_stop('sbc_cpl_cesm_init: allocation of arrays failed')
@@ -109,9 +109,8 @@ CONTAINS
       ifrac_x2o  = 0.0_wp
       pslv_x2o   = 0.0_wp
       duu10n_x2o = 0.0_wp
-#if defined key_cpl_carbon_cycle
       co2_x2o    = 0.0_wp
-#endif
+      apr(:,:)   = 0.0_wp
 
       IF (.NOT. ln_rstart) THEN
          utau(:,:) = 0.0_wp
@@ -265,17 +264,17 @@ CONTAINS
         wndm(:,:) = SQRT(duu10n_x2o(:,:))
       END WHERE
       wndm(:,:) = wndm(:,:)*tmask(:,:,1)
-#if defined key_cpl_carbon_cycle
 !     4. distribute atmospheric co2
       atm_co2(:,:) = co2_x2o(:,:)*tmask(:,:,1)
-#endif
+
+!     5. distribute atmospheric pressure
+      apr(:,:) = pslv_x2o(:,:)*tmask(:,:,1)
 
 !     update ghost cells for fluxes received from the coupler
       call lbc_lnk(fr_i(:,:), 'T', 1._wp)
       call lbc_lnk(wndm(:,:), 'T', 1._wp)
-#if defined key_cpl_carbon_cycle
       call lbc_lnk(atm_co2(:,:), 'T', 1._wp)
-#endif
+      call lbc_lnk(pslv_x2o(:,:), 'T', 1._wp)
 
       CALL wrk_dealloc( jpi,jpj, ztx, zty )
 
@@ -304,9 +303,7 @@ CONTAINS
    IF (ALLOCATED(ifrac_x2o))  DEALLOCATE(ifrac_x2o)
    IF (ALLOCATED(pslv_x2o))   DEALLOCATE(pslv_x2o)
    IF (ALLOCATED(duu10n_x2o)) DEALLOCATE(duu10n_x2o)
-#if defined key_cpl_carbon_cycle
    IF (ALLOCATED(co2_x2o))    DEALLOCATE(co2_x2o)
-#endif
 
    END SUBROUTINE sbc_cpl_cesm_finalize
 
