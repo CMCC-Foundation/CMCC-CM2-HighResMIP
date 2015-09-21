@@ -55,6 +55,7 @@ MODULE trc
    LOGICAL             , PUBLIC                                    ::  ln_trcdmp      !: internal damping flag
    LOGICAL             , PUBLIC                                    ::  ln_trcdmp_clo  !: Restoring or not of nutrients on close seas
    INTEGER             , PUBLIC                                    ::  nittrc000      !: first time step of passive tracers model
+   LOGICAL             , PUBLIC                                    ::  ln_top_euler  !: boolean term for euler integration in the first timestep
 
    !! information for outputs
    !! --------------------------------------------------
@@ -70,6 +71,9 @@ MODULE trc
    CHARACTER(len = 20), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:)    ::  ctrcun         !: tracer unit
    LOGICAL            , PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:)    ::  ln_trc_ini     !: Initialisation from data input file
    LOGICAL            , PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:)    ::  ln_trc_wri     !: save the tracer or not
+   LOGICAL            , PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:)    ::  ln_trc_sbc     !: Initialisation from data input file
+   LOGICAL            , PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:)    ::  ln_trc_cbc     !: Initialisation from data input file
+   LOGICAL            , PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:)    ::  ln_trc_obc     !: Initialisation from data input file
 
    TYPE, PUBLIC :: DIAG                                                               !: passive trcacer ddditional diagnostic type
       CHARACTER(len = 20)  :: sname    !: short name
@@ -227,7 +231,8 @@ CONTAINS
          &      gtru(jpi,jpj,jpk)     , gtrv(jpi,jpj,jpk)                             ,       &
          &      cvol(jpi,jpj,jpk)     , rdttrc(jpk)           , trai(jptra)           ,       &
          &      ctrcnm(jptra)         , ctrcln(jptra)         , ctrcun(jptra)         ,       & 
-         &      ln_trc_ini(jptra)     , ln_trc_wri(jptra)                             ,  STAT = trc_alloc  )  
+         &      ln_trc_ini(jptra)     , ln_trc_wri(jptra)     , ln_trc_sbc(jptra)     ,       &
+         &      ln_trc_cbc(jptra)     , ln_trc_obc(jptra)     , STAT = trc_alloc  )  
 
       IF( trc_alloc /= 0 )   CALL ctl_warn('trc_alloc: failed to allocate arrays')
       !

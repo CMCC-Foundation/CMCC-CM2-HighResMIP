@@ -36,6 +36,7 @@ MODULE par_trc
 # endif
 
    REAL(wp), PUBLIC  :: rtrn  = 1.e-15      !: truncation value     
+   INTEGER, PUBLIC,  PARAMETER ::   jpmaxtrc = 100 !: maximum number of tracers
 
    !!----------------------------------------------------------------------
    !! NEMO/TOP 3.3 , NEMO Consortium (2010)

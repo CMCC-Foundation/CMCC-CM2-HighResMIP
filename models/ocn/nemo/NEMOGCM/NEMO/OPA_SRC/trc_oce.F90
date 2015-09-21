@@ -26,17 +26,17 @@ MODULE trc_oce
    REAL(wp), PUBLIC, SAVE, ALLOCATABLE, DIMENSION(:,:,:) ::   etot3   !: light absortion coefficient
    REAL(wp), PUBLIC, SAVE, ALLOCATABLE, DIMENSION(:,:,:) ::   facvol   !: volume for degraded regions
 
-#if defined key_top && defined key_pisces
-   !!----------------------------------------------------------------------
-   !!   'key_top'   &   'key_pisces'                       PISCES bio-model          
-   !!----------------------------------------------------------------------
-   LOGICAL, PUBLIC, PARAMETER ::   lk_qsr_bio = .TRUE.   !: bio-model light absorption flag
-#else
-   !!----------------------------------------------------------------------
-   !! Default option                          No bio-model light absorption      
-   !!----------------------------------------------------------------------
-   LOGICAL, PUBLIC, PARAMETER ::   lk_qsr_bio = .FALSE.   !: bio-model light absorption flag
-#endif
+!#if defined key_top && defined key_pisces
+!   !!----------------------------------------------------------------------
+!   !!   'key_top'   &   'key_pisces'                       PISCES bio-model          
+!   !!----------------------------------------------------------------------
+!   LOGICAL, PUBLIC, PARAMETER ::   lk_qsr_bio = .TRUE.   !: bio-model light absorption flag
+!#else
+!   !!----------------------------------------------------------------------
+!   !! Default option                          No bio-model light absorption      
+!   !!----------------------------------------------------------------------
+!   LOGICAL, PUBLIC, PARAMETER ::   lk_qsr_bio = .FALSE.   !: bio-model light absorption flag
+!#endif
 
 #if defined key_offline
    !!----------------------------------------------------------------------

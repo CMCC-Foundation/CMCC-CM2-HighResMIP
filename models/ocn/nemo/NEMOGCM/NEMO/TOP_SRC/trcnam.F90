@@ -60,7 +60,7 @@ CONTAINS
       !!
       NAMELIST/namtrc/ nn_dttrc, nn_writetrc, ln_rsttr, nn_rsttr, &
          &             cn_trcrst_in, cn_trcrst_out, sn_tracer, ln_trcdta, &
-         &             ln_trcdmp, ln_trcdmp_clo
+         &             ln_trcdmp, ln_trcdmp_clo, ln_top_euler
 #if defined key_trdmld_trc  || defined key_trdtrc
       NAMELIST/namtrc_trd/ nn_trd_trc, nn_ctls_trc, rn_ucf_trc, &
          &                ln_trdmld_trc_restart, ln_trdmld_trc_instant, &
@@ -79,6 +79,7 @@ CONTAINS
       ! ----------------------------------------------
       nn_dttrc      = 1                 ! default values
       nn_writetrc   = 10 
+      ln_top_euler  = .FALSE.
       ln_rsttr      = .FALSE.
       nn_rsttr      =  0
       cn_trcrst_in  = 'restart_trc'
@@ -122,6 +123,7 @@ CONTAINS
          WRITE(numout,*) '   Read inputs data from file (y/n)             ln_trcdta     = ', ln_trcdta
          WRITE(numout,*) '   Damping of passive tracer (y/n)              ln_trcdmp     = ', ln_trcdmp
          WRITE(numout,*) '   Restoring of tracer on closed seas           ln_trcdmp_clo = ', ln_trcdmp_clo
+         WRITE(numout,*) '   Use euler integration for TRC (y/n)          ln_top_euler  = ', ln_top_euler
          WRITE(numout,*) ' '
          DO jn = 1, jptra
             WRITE(numout,*) '  tracer nb : ', jn, '    short name : ', ctrcnm(jn)

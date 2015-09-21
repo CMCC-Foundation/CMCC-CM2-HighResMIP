@@ -145,7 +145,7 @@ CONTAINS
       !                                        ************************************
       
       !                                           ! ============================================== !
-      IF( lk_qsr_bio .AND. ln_qsr_bio ) THEN      !  bio-model fluxes  : all vertical coordinates  !
+      IF( ln_qsr_bio ) THEN      !  bio-model fluxes  : all vertical coordinates  !
          !                                        ! ============================================== !
          DO jk = 1, jpkm1
             qsr_hc(:,:,jk) = ro0cpr * ( etot3(:,:,jk) - etot3(:,:,jk+1) )
@@ -364,10 +364,10 @@ CONTAINS
 
       IF( ln_traqsr ) THEN     ! control consistency
          !                      
-         IF( .NOT.lk_qsr_bio .AND. ln_qsr_bio )   THEN
-            CALL ctl_warn( 'No bio model : force ln_qsr_bio = FALSE ' )
-            ln_qsr_bio = .FALSE.
-         ENDIF
+         !IF( .NOT.lk_qsr_bio .AND. ln_qsr_bio )   THEN
+         !   CALL ctl_warn( 'No bio model : force ln_qsr_bio = FALSE ' )
+         !   ln_qsr_bio = .FALSE.
+         !ENDIF
          !
          ioptio = 0                      ! Parameter control
          IF( ln_qsr_rgb  )   ioptio = ioptio + 1
