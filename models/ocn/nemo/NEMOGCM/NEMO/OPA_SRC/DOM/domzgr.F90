@@ -500,16 +500,20 @@ CONTAINS
       IF (nn_closea == 1) THEN
          ! suppress lakes from bathymetry
          SELECT CASE ( jp_cfg )
-         CASE ( 2 )                               ! Suppress North American Great Lakes
-            DO jj = mj0(107), mj1(111)
-               DO ji = mi0(97), mi1(103)
+         CASE ( 2 )
+            ii0 = 97   ;   ii1 = 103              ! Suppress North American Great Lakes
+            ij0 = 107  ;   ij1 = 111
+            DO jj = mj0(ij0), mj1(ij1)
+               DO ji = mi0(ii0), mi1(ii1)
                   mbathy(ji,jj) = 0
                   bathy (ji,jj) = 0._wp               
                END DO
             END DO
-         CASE ( 025 )                             ! Suppress Aral sea
-            DO jj = mj0(645), mj1(795)
-               DO ji = mi0(1375), mi1(1400)
+         CASE ( 025 )
+            ii0 = 1375   ;   ii1 = 1400           ! Suppress Aral sea
+            ij0 = 645    ;   ij1 = 795
+            DO jj = mj0(ij0), mj1(ij1)
+               DO ji = mi0(ii0), mi1(ii1)
                   mbathy(ji,jj) = 0
                   bathy (ji,jj) = 0._wp               
                END DO
