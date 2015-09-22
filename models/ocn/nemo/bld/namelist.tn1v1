@@ -278,6 +278,7 @@ sn_rcv_co2    =       'coupled'              ,    'no'    ,     ''      ,       
    ln_rnf_depth = .true.    !  read in depth information for runoff
    ln_rnf_tem   = .false.   !  read in temperature information for runoff
    ln_rnf_sal   = .false.   !  read in salinity information for runoff
+   rn_rnf_bnd   =  0.0      !  max allowed runoff (redistribute otherwise) [kg/m2/s]
 /
 !-----------------------------------------------------------------------
 &namsbc_apr    !   Atmospheric pressure used as ocean forcing or in bulk
@@ -305,7 +306,7 @@ sn_rcv_co2    =       'coupled'              ,    'no'    ,     ''      ,       
                            !  or to SSS only (=1) or no damping term (=0)
    rn_dqdt     =   -40.    !  magnitude of the retroaction on temperature   [W/m2/K]
    rn_deds     =  -166.67  !  magnitude of the damping on salinity   [mm/day]
-   ln_sssr_bnd =   .true.  !  flag to bound erp term (associated with nn_sssr=2)
+   ln_sssr_bnd =   .false. !  flag to bound erp term (associated with nn_sssr=2)
    rn_sssr_bnd =   4.e0    !  ABS(Max/Min) value of the damping erp term [mm/day]
 /
 !-----------------------------------------------------------------------
