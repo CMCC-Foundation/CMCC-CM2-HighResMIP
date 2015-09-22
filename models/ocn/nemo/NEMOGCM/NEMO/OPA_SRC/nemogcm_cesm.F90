@@ -77,6 +77,7 @@ MODULE nemogcm
 #endif
    USE tamtrj          ! Output trajectory, needed for TAM
    USE asminc
+   USE lbcnfd, ONLY: isendto, nsndto, nfsloop, nfeloop ! Setup of north fold exchanges
    USE shr_sys_mod,   ONLY: shr_sys_abort
 
    IMPLICIT NONE
@@ -623,139 +624,72 @@ CONTAINS
    SUBROUTINE nemo_northcomms
       !!======================================================================
       !!                     ***  ROUTINE  nemo_northcomms  ***
-      !! nemo_northcomms    :  Setup for north fold exchanges with explicit peer to peer messaging
+      !! nemo_northcomms    :  Setup for north fold exchanges with explicit 
+      !!                       point-to-point messaging
       !!=====================================================================
       !!----------------------------------------------------------------------
       !!
       !! ** Purpose :   Initialization of the northern neighbours lists.
       !!----------------------------------------------------------------------
       !!    1.0  ! 2011-10  (A. C. Coward, NOCS & J. Donners, PRACE)
+      !!    2.0  ! 2013-06 Setup avoiding MPI communication (I. Epicoco, S.
+      !Mocavero, CMCC) 
       !!----------------------------------------------------------------------
 
-      INTEGER ::   ji, jj, jk, ij, jtyp    ! dummy loop indices
-      INTEGER ::   ijpj                    ! number of rows involved in north-fold exchange
-      INTEGER ::   northcomms_alloc        ! allocate return status
-      REAL(wp), ALLOCATABLE, DIMENSION ( :,: ) ::   znnbrs     ! workspace
-      LOGICAL,  ALLOCATABLE, DIMENSION ( : )   ::   lrankset   ! workspace
+      INTEGER  ::   sxM, dxM, sxT, dxT, jn
+      INTEGER  ::   njmppmax
 
-      IF(lwp) WRITE(numout,*)
-      IF(lwp) WRITE(numout,*) 'nemo_northcomms : Initialization of the northern neighbours lists'
-      IF(lwp) WRITE(numout,*) '~~~~~~~~~~'
+      njmppmax = MAXVAL( njmppt )
 
-      !!----------------------------------------------------------------------
-      ALLOCATE( znnbrs(jpi,jpj), stat = northcomms_alloc )
-      ALLOCATE( lrankset(jpnij), stat = northcomms_alloc )
-      IF( northcomms_alloc /= 0 ) THEN
-         WRITE(numout,cform_war)
-         WRITE(numout,*) 'northcomms_alloc : failed to allocate arrays'
-         CALL ctl_stop( 'STOP', 'nemo_northcomms : unable to allocate temporary arrays' )
-      ENDIF
+      !initializes the north-fold communication variables
+      isendto(:) = 0
       nsndto = 0
-      isendto = -1
-      ijpj   = 4
-      !
-      ! This routine has been called because ln_nnogather has been set true ( nammpp )
-      ! However, these first few exchanges have to use the mpi_allgather method to
-      ! establish the neighbour lists to use in subsequent peer to peer exchanges.
-      ! Consequently, set l_north_nogather to be false here and set it true only after
-      ! the lists have been established.
-      !
-      l_north_nogather = .FALSE.
-      !
-      ! Exchange and store ranks on northern rows
 
-      DO jtyp = 1,4
+      !if I am a process in the north
+      IF ( njmpp == njmppmax ) THEN
+          !sxM is the first point (in the global domain) needed to compute the
+          !north-fold for the current process
+          sxM = jpiglo - nimppt(narea) - nlcit(narea) + 1
+          !dxM is the last point (in the global domain) needed to compute the
+          !north-fold for the current process
+          dxM = jpiglo - nimppt(narea) + 2
 
-         lrankset = .FALSE.
-         znnbrs = narea
-         SELECT CASE (jtyp)
-            CASE(1)
-               CALL lbc_lnk( znnbrs, 'T', 1. )      ! Type 1: T,W-points
-            CASE(2)
-               CALL lbc_lnk( znnbrs, 'U', 1. )      ! Type 2: U-point
-            CASE(3)
-               CALL lbc_lnk( znnbrs, 'V', 1. )      ! Type 3: V-point
-            CASE(4)
-               CALL lbc_lnk( znnbrs, 'F', 1. )      ! Type 4: F-point
-         END SELECT
+          !loop over the other north-fold processes to find the processes
+          !managing the points belonging to the sxT-dxT range
 
-         IF ( njmppt(narea) .EQ. MAXVAL( njmppt ) ) THEN
-            DO jj = nlcj-ijpj+1, nlcj
-               ij = jj - nlcj + ijpj
-               DO ji = 1,jpi
-                  IF ( INT(znnbrs(ji,jj)) .NE. 0 .AND. INT(znnbrs(ji,jj)) .NE. narea ) &
-               &     lrankset(INT(znnbrs(ji,jj))) = .true.
-               END DO
-            END DO
+          DO jn = 1, jpni
+                !sxT is the first point (in the global domain) of the jn
+                !process
+                sxT = nfiimpp(jn, jpnj)
+                !dxT is the last point (in the global domain) of the jn
+                !process
+                dxT = nfiimpp(jn, jpnj) + nfilcit(jn, jpnj) - 1
+                IF ((sxM .gt. sxT) .AND. (sxM .lt. dxT)) THEN
+                   nsndto = nsndto + 1
+                     isendto(nsndto) = jn
+                ELSEIF ((sxM .le. sxT) .AND. (dxM .ge. dxT)) THEN
+                   nsndto = nsndto + 1
+                     isendto(nsndto) = jn
+                ELSEIF ((dxM .lt. dxT) .AND. (sxT .lt. dxM)) THEN
+                   nsndto = nsndto + 1
+                     isendto(nsndto) = jn
+                END IF
+          END DO
+          nfsloop = 1
+          nfeloop = nlci
+          DO jn = 2,jpni-1
+           IF(nfipproc(jn,jpnj) .eq. (narea - 1)) THEN
+              IF (nfipproc(jn - 1 ,jpnj) .eq. -1) THEN
+                 nfsloop = nldi
+              ENDIF
+              IF (nfipproc(jn + 1,jpnj) .eq. -1) THEN
+                 nfeloop = nlei
+              ENDIF
+           ENDIF
+          END DO
 
-            DO jj = 1,jpnij
-               IF ( lrankset(jj) ) THEN
-                  nsndto(jtyp) = nsndto(jtyp) + 1
-                  IF ( nsndto(jtyp) .GT. jpmaxngh ) THEN
-                     CALL ctl_stop( ' Too many neighbours in nemo_northcomms ', &
-                  &                 ' jpmaxngh will need to be increased ')
-                  ENDIF
-                  isendto(nsndto(jtyp),jtyp) = jj-1   ! narea converted to MPI rank
-               ENDIF
-            END DO
-         ENDIF
-
-      END DO
-
-      !
-      ! Type 5: I-point
-      !
-      ! ICE point exchanges may involve some averaging. The neighbours list is
-      ! built up using two exchanges to ensure that the whole stencil is covered.
-      ! lrankset should not be reset between these 'J' and 'K' point exchanges
-
-      jtyp = 5
-      lrankset = .FALSE.
-      znnbrs = narea
-      CALL lbc_lnk( znnbrs, 'J', 1. ) ! first ice U-V point
-
-      IF ( njmppt(narea) .EQ. MAXVAL( njmppt ) ) THEN
-         DO jj = nlcj-ijpj+1, nlcj
-            ij = jj - nlcj + ijpj
-            DO ji = 1,jpi
-               IF ( INT(znnbrs(ji,jj)) .NE. 0 .AND. INT(znnbrs(ji,jj)) .NE. narea ) &
-            &     lrankset(INT(znnbrs(ji,jj))) = .true.
-         END DO
-        END DO
       ENDIF
-
-      znnbrs = narea
-      CALL lbc_lnk( znnbrs, 'K', 1. ) ! second ice U-V point
-
-      IF ( njmppt(narea) .EQ. MAXVAL( njmppt )) THEN
-         DO jj = nlcj-ijpj+1, nlcj
-            ij = jj - nlcj + ijpj
-            DO ji = 1,jpi
-               IF ( INT(znnbrs(ji,jj)) .NE. 0 .AND.  INT(znnbrs(ji,jj)) .NE. narea ) &
-            &       lrankset( INT(znnbrs(ji,jj))) = .true.
-            END DO
-         END DO
-
-         DO jj = 1,jpnij
-            IF ( lrankset(jj) ) THEN
-               nsndto(jtyp) = nsndto(jtyp) + 1
-               IF ( nsndto(jtyp) .GT. jpmaxngh ) THEN
-                  CALL ctl_stop( ' Too many neighbours in nemo_northcomms ', &
-               &                 ' jpmaxngh will need to be increased ')
-               ENDIF
-               isendto(nsndto(jtyp),jtyp) = jj-1   ! narea converted to MPI rank
-            ENDIF
-         END DO
-         !
-         ! For northern row areas, set l_north_nogather so that all subsequent exchanges
-         ! can use peer to peer communications at the north fold
-         !
-         l_north_nogather = .TRUE.
-         !
-      ENDIF
-      DEALLOCATE( znnbrs )
-      DEALLOCATE( lrankset )
-
+      l_north_nogather = .TRUE.
    END SUBROUTINE nemo_northcomms
 #else
    SUBROUTINE nemo_northcomms      ! Dummy routine

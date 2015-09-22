@@ -176,6 +176,7 @@ CONTAINS
       END DO
       
 #endif
+      nfilcit(:,:) = ilcit(:,:)
       IF( irestj == 0 )   irestj = jpnj
 
 #if defined key_nemocice_decomp
@@ -254,6 +255,7 @@ CONTAINS
             END DO
          END DO
       ENDIF
+      nfiimpp(:,:)=iimppt(:,:)
 
       IF( jpnj > 1 ) THEN
          DO jj = 2, jpnj
@@ -269,6 +271,7 @@ CONTAINS
       DO jn = 1, jpnij
          ii = 1 + MOD( jn-1, jpni )
          ij = 1 + (jn-1) / jpni
+         nfipproc(ii,ij) = jn - 1
          nimppt(jn) = iimppt(ii,ij)
          njmppt(jn) = ijmppt(ii,ij)
          nlcit (jn) = ilcit (ii,ij)     

@@ -23,6 +23,16 @@ MODULE lbcnfd
 
    PUBLIC   lbc_nfd   ! north fold conditions
 
+   INTERFACE mpp_lbc_nfd
+      MODULE PROCEDURE   mpp_lbc_nfd_3d, mpp_lbc_nfd_2d
+   END INTERFACE
+
+   PUBLIC   mpp_lbc_nfd   ! north fold conditions in parallel case
+
+   INTEGER, PUBLIC,  PARAMETER :: jpmaxngh = 3
+   INTEGER, PUBLIC                                  ::   nsndto, nfsloop, nfeloop
+   INTEGER, PUBLIC,  DIMENSION (jpmaxngh)           ::   isendto ! processes to which communicate
+
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
    !! $Id$
@@ -340,6 +350,555 @@ CONTAINS
       END SELECT
       !
    END SUBROUTINE lbc_nfd_2d
+
+   SUBROUTINE mpp_lbc_nfd_3d( pt3dl, pt3dr, cd_type, psgn )
+      !!----------------------------------------------------------------------
+      !!                  ***  routine mpp_lbc_nfd_3d  ***
+      !!
+      !! ** Purpose :   3D lateral boundary condition : North fold treatment
+      !!              without processor exchanges. 
+      !!
+      !! ** Method  :   
+      !!
+      !! ** Action  :   pt3d with updated values along the north fold
+      !!----------------------------------------------------------------------
+      CHARACTER(len=1)          , INTENT(in   ) ::   cd_type   ! define the nature of ptab array grid-points
+      !                                                        !   = T , U , V ,
+      !                                                        F , W points
+      REAL(wp)                  , INTENT(in   ) ::   psgn      ! control of the sign change
+      !                                                        !   = -1. , the
+      !                                                        sign is changed
+      !                                                        if north fold
+      !                                                        boundary
+      !                                                        !   =  1. , the
+      !                                                        sign is kept  if
+      !                                                        north fold
+      !                                                        boundary
+      REAL(wp), DIMENSION(:,:,:), INTENT(inout) ::   pt3dl      ! 3D array on which the boundary condition is applied
+      REAL(wp), DIMENSION(:,:,:), INTENT(in) ::   pt3dr      ! 3D array on which the boundary condition is applied
+      !
+      INTEGER  ::   ji, jk
+      INTEGER  ::   ijt, iju, ijpj, ijpjm1, ijta, ijua, jia, startloop, endloop
+      !!----------------------------------------------------------------------
+
+      SELECT CASE ( jpni )
+      CASE ( 1 )     ;   ijpj = nlcj      ! 1 proc only  along the i-direction
+      CASE DEFAULT   ;   ijpj = 4         ! several proc along the i-direction
+      END SELECT
+      ijpjm1 = ijpj-1
+
+         !
+         SELECT CASE ( npolj )
+         !
+         CASE ( 3 , 4 )                        ! *  North fold  T-point pivot
+            !
+            SELECT CASE ( cd_type )
+            CASE ( 'T' , 'W' )                         ! T-, W-point
+               IF (nimpp .ne. 1) THEN
+                 startloop = 1
+               ELSE
+                 startloop = 2
+               ENDIF
+
+               DO jk = 1, jpk
+                  DO ji = startloop, nlci
+                     ijt = jpiglo - ji - nimpp - nfiimpp(isendto(1),jpnj) + 4
+                     pt3dl(ji,ijpj,jk) = psgn * pt3dr(ijt,ijpj-2,jk)
+                  END DO
+               END DO
+
+               IF(nimpp .ge. (jpiglo/2+1)) THEN
+                 startloop = 1
+               ELSEIF(((nimpp+nlci-1) .ge. (jpiglo/2+1)) .AND. (nimpp .lt. (jpiglo/2+1))) THEN
+                 startloop = jpiglo/2+1 - nimpp + 1
+               ELSE
+                 startloop = nlci + 1
+               ENDIF
+               IF(startloop .le. nlci) THEN
+                 DO jk = 1, jpk
+                    DO ji = startloop, nlci
+                       ijt = jpiglo - ji - nimpp - nfiimpp(isendto(1),jpnj) + 4
+                       jia = ji + nimpp - 1
+                       ijta = jpiglo - jia + 2
+                       IF((ijta .ge. (startloop + nimpp - 1)) .and. (ijta .lt. jia)) THEN
+                          pt3dl(ji,ijpjm1,jk) = psgn * pt3dl(ijta-nimpp+1,ijpjm1,jk)
+                       ELSE
+                          pt3dl(ji,ijpjm1,jk) = psgn * pt3dr(ijt,ijpjm1,jk)
+                       ENDIF
+                    END DO
+                 END DO
+               ENDIF
+
+
+            CASE ( 'U' )                               ! U-point
+               IF ((nimpp + nlci - 1) .ne. jpiglo) THEN
+                  endloop = nlci
+               ELSE
+                  endloop = nlci - 1
+               ENDIF
+               DO jk = 1, jpk
+                  DO ji = 1, endloop
+                     iju = jpiglo - ji - nimpp - nfiimpp(isendto(1),jpnj) + 3
+                     pt3dl(ji,ijpj,jk) = psgn * pt3dr(iju,ijpj-2,jk)
+                  END DO
+               END DO
+
+               IF ((nimpp + nlci - 1) .ne. jpiglo) THEN
+                  endloop = nlci
+               ELSE
+                  endloop = nlci - 1
+               ENDIF
+               IF(nimpp .ge. (jpiglo/2)) THEN
+                  startloop = 1
+               ELSEIF(((nimpp+nlci-1) .ge. (jpiglo/2)) .AND. (nimpp .lt. (jpiglo/2))) THEN
+                  startloop = jpiglo/2 - nimpp + 1
+               ELSE
+                  startloop = endloop + 1
+               ENDIF
+               IF (startloop .le. endloop) THEN
+                 DO jk = 1, jpk
+                    DO ji = startloop, endloop
+                      iju = jpiglo - ji - nimpp - nfiimpp(isendto(1),jpnj) + 3
+                      jia = ji + nimpp - 1
+                      ijua = jpiglo - jia + 1
+                      IF((ijua .ge. (startloop + nimpp - 1)) .and. (ijua .lt. jia)) THEN
+                        pt3dl(ji,ijpjm1,jk) = psgn * pt3dl(ijua-nimpp+1,ijpjm1,jk)
+                      ELSE
+                        pt3dl(ji,ijpjm1,jk) = psgn * pt3dr(iju,ijpjm1,jk)
+                      ENDIF
+                    END DO
+                 END DO
+               ENDIF
+            CASE ( 'V' )                               ! V-point
+               IF (nimpp .ne. 1) THEN
+                  startloop = 1
+               ELSE
+                  startloop = 2
+               ENDIF
+               DO jk = 1, jpk
+                  DO ji = startloop, nlci
+                     ijt = jpiglo - ji - nimpp - nfiimpp(isendto(1),jpnj) + 4
+                     pt3dl(ji,ijpj-1,jk) = psgn * pt3dr(ijt,ijpj-2,jk)
+                     pt3dl(ji,ijpj  ,jk) = psgn * pt3dr(ijt,ijpj-3,jk)
+                  END DO
+               END DO
+            CASE ( 'F' )                               ! F-point
+               IF ((nimpp + nlci - 1) .ne. jpiglo) THEN
+                  endloop = nlci
+               ELSE
+                  endloop = nlci - 1
+               ENDIF
+               DO jk = 1, jpk
+                  DO ji = 1, endloop
+                     iju = jpiglo - ji - nimpp - nfiimpp(isendto(1),jpnj) + 3
+                     pt3dl(ji,ijpj-1,jk) = psgn * pt3dr(iju,ijpj-2,jk)
+                     pt3dl(ji,ijpj  ,jk) = psgn * pt3dr(iju,ijpj-3,jk)
+                  END DO
+               END DO
+            END SELECT
+            !
+
+         CASE ( 5 , 6 )                        ! *  North fold  F-point pivot
+            !
+            SELECT CASE ( cd_type )
+            CASE ( 'T' , 'W' )                         ! T-, W-point
+               DO jk = 1, jpk
+                  DO ji = 1, nlci
+                     ijt = jpiglo - ji - nimpp - nfiimpp(isendto(1),jpnj) + 3
+                     pt3dl(ji,ijpj,jk) = psgn * pt3dr(ijt,ijpj-1,jk)
+                  END DO
+               END DO
+
+            CASE ( 'U' )                               ! U-point
+               IF ((nimpp + nlci - 1) .ne. jpiglo) THEN
+                  endloop = nlci
+               ELSE
+                  endloop = nlci - 1
+               ENDIF
+               DO jk = 1, jpk
+                  DO ji = 1, endloop
+                     iju = jpiglo - ji - nimpp - nfiimpp(isendto(1),jpnj) + 2
+                     pt3dl(ji,ijpj,jk) = psgn * pt3dr(iju,ijpj-1,jk)
+                  END DO
+               END DO
+            CASE ( 'V' )                               ! V-point
+               DO jk = 1, jpk
+                  DO ji = 1, nlci
+                     ijt = jpiglo - ji- nimpp - nfiimpp(isendto(1),jpnj) + 3
+                     pt3dl(ji,ijpj,jk) = psgn * pt3dr(ijt,ijpj-2,jk)
+                  END DO
+               END DO
+
+               IF(nimpp .ge. (jpiglo/2+1)) THEN
+                  startloop = 1
+               ELSEIF(((nimpp+nlci-1) .ge. (jpiglo/2+1)) .AND. (nimpp .lt. (jpiglo/2+1))) THEN
+                  startloop = jpiglo/2+1 - nimpp + 1
+               ELSE
+                  startloop = nlci + 1
+               ENDIF
+               IF(startloop .le. nlci) THEN
+                 DO jk = 1, jpk
+                    DO ji = startloop, nlci
+                       ijt = jpiglo - ji - nimpp - nfiimpp(isendto(1),jpnj) + 3
+                       pt3dl(ji,ijpjm1,jk) = psgn * pt3dr(ijt,ijpjm1,jk)
+                    END DO
+                 END DO
+               ENDIF
+
+            CASE ( 'F' )                               ! F-point
+               IF ((nimpp + nlci - 1) .ne. jpiglo) THEN
+                  endloop = nlci
+               ELSE
+                  endloop = nlci - 1
+               ENDIF
+               DO jk = 1, jpk
+                  DO ji = 1, endloop
+                     iju = jpiglo - ji - nimpp - nfiimpp(isendto(1),jpnj) + 2
+                     pt3dl(ji,ijpj ,jk) = psgn * pt3dr(iju,ijpj-2,jk)
+                  END DO
+               END DO
+
+               IF ((nimpp + nlci - 1) .ne. jpiglo) THEN
+                  endloop = nlci
+               ELSE
+                  endloop = nlci - 1
+               ENDIF
+               IF(nimpp .ge. (jpiglo/2+1)) THEN
+                  startloop = 1
+               ELSEIF(((nimpp+nlci-1) .ge. (jpiglo/2+1)) .AND. (nimpp .lt. (jpiglo/2+1))) THEN
+                  startloop = jpiglo/2+1 - nimpp + 1
+               ELSE
+                  startloop = endloop + 1
+               ENDIF
+               IF (startloop .le. endloop) THEN
+                  DO jk = 1, jpk
+                     DO ji = startloop, endloop
+                        iju = jpiglo - ji - nimpp - nfiimpp(isendto(1),jpnj) + 2
+                        pt3dl(ji,ijpjm1,jk) = psgn * pt3dr(iju,ijpjm1,jk)
+                     END DO
+                  END DO
+               ENDIF
+            END SELECT
+
+         CASE DEFAULT                           ! *  closed : the code probably never go through
+            !
+            SELECT CASE ( cd_type)
+            CASE ( 'T' , 'U' , 'V' , 'W' )             ! T-, U-, V-, W-points
+               pt3dl(:, 1  ,jk) = 0.e0
+               pt3dl(:,ijpj,jk) = 0.e0
+            CASE ( 'F' )                               ! F-point
+               pt3dl(:,ijpj,jk) = 0.e0
+            END SELECT
+            !
+         END SELECT     !  npolj
+         !
+      !
+   END SUBROUTINE mpp_lbc_nfd_3d
+
+
+   SUBROUTINE mpp_lbc_nfd_2d( pt2dl, pt2dr, cd_type, psgn )
+      !!----------------------------------------------------------------------
+      !!                  ***  routine mpp_lbc_nfd_2d  ***
+      !!
+      !! ** Purpose :   2D lateral boundary condition : North fold treatment
+      !!       without processor exchanges. 
+      !!
+      !! ** Method  :   
+      !!
+      !! ** Action  :   pt2d with updated values along the north fold
+      !!----------------------------------------------------------------------
+      CHARACTER(len=1)        , INTENT(in   ) ::   cd_type   ! define the nature of ptab array grid-points
+      !                                                      ! = T , U , V , F ,
+      !                                                      W points
+      REAL(wp)                , INTENT(in   ) ::   psgn      ! control of the sign change
+      !                                                      !   = -1. , the
+      !                                                      sign is changed if
+      !                                                      north fold boundary
+      !                                                      !   =  1. , the
+      !                                                      sign is kept  if
+      !                                                      north fold boundary
+      REAL(wp), DIMENSION(:,:), INTENT(inout) ::   pt2dl      ! 2D array on which the boundary condition is applied
+      REAL(wp), DIMENSION(:,:), INTENT(in) ::   pt2dr      ! 2D array on which the boundary condition is applied
+      !
+      INTEGER  ::   ji
+      INTEGER  ::   ijt, iju, ijpj, ijpjm1, ijta, ijua, jia, startloop, endloop
+      !!----------------------------------------------------------------------
+
+      SELECT CASE ( jpni )
+      CASE ( 1 )     ;   ijpj = nlcj      ! 1 proc only  along the i-direction
+      CASE DEFAULT   ;   ijpj = 4         ! several proc along the i-direction
+      END SELECT
+      !
+      ijpjm1 = ijpj-1
+
+
+      SELECT CASE ( npolj )
+      !
+      CASE ( 3, 4 )                       ! *  North fold  T-point pivot
+         !
+         SELECT CASE ( cd_type )
+         !
+         CASE ( 'T' , 'W' )                               ! T- , W-points
+            IF (nimpp .ne. 1) THEN
+              startloop = 1
+            ELSE
+              startloop = 2
+            ENDIF
+            DO ji = startloop, nlci
+              ijt=jpiglo - ji - nimpp - nfiimpp(isendto(1),jpnj) + 4
+              pt2dl(ji,ijpj) = psgn * pt2dr(ijt,ijpjm1-1)
+            END DO
+
+            IF(nimpp .ge. (jpiglo/2+1)) THEN
+               startloop = 1
+            ELSEIF(((nimpp+nlci-1) .ge. (jpiglo/2+1)) .AND. (nimpp .lt. (jpiglo/2+1))) THEN
+               startloop = jpiglo/2+1 - nimpp + 1
+            ELSE
+               startloop = nlci + 1
+            ENDIF
+            DO ji = startloop, nlci
+               ijt=jpiglo - ji - nimpp - nfiimpp(isendto(1),jpnj) + 4
+               jia = ji + nimpp - 1
+               ijta = jpiglo - jia + 2
+               IF((ijta .ge. (startloop + nimpp - 1)) .and. (ijta .lt. jia)) THEN
+                  pt2dl(ji,ijpjm1) = psgn * pt2dl(ijta-nimpp+1,ijpjm1)
+               ELSE
+                  pt2dl(ji,ijpjm1) = psgn * pt2dr(ijt,ijpjm1)
+               ENDIF
+            END DO
+
+         CASE ( 'U' )                                     ! U-point
+            IF ((nimpp + nlci - 1) .ne. jpiglo) THEN
+               endloop = nlci
+            ELSE
+               endloop = nlci - 1
+            ENDIF
+            DO ji = 1, endloop
+               iju = jpiglo - ji - nimpp - nfiimpp(isendto(1),jpnj) + 3
+               pt2dl(ji,ijpj) = psgn * pt2dr(iju,ijpjm1-1)
+            END DO
+
+            IF ((nimpp + nlci - 1) .ne. jpiglo) THEN
+               endloop = nlci
+            ELSE
+               endloop = nlci - 1
+            ENDIF
+            IF(nimpp .ge. (jpiglo/2)) THEN
+               startloop = 1
+            ELSEIF(((nimpp+nlci-1) .ge. (jpiglo/2)) .AND. (nimpp .lt. (jpiglo/2))) THEN
+               startloop = jpiglo/2 - nimpp + 1
+            ELSE
+               startloop = endloop + 1
+            ENDIF
+            DO ji = startloop, endloop
+               iju = jpiglo - ji - nimpp - nfiimpp(isendto(1),jpnj) + 3
+               jia = ji + nimpp - 1
+               ijua = jpiglo - jia + 1
+               IF((ijua .ge. (startloop + nimpp - 1)) .and. (ijua .lt. jia)) THEN
+                  pt2dl(ji,ijpjm1) = psgn * pt2dl(ijua-nimpp+1,ijpjm1)
+               ELSE
+                  pt2dl(ji,ijpjm1) = psgn * pt2dr(iju,ijpjm1)
+               ENDIF
+            END DO
+
+         CASE ( 'V' )                                     ! V-point
+            IF (nimpp .ne. 1) THEN
+              startloop = 1
+            ELSE
+              startloop = 2
+            ENDIF
+            DO ji = startloop, nlci
+              ijt=jpiglo - ji - nimpp - nfiimpp(isendto(1),jpnj) + 4
+              pt2dl(ji,ijpjm1) = psgn * pt2dr(ijt,ijpjm1-1)
+              pt2dl(ji,ijpj) = psgn * pt2dr(ijt,ijpjm1-2)
+            END DO
+
+         CASE ( 'F' )                                     ! F-point
+            IF ((nimpp + nlci - 1) .ne. jpiglo) THEN
+               endloop = nlci
+            ELSE
+               endloop = nlci - 1
+            ENDIF
+            DO ji = 1, endloop
+               iju = jpiglo - ji - nimpp - nfiimpp(isendto(1),jpnj) + 3
+               pt2dl(ji,ijpjm1) = psgn * pt2dr(iju,ijpjm1-1)
+               pt2dl(ji,ijpj) = psgn * pt2dr(iju,ijpjm1-2)
+            END DO
+
+         CASE ( 'I' )                                     ! ice U-V point (I-point)
+            IF (nimpp .ne. 1) THEN
+               startloop = 1
+            ELSE
+               startloop = 3
+               pt2dl(2,ijpj) = psgn * pt2dr(3,ijpjm1)
+            ENDIF
+            DO ji = startloop, nlci
+               iju = jpiglo - ji - nimpp - nfiimpp(isendto(1),jpnj) + 5
+               pt2dl(ji,ijpj) = psgn * pt2dr(iju,ijpjm1)
+            END DO
+         CASE ( 'J' )                                     ! first ice U-V point
+            IF (nimpp .ne. 1) THEN
+               startloop = 1
+            ELSE
+               startloop = 3
+               pt2dl(2,ijpj) = psgn * pt2dr(3,ijpjm1)
+            ENDIF
+            DO ji = startloop, nlci
+               iju = jpiglo - ji - nimpp - nfiimpp(isendto(1),jpnj) + 5
+               pt2dl(ji,ijpj) = psgn * pt2dr(iju,ijpjm1)
+            END DO
+
+         CASE ( 'K' )                                     ! second ice U-V point
+            IF (nimpp .ne. 1) THEN
+               startloop = 1
+            ELSE
+               startloop = 3
+               pt2dl(2,ijpj) = psgn * pt2dr(3,ijpjm1)
+            ENDIF
+            DO ji = startloop, nlci
+               iju = jpiglo - ji - nimpp - nfiimpp(isendto(1),jpnj) + 5
+               pt2dl(ji,ijpj) = psgn * pt2dr(iju,ijpjm1)
+            END DO
+
+         END SELECT
+         !
+      CASE ( 5, 6 )                        ! *  North fold  F-point pivot
+         !
+         SELECT CASE ( cd_type )
+         CASE ( 'T' , 'W' )                               ! T-, W-point
+            DO ji = 1, nlci
+               ijt = jpiglo - ji - nimpp - nfiimpp(isendto(1),jpnj) + 3
+               pt2dl(ji,ijpj) = psgn * pt2dr(ijt,ijpjm1)
+            END DO
+
+         CASE ( 'U' )                                     ! U-point
+            IF ((nimpp + nlci - 1) .ne. jpiglo) THEN
+               endloop = nlci
+            ELSE
+               endloop = nlci - 1
+            ENDIF
+            DO ji = 1, endloop
+               iju = jpiglo - ji - nimpp - nfiimpp(isendto(1),jpnj) + 2
+               pt2dl(ji,ijpj) = psgn * pt2dr(iju,ijpjm1)
+            END DO
+
+         CASE ( 'V' )                                     ! V-point
+            DO ji = 1, nlci
+               ijt = jpiglo - ji - nimpp - nfiimpp(isendto(1),jpnj) + 3
+               pt2dl(ji,ijpj) = psgn * pt2dr(ijt,ijpjm1-1)
+            END DO
+            IF(nimpp .ge. (jpiglo/2+1)) THEN
+               startloop = 1
+            ELSEIF(((nimpp+nlci-1) .ge. (jpiglo/2+1)) .AND. (nimpp .lt. (jpiglo/2+1))) THEN
+               startloop = jpiglo/2+1 - nimpp + 1
+            ELSE
+               startloop = nlci + 1
+            ENDIF
+            DO ji = startloop, nlci
+               ijt = jpiglo - ji - nimpp - nfiimpp(isendto(1),jpnj) + 3
+               pt2dl(ji,ijpjm1) = psgn * pt2dr(ijt,ijpjm1)
+            END DO
+
+         CASE ( 'F' )                               ! F-point
+            IF ((nimpp + nlci - 1) .ne. jpiglo) THEN
+               endloop = nlci
+            ELSE
+               endloop = nlci - 1
+            ENDIF
+            DO ji = 1, endloop
+               iju = jpiglo - ji - nimpp - nfiimpp(isendto(1),jpnj) + 2
+               pt2dl(ji,ijpj) = psgn * pt2dr(iju,ijpjm1-1)
+            END DO
+
+            IF ((nimpp + nlci - 1) .ne. jpiglo) THEN
+               endloop = nlci
+            ELSE
+               endloop = nlci - 1
+            ENDIF
+            IF(nimpp .ge. (jpiglo/2+1)) THEN
+               startloop = 1
+            ELSEIF(((nimpp+nlci-1) .ge. (jpiglo/2+1)) .AND. (nimpp .lt. (jpiglo/2+1))) THEN
+               startloop = jpiglo/2+1 - nimpp + 1
+            ELSE
+               startloop = endloop + 1
+            ENDIF
+
+            DO ji = startloop, endloop
+               iju = jpiglo - ji - nimpp - nfiimpp(isendto(1),jpnj) + 2
+               pt2dl(ji,ijpjm1) = psgn * pt2dr(iju,ijpjm1)
+            END DO
+
+         CASE ( 'I' )                                  ! ice U-V point (I-point)
+               IF (nimpp .ne. 1) THEN
+                  startloop = 1
+               ELSE
+                  startloop = 2
+               ENDIF
+               IF ((nimpp + nlci - 1) .ne. jpiglo) THEN
+                  endloop = nlci
+               ELSE
+                  endloop = nlci - 1
+               ENDIF
+               DO ji = startloop , endloop
+                  ijt = jpiglo - ji - nimpp - nfiimpp(isendto(1),jpnj) + 4
+                  pt2dl(ji,ijpj)= 0.5 * (pt2dr(ji,ijpjm1) + psgn * pt2dr(ijt,ijpjm1))
+               END DO
+         CASE ( 'J' )                                  ! first ice U-V point
+               IF (nimpp .ne. 1) THEN
+                  startloop = 1
+               ELSE
+                  startloop = 2
+               ENDIF
+               IF ((nimpp + nlci - 1) .ne. jpiglo) THEN
+                  endloop = nlci
+               ELSE
+                  endloop = nlci - 1
+               ENDIF
+               DO ji = startloop , endloop
+                  ijt = jpiglo - ji - nimpp - nfiimpp(isendto(1),jpnj) + 4
+                  pt2dl(ji,ijpj) = pt2dr(ji,ijpjm1)
+               END DO
+
+         CASE ( 'K' )                                  ! second ice U-V point
+               IF (nimpp .ne. 1) THEN
+                  startloop = 1
+               ELSE
+                  startloop = 2
+               ENDIF
+               IF ((nimpp + nlci - 1) .ne. jpiglo) THEN
+                  endloop = nlci
+               ELSE
+                  endloop = nlci - 1
+               ENDIF
+               DO ji = startloop, endloop
+                  ijt = jpiglo - ji - nimpp - nfiimpp(isendto(1),jpnj) + 4
+                  pt2dl(ji,ijpj) = pt2dr(ijt,ijpjm1)
+               END DO
+
+         END SELECT
+         !
+      CASE DEFAULT                           ! *  closed : the code probably never go through
+         !
+         SELECT CASE ( cd_type)
+         CASE ( 'T' , 'U' , 'V' , 'W' )                 ! T-, U-, V-, W-points
+            pt2dl(:, 1     ) = 0.e0
+            pt2dl(:,ijpj) = 0.e0
+         CASE ( 'F' )                                   ! F-point
+            pt2dl(:,ijpj) = 0.e0
+         CASE ( 'I' )                                   ! ice U-V point
+            pt2dl(:, 1     ) = 0.e0
+            pt2dl(:,ijpj) = 0.e0
+         CASE ( 'J' )                                   ! first ice U-V point
+            pt2dl(:, 1     ) = 0.e0
+            pt2dl(:,ijpj) = 0.e0
+         CASE ( 'K' )                                   ! second ice U-V point
+            pt2dl(:, 1     ) = 0.e0
+            pt2dl(:,ijpj) = 0.e0
+         END SELECT
+         !
+      END SELECT
+      !
+   END SUBROUTINE mpp_lbc_nfd_2d
 
    !!======================================================================
 END MODULE lbcnfd

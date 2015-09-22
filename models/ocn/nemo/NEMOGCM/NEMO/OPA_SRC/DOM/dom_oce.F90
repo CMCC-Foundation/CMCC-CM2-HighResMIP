@@ -101,6 +101,7 @@ MODULE dom_oce
    INTEGER, PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:) ::   nlcit , nlcjt    !: dimensions of every subdomain
    INTEGER, PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:) ::   nldit , nldjt    !: first, last indoor index for each i-domain
    INTEGER, PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:) ::   nleit , nlejt    !: first, last indoor index for each j-domain
+   INTEGER, PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:) :: nfiimpp, nfipproc, nfilcit
 
    !!----------------------------------------------------------------------
    !! horizontal curvilinear coordinate and scale factors
@@ -259,7 +260,8 @@ CONTAINS
       !!----------------------------------------------------------------------
       ierr(:) = 0
       !
-      ALLOCATE( rdttra(jpk), r2dtra(jpk), mig(jpi), mjg(jpj), STAT=ierr(1) )
+      ALLOCATE( rdttra(jpk), r2dtra(jpk), mig(jpi), mjg(jpj), nfiimpp(jpni,jpnj),  &
+         &      nfipproc(jpni,jpnj), nfilcit(jpni,jpnj), STAT=ierr(1) )
          !
       ALLOCATE( nimppt(jpnij) , ibonit(jpnij) , nlcit(jpnij) , nlcjt(jpnij) ,     &
          &      njmppt(jpnij) , ibonjt(jpnij) , nldit(jpnij) , nldjt(jpnij) ,     &
