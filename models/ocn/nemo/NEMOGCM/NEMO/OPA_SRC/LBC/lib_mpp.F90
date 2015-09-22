@@ -162,24 +162,24 @@ MODULE lib_mpp
    REAL(wp), DIMENSION(:,:,:)    , ALLOCATABLE, SAVE ::   tr2ew, tr2we ! 2d for east-west   & west-east   + extra outer halo
 
    ! Arrays used in mpp_lbc_north_3d()
-   REAL(wp), DIMENSION(:,:,:)  , ALLOCATABLE, SAVE   ::   tab_3d, xnorthloc
-   REAL(wp), DIMENSION(:,:,:,:), ALLOCATABLE, SAVE   ::   xnorthgloio
-   REAL(wp), DIMENSION(:,:,:)  , ALLOCATABLE, SAVE   ::   foldwk      ! Workspace for message transfers avoiding mpi_allgather
+   !REAL(wp), DIMENSION(:,:,:)  , ALLOCATABLE, SAVE   ::   tab_3d, xnorthloc
+   !REAL(wp), DIMENSION(:,:,:,:), ALLOCATABLE, SAVE   ::   xnorthgloio
+   !REAL(wp), DIMENSION(:,:,:)  , ALLOCATABLE, SAVE   ::   foldwk      ! Workspace for message transfers avoiding mpi_allgather
 
    ! Arrays used in mpp_lbc_north_2d()
-   REAL(wp), DIMENSION(:,:)  , ALLOCATABLE, SAVE    ::   tab_2d, xnorthloc_2d
-   REAL(wp), DIMENSION(:,:,:), ALLOCATABLE, SAVE    ::   xnorthgloio_2d
-   REAL(wp), DIMENSION(:,:)  , ALLOCATABLE, SAVE    ::   foldwk_2d    ! Workspace for message transfers avoiding mpi_allgather
+   !REAL(wp), DIMENSION(:,:)  , ALLOCATABLE, SAVE    ::   tab_2d, xnorthloc_2d
+   !REAL(wp), DIMENSION(:,:,:), ALLOCATABLE, SAVE    ::   xnorthgloio_2d
+   !REAL(wp), DIMENSION(:,:)  , ALLOCATABLE, SAVE    ::   foldwk_2d    ! Workspace for message transfers avoiding mpi_allgather
 
    ! Arrays used in mpp_lbc_north_e()
    REAL(wp), DIMENSION(:,:)  , ALLOCATABLE, SAVE    ::   tab_e, xnorthloc_e
    REAL(wp), DIMENSION(:,:,:), ALLOCATABLE, SAVE    ::   xnorthgloio_e
 
    ! North fold arrays used to minimise the use of allgather operations. Set in nemo_northcomms (nemogcm) so need to be public
-   INTEGER, PUBLIC,  PARAMETER :: jpmaxngh = 8                 ! Assumed maximum number of active neighbours
-   INTEGER, PUBLIC,  PARAMETER :: jptyps   = 5                 ! Number of different neighbour lists to be used for northfold exchanges
-   INTEGER, PUBLIC,  DIMENSION (jpmaxngh,jptyps)    ::   isendto
-   INTEGER, PUBLIC,  DIMENSION (jptyps)             ::   nsndto
+   !INTEGER, PUBLIC,  PARAMETER :: jpmaxngh = 8                 ! Assumed maximum number of active neighbours
+   !INTEGER, PUBLIC,  PARAMETER :: jptyps   = 5                 ! Number of different neighbour lists to be used for northfold exchanges
+   !INTEGER, PUBLIC,  DIMENSION (jpmaxngh,jptyps)    ::   isendto
+   !INTEGER, PUBLIC,  DIMENSION (jptyps)             ::   nsndto
    LOGICAL, PUBLIC                                  ::   ln_nnogather     = .FALSE.  ! namelist control of northfold comms
    LOGICAL, PUBLIC                                  ::   l_north_nogather = .FALSE.  ! internal control of northfold comms
    INTEGER, PUBLIC                                  ::   ityp
@@ -212,11 +212,11 @@ CONTAINS
          &      tr2ew(1-jpr2dj:jpj+jpr2dj,jpreci+jpr2di,2) ,                                                     &
          &      tr2we(1-jpr2dj:jpj+jpr2dj,jpreci+jpr2di,2) ,                                                     &
          !
-         &      tab_3d(jpiglo,4,jpk) , xnorthloc(jpi,4,jpk) , xnorthgloio(jpi,4,jpk,jpni) ,                        &
-         &      foldwk(jpi,4,jpk) ,                                                                             &
+         !&      tab_3d(jpiglo,4,jpk) , xnorthloc(jpi,4,jpk) , xnorthgloio(jpi,4,jpk,jpni) ,                        &
+         !&      foldwk(jpi,4,jpk) ,                                                                             &
          !
-         &      tab_2d(jpiglo,4)  , xnorthloc_2d(jpi,4)  , xnorthgloio_2d(jpi,4,jpni)  ,                        &
-         &      foldwk_2d(jpi,4)  ,                                                                             &
+         !&      tab_2d(jpiglo,4)  , xnorthloc_2d(jpi,4)  , xnorthgloio_2d(jpi,4,jpni)  ,                        &
+         !&      foldwk_2d(jpi,4)  ,                                                                             &
          !
          &      tab_e(jpiglo,4+2*jpr2dj) , xnorthloc_e(jpi,4+2*jpr2dj) , xnorthgloio_e(jpi,4+2*jpr2dj,jpni) ,   &
          !
@@ -2225,115 +2225,143 @@ CONTAINS
       !                                                              !   = T ,  U , V , F or W  gridpoints
       REAL(wp)                        , INTENT(in   ) ::   psgn      ! = -1. the sign change across the north fold
       !!                                                             ! =  1. , the sign is kept
-      INTEGER ::   ji, jj, jr
+      INTEGER ::   ji, jj, jr, jk
       INTEGER ::   ierr, itaille, ildi, ilei, iilb
       INTEGER ::   ijpj, ijpjm1, ij, iproc
       INTEGER, DIMENSION (jpmaxngh)          ::   ml_req_nf          ! for mpi_isend when avoiding mpi_allgather
       INTEGER                                ::   ml_err             ! for mpi_isend when avoiding mpi_allgather
       INTEGER, DIMENSION(MPI_STATUS_SIZE)    ::   ml_stat            ! for mpi_isend when avoiding mpi_allgather
+
+      REAL(wp), DIMENSION(:,:,:)  , ALLOCATABLE   :: ztab
+      REAL(wp), DIMENSION(:,:,:)  , ALLOCATABLE   :: znorthloc, zfoldwk
+      REAL(wp), DIMENSION(:,:,:,:), ALLOCATABLE   :: znorthgloio
+      REAL(wp), DIMENSION(:,:,:)  , ALLOCATABLE   :: ztabl, ztabr
+
+      INTEGER :: istatus(mpi_status_size)
+      INTEGER :: iflag
       !!----------------------------------------------------------------------
       !
+      ALLOCATE( ztab(jpiglo,4,jpk) , znorthloc(jpi,4,jpk), zfoldwk(jpi,4,jpk), znorthgloio(jpi,4,jpk,jpni) )
+      ALLOCATE( ztabl(jpi,4,jpk), ztabr(jpi*jpmaxngh, 4, jpk) )
+
       ijpj   = 4
-      ityp = -1
       ijpjm1 = 3
-      tab_3d(:,:,:) = 0.e0
       !
-      DO jj = nlcj - ijpj +1, nlcj          ! put in xnorthloc the last 4 jlines of pt3d
-         ij = jj - nlcj + ijpj
-         xnorthloc(:,ij,:) = pt3d(:,jj,:)
+      znorthloc(:,:,:) = 0
+      DO jk = 1, jpk
+         DO jj = nlcj - ijpj +1, nlcj          ! put in znorthloc the last 4 jlines of pt3d
+            ij = jj - nlcj + ijpj
+            znorthloc(:,ij,jk) = pt3d(:,jj,jk)
+         END DO
       END DO
       !
-      !                                     ! Build in procs of ncomm_north the xnorthgloio
+      !                                     ! Build in procs of ncomm_north the znorthgloio
       itaille = jpi * jpk * ijpj
+
       IF ( l_north_nogather ) THEN
          !
          ! Avoid the use of mpi_allgather by exchanging only with the processes already identified
          ! (in nemo_northcomms) as being  involved in this process' northern boundary exchange
          !
-         DO jj = nlcj-ijpj+1, nlcj          ! First put local values into the global array
-            ij = jj - nlcj + ijpj
-            DO ji = 1, nlci
-               tab_3d(ji+nimpp-1,ij,:) = pt3d(ji,jj,:)
+        ztabr(:,:,:) = 0
+        ztabl(:,:,:) = 0
+
+        DO jk = 1, jpk
+           DO jj = nlcj-ijpj+1, nlcj          ! First put local values into the global array
+              ij = jj - nlcj + ijpj
+              DO ji = nfsloop, nfeloop
+                 ztabl(ji,ij,jk) = pt3d(ji,jj,jk)
+              END DO
+           END DO
+        END DO
+
+         DO jr = 1,nsndto
+            IF ((nfipproc(isendto(jr),jpnj) .ne. (narea-1)) .and. (nfipproc(isendto(jr),jpnj) .ne. -1)) THEN
+              CALL mppsend( 5, znorthloc, itaille, nfipproc(isendto(jr),jpnj), ml_req_nf(jr) )
+            ENDIF
+         END DO
+         DO jr = 1,nsndto
+            iproc = nfipproc(isendto(jr),jpnj)
+            IF(iproc .ne. -1) THEN
+               ilei = nleit (iproc+1)
+               ildi = nldit (iproc+1)
+               iilb = nfiimpp(isendto(jr),jpnj) - nfiimpp(isendto(1),jpnj)
+            ENDIF
+            IF((iproc .ne. (narea-1)) .and. (iproc .ne. -1)) THEN
+              CALL mpprecv(5, zfoldwk, itaille, iproc)
+              DO jk = 1, jpk
+                 DO jj = 1, ijpj
+                    DO ji = ildi, ilei
+                       ztabr(iilb+ji,jj,jk) = zfoldwk(ji,jj,jk)
+                    END DO
+                 END DO
+              END DO
+           ELSE IF (iproc .eq. (narea-1)) THEN
+              DO jk = 1, jpk
+                 DO jj = 1, ijpj
+                    DO ji = ildi, ilei
+                       ztabr(iilb+ji,jj,jk) = pt3d(ji,nlcj-ijpj+jj,jk)
+                    END DO
+                 END DO
+              END DO
+           ENDIF
+         END DO
+         IF (l_isend) THEN
+            DO jr = 1,nsndto
+               IF ((nfipproc(isendto(jr),jpnj) .ne. (narea-1)) .and. (nfipproc(isendto(jr),jpnj) .ne. -1)) CALL mpi_wait(ml_req_nf(jr), ml_stat, ml_err)
+            END DO
+         ENDIF
+         CALL mpp_lbc_nfd( ztabl, ztabr, cd_type, psgn )   ! North fold boundary condition
+         DO jk = 1, jpk
+            DO jj = nlcj-ijpj+1, nlcj             ! Scatter back to pt3d
+               ij = jj - nlcj + ijpj
+               DO ji= 1, nlci
+                  pt3d(ji,jj,jk) = ztabl(ji,ij,jk)
+               END DO
             END DO
          END DO
 
+      ELSE
+
+         CALL MPI_ALLGATHER( znorthloc  , itaille, MPI_DOUBLE_PRECISION, &
+            &                znorthgloio, itaille, MPI_DOUBLE_PRECISION, ncomm_north, ierr )
          !
-         ! Set the exchange type in order to access the correct list of active neighbours
-         !
-         SELECT CASE ( cd_type )
-            CASE ( 'T' , 'W' )
-               ityp = 1
-            CASE ( 'U' )
-               ityp = 2
-            CASE ( 'V' )
-               ityp = 3
-            CASE ( 'F' )
-               ityp = 4
-            CASE ( 'I' )
-               ityp = 5
-            CASE DEFAULT
-               ityp = -1                    ! Set a default value for unsupported types which
-                                            ! will cause a fallback to the mpi_allgather method
-         END SELECT
-         IF ( ityp .gt. 0 ) THEN
-
-            DO jr = 1,nsndto(ityp)
-               CALL mppsend(5, xnorthloc, itaille, isendto(jr,ityp), ml_req_nf(jr) )
-            END DO
-            DO jr = 1,nsndto(ityp)
-               CALL mpprecv(5, foldwk, itaille, isendto(jr,ityp))
-               iproc = isendto(jr,ityp) + 1
-               ildi = nldit (iproc)
-               ilei = nleit (iproc)
-               iilb = nimppt(iproc)
-               DO jj = 1, ijpj
-                  DO ji = ildi, ilei
-                     tab_3d(ji+iilb-1,jj,:) = foldwk(ji,jj,:)
-                  END DO
-               END DO
-            END DO
-            IF (l_isend) THEN
-               DO jr = 1,nsndto(ityp)
-                  CALL mpi_wait(ml_req_nf(jr), ml_stat, ml_err)
-               END DO
-            ENDIF
-
-         ENDIF
-
-      ENDIF
-
-      IF ( ityp .lt. 0 ) THEN
-         CALL MPI_ALLGATHER( xnorthloc  , itaille, MPI_DOUBLE_PRECISION,                &
-            &                xnorthgloio, itaille, MPI_DOUBLE_PRECISION, ncomm_north, ierr )
-         !
+         ztab(:,:,:) = 0.e0
          DO jr = 1, ndim_rank_north         ! recover the global north array
             iproc = nrank_north(jr) + 1
             ildi  = nldit (iproc)
             ilei  = nleit (iproc)
             iilb  = nimppt(iproc)
-            DO jj = 1, ijpj
-               DO ji = ildi, ilei
-                  tab_3d(ji+iilb-1,jj,:) = xnorthgloio(ji,jj,:,jr)
+            DO jk = 1, jpk
+               DO jj = 1, ijpj
+                  DO ji = ildi, ilei
+                    ztab(ji+iilb-1,jj,jk) = znorthgloio(ji,jj,jk,jr)
+                  END DO
                END DO
             END DO
          END DO
+         CALL lbc_nfd( ztab, cd_type, psgn )   ! North fold boundary condition
+         !
+         DO jk = 1, jpk
+            DO jj = nlcj-ijpj+1, nlcj             ! Scatter back to pt3d
+               ij = jj - nlcj + ijpj
+               DO ji= 1, nlci
+                  pt3d(ji,jj,jk) = ztab(ji+nimpp-1,ij,jk)
+               END DO
+            END DO
+         END DO
+         !
       ENDIF
       !
-      ! The tab_3d array has been either:
+      ! The ztab array has been either:
       !  a. Fully populated by the mpi_allgather operation or
       !  b. Had the active points for this domain and northern neighbours populated
       !     by peer to peer exchanges
       ! Either way the array may be folded by lbc_nfd and the result for the span of
       ! this domain will be identical.
       !
-      CALL lbc_nfd( tab_3d, cd_type, psgn )   ! North fold boundary condition
-      !
-      DO jj = nlcj-ijpj+1, nlcj             ! Scatter back to pt3d
-         ij = jj - nlcj + ijpj
-         DO ji= 1, nlci
-            pt3d(ji,jj,:) = tab_3d(ji+nimpp-1,ij,:)
-         END DO
-      END DO
+      DEALLOCATE( ztab, znorthloc, zfoldwk, znorthgloio )
+      DEALLOCATE( ztabl, ztabr )
       !
    END SUBROUTINE mpp_lbc_north_3d
 
@@ -2363,82 +2391,92 @@ CONTAINS
       INTEGER, DIMENSION (jpmaxngh)      ::   ml_req_nf          ! for mpi_isend when avoiding mpi_allgather
       INTEGER                            ::   ml_err             ! for mpi_isend when avoiding mpi_allgather
       INTEGER, DIMENSION(MPI_STATUS_SIZE)::   ml_stat            ! for mpi_isend when avoiding mpi_allgather
+
+      REAL(wp), DIMENSION(:,:)  , ALLOCATABLE   :: ztab
+      REAL(wp), DIMENSION(:,:)  , ALLOCATABLE   :: znorthloc, zfoldwk
+      REAL(wp), DIMENSION(:,:,:), ALLOCATABLE   :: znorthgloio
+      REAL(wp), DIMENSION(:,:)  , ALLOCATABLE   :: ztabl, ztabr
+      INTEGER :: istatus(mpi_status_size)
+      INTEGER :: iflag
       !!----------------------------------------------------------------------
       !
-      ijpj   = 4
-      ityp = -1
-      ijpjm1 = 3
-      tab_2d(:,:) = 0.e0
+      ALLOCATE( ztab(jpiglo,4), znorthloc(jpi,4), zfoldwk(jpi,4), znorthgloio(jpi,4,jpni) )
+      ALLOCATE( ztabl(jpi,4), ztabr(jpi*jpmaxngh, 4) )
       !
-      DO jj = nlcj-ijpj+1, nlcj             ! put in xnorthloc_2d the last 4 jlines of pt2d
+      ijpj   = 4
+      ijpjm1 = 3
+      !
+      DO jj = nlcj-ijpj+1, nlcj             ! put in znorthloc the last 4 jlines of pt2d
          ij = jj - nlcj + ijpj
-         xnorthloc_2d(:,ij) = pt2d(:,jj)
+         znorthloc(:,ij) = pt2d(:,jj)
       END DO
 
-      !                                     ! Build in procs of ncomm_north the xnorthgloio_2d
+      !                                     ! Build in procs of ncomm_north the znorthgloio
       itaille = jpi * ijpj
       IF ( l_north_nogather ) THEN
          !
          ! Avoid the use of mpi_allgather by exchanging only with the processes already identified
          ! (in nemo_northcomms) as being  involved in this process' northern boundary exchange
          !
+         ztabr(:,:) = 0
+         ztabl(:,:) = 0
+
          DO jj = nlcj-ijpj+1, nlcj          ! First put local values into the global array
             ij = jj - nlcj + ijpj
-            DO ji = 1, nlci
-               tab_2d(ji+nimpp-1,ij) = pt2d(ji,jj)
+              DO ji = nfsloop, nfeloop
+               ztabl(ji,ij) = pt2d(ji,jj)
             END DO
          END DO
 
-         !
-         ! Set the exchange type in order to access the correct list of active neighbours
-         !
-         SELECT CASE ( cd_type )
-            CASE ( 'T' , 'W' )
-               ityp = 1
-            CASE ( 'U' )
-               ityp = 2
-            CASE ( 'V' )
-               ityp = 3
-            CASE ( 'F' )
-               ityp = 4
-            CASE ( 'I' )
-               ityp = 5
-            CASE DEFAULT
-               ityp = -1                    ! Set a default value for unsupported types which
-                                            ! will cause a fallback to the mpi_allgather method
-         END SELECT
-
-         IF ( ityp .gt. 0 ) THEN
-
-            DO jr = 1,nsndto(ityp)
-               CALL mppsend(5, xnorthloc_2d, itaille, isendto(jr,ityp), ml_req_nf(jr) )
-            END DO
-            DO jr = 1,nsndto(ityp)
-               CALL mpprecv(5, foldwk_2d, itaille, isendto(jr,ityp))
-               iproc = isendto(jr,ityp) + 1
-               ildi = nldit (iproc)
-               ilei = nleit (iproc)
-               iilb = nimppt(iproc)
-               DO jj = 1, ijpj
-                  DO ji = ildi, ilei
-                     tab_2d(ji+iilb-1,jj) = foldwk_2d(ji,jj)
-                  END DO
-               END DO
-            END DO
-            IF (l_isend) THEN
-               DO jr = 1,nsndto(ityp)
-                  CALL mpi_wait(ml_req_nf(jr), ml_stat, ml_err)
-               END DO
+         DO jr = 1,nsndto
+            IF ((nfipproc(isendto(jr),jpnj) .ne. (narea-1)) .and. (nfipproc(isendto(jr),jpnj) .ne. -1)) THEN
+               CALL mppsend(5, znorthloc, itaille, nfipproc(isendto(jr),jpnj), ml_req_nf(jr))
             ENDIF
-
+         END DO
+         DO jr = 1,nsndto
+            iproc = nfipproc(isendto(jr),jpnj)
+            IF(iproc .ne. -1) THEN
+               ilei = nleit (iproc+1)
+               ildi = nldit (iproc+1)
+               iilb = nfiimpp(isendto(jr),jpnj) - nfiimpp(isendto(1),jpnj)
+            ENDIF
+            IF((iproc .ne. (narea-1)) .and. (iproc .ne. -1)) THEN
+              CALL mpprecv(5, zfoldwk, itaille, iproc)
+              DO jj = 1, ijpj
+                 DO ji = ildi, ilei
+                    ztabr(iilb+ji,jj) = zfoldwk(ji,jj)
+                 END DO
+              END DO
+            ELSE IF (iproc .eq. (narea-1)) THEN
+              DO jj = 1, ijpj
+                 DO ji = ildi, ilei
+                    ztabr(iilb+ji,jj) = pt2d(ji,nlcj-ijpj+jj)
+                 END DO
+              END DO
+            ENDIF
+         END DO
+         IF (l_isend) THEN
+            DO jr = 1,nsndto
+               IF ((nfipproc(isendto(jr),jpnj) .ne. (narea-1)) .and. (nfipproc(isendto(jr),jpnj) .ne. -1)) THEN
+                  CALL mpi_wait(ml_req_nf(jr), ml_stat, ml_err)
+               ENDIF
+            END DO
          ENDIF
 
-      ENDIF
-
-      IF ( ityp .lt. 0 ) THEN
-         CALL MPI_ALLGATHER( xnorthloc_2d  , itaille, MPI_DOUBLE_PRECISION,        &
-            &                xnorthgloio_2d, itaille, MPI_DOUBLE_PRECISION, ncomm_north, ierr )
+         CALL mpp_lbc_nfd( ztabl, ztabr, cd_type, psgn )   ! North fold boundary condition
          !
+         DO jj = nlcj-ijpj+1, nlcj             ! Scatter back to pt2d
+            ij = jj - nlcj + ijpj
+            DO ji = 1, nlci
+               pt2d(ji,jj) = ztabl(ji,ij)
+            END DO
+         END DO
+         !
+      ELSE
+         CALL MPI_ALLGATHER( znorthloc  , itaille, MPI_DOUBLE_PRECISION, &
+            &                znorthgloio, itaille, MPI_DOUBLE_PRECISION, ncomm_north, ierr )
+         !
+         ztab(:,:) = 0.e0
          DO jr = 1, ndim_rank_north            ! recover the global north array
             iproc = nrank_north(jr) + 1
             ildi = nldit (iproc)
@@ -2446,10 +2484,19 @@ CONTAINS
             iilb = nimppt(iproc)
             DO jj = 1, ijpj
                DO ji = ildi, ilei
-                  tab_2d(ji+iilb-1,jj) = xnorthgloio_2d(ji,jj,jr)
+                  ztab(ji+iilb-1,jj) = znorthgloio(ji,jj,jr)
                END DO
             END DO
          END DO
+         CALL lbc_nfd( ztab, cd_type, psgn )   ! North fold boundary condition
+         !
+         DO jj = nlcj-ijpj+1, nlcj             ! Scatter back to pt2d
+            ij = jj - nlcj + ijpj
+            DO ji = 1, nlci
+               pt2d(ji,jj) = ztab(ji+nimpp-1,ij)
+            END DO
+         END DO
+         !
       ENDIF
       !
       ! The tab array has been either:
@@ -2459,15 +2506,8 @@ CONTAINS
       ! Either way the array may be folded by lbc_nfd and the result for the span of
       ! this domain will be identical.
       !
-      CALL lbc_nfd( tab_2d, cd_type, psgn )   ! North fold boundary condition
-      !
-      !
-      DO jj = nlcj-ijpj+1, nlcj             ! Scatter back to pt2d
-         ij = jj - nlcj + ijpj
-         DO ji = 1, nlci
-            pt2d(ji,jj) = tab_2d(ji+nimpp-1,ij)
-         END DO
-      END DO
+      DEALLOCATE( ztab, znorthloc, zfoldwk, znorthgloio )
+      DEALLOCATE( ztabl, ztabr )
       !
    END SUBROUTINE mpp_lbc_north_2d
 

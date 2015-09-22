@@ -127,6 +127,8 @@
       ilcj(:,      1:irestj) = jpj
       ilcj(:, irestj+1:jpnj) = jpj-1
 
+      nfilcit(:,:) = ilci(:,:)
+
       IF(lwp) WRITE(numout,*)
       IF(lwp) WRITE(numout,*) ' mpp_init2: defines mpp subdomains'
       IF(lwp) WRITE(numout,*) ' ~~~~~~  ----------------------'
@@ -158,6 +160,8 @@
             END DO
          END DO
       ENDIF
+
+      nfiimpp(:,:) = iimppt(:,:)
 
       IF( jpnj > 1 )THEN
          DO jj = 2, jpnj
@@ -290,6 +294,8 @@
             ijn(icont+1) = ij
          ENDIF
       END DO
+
+      nfipproc(:,:) = ipproc(:,:)
 
       ! Control
       IF(icont+1 /= jpnij) THEN
