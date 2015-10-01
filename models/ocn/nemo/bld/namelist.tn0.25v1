@@ -271,9 +271,9 @@ sn_rcv_co2    =       'coupled'              ,    'no'    ,     ''      ,       
 
    cn_dir       = './'      !  root directory for the location of the runoff files
    ln_rnf_emp   = .false.   !  runoffs included into precipitation field (T) or into a file (F)
-   ln_rnf_mouth = .true.    !  specific treatment at rivers mouths
+   ln_rnf_mouth = .false.   !  specific treatment at rivers mouths
    rn_hrnf      =  30.e0    !  depth over which enhanced vertical mixing is used
-   rn_avt_rnf   =   1.e-3   !  value of the additional vertical mixing coef. [m2/s]
+   rn_avt_rnf   =   2.e-5   !  value of the additional vertical mixing coef. [m2/s]
    rn_rfact     =   1.e0    !  multiplicative factor for runoff
    ln_rnf_depth = .true.    !  read in depth information for runoff
    ln_rnf_tem   = .false.   !  read in temperature information for runoff
