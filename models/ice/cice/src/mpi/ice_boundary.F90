@@ -1100,7 +1100,7 @@ contains
       lbufSizeSend,                &! buffer size for send messages
       lbufSizeRecv                  ! buffer size for recv messages
    logical (log_kind) :: &
-      tripoleTFlag           ! flag for processing tripole buffer as T-fold
+      tripoleTFlag, bndctl           ! flag for processing tripole buffer as T-fold
 
 !-----------------------------------------------------------------------
 !
@@ -1184,7 +1184,12 @@ contains
          icel     = basehalo%recvAddr(1,n,nmsg)
          jcel     = basehalo%recvAddr(2,n,nmsg)
          nblock   = basehalo%recvAddr(3,n,nmsg)
-         if (mask(icel,jcel,abs(nblock)) /= 0 .or. basehalo%tripRecv(nmsg) /= 0) then
+         !if (mask(icel,jcel,abs(nblock)) /= 0 .or. basehalo%tripRecv(nmsg) /= 0) then
+         if (icel .le. size(mask,1)) then 
+            bndctl = .false.
+            if (mask(icel,jcel,abs(nblock)) /= 0 ) bndctl = .true.
+         endif
+         if ( bndctl .or. basehalo%tripRecv(nmsg) /= 0) then
             scnt = scnt + 1
             if (scnt == 1) then
                numMsgRecv = numMsgRecv + 1
