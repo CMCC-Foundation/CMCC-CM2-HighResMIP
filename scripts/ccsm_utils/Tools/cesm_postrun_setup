@@ -30,7 +30,7 @@ echo "run SUCCESSFUL $sdate" >>& $CASEROOT/CaseStatus
 # Save model output logs 
 # -------------------------------------------------------------------------
 
-gzip *.$LID
+gzip *.$LID*
 if ($LOGDIR != "") then
   if (! -d $LOGDIR/bld) mkdir -p $LOGDIR/bld || echo " problem in creating $LOGDIR/bld"
   cp -p $RUNDIR/*log.$LID.*   $LOGDIR/      

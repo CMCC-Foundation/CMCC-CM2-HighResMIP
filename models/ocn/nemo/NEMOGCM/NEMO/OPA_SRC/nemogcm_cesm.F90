@@ -91,7 +91,7 @@ MODULE nemogcm
 
    CHARACTER(lc) :: diri
    CHARACTER(lc) :: diro
-   CHARACTER(lc) :: logfile
+   CHARACTER(lc),public :: logfile
    namelist / modelio / diri, diro, logfile
 
    CHARACTER(lc) ::   cform_aaa="( /, 'AAAAAAAA', / ) "     ! flag for output listing
@@ -188,8 +188,6 @@ CONTAINS
          jpij  = jpi*jpj                                          !  jpi x j
       ENDIF
 
-      IF(lwp) THEN                            ! open listing units
-         !
          diri = '.'
          diro = '.'
          logfile = ''
@@ -238,6 +236,8 @@ CONTAINS
                    'SEQUENTIAL', -1, 6, .FALSE., narea )
             ENDIF
          ENDIF
+         !
+      IF(lwp) THEN                            ! open listing units
          !
          WRITE(numout,*)
          WRITE(numout,*) '   CNRS - NERC - Met OFFICE - MERCATOR-ocean - INGV - CMCC'
