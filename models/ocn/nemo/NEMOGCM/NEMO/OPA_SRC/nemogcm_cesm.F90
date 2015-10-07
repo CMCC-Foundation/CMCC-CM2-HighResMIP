@@ -196,9 +196,11 @@ CONTAINS
          INQUIRE(FILE=TRIM(nmlfile),EXIST=exists)
 
          IF (.NOT. exists) THEN
-            ! Fall back to the default ocean.output file
-            WRITE(*,FMT='(3A)') 'file ',TRIM(nmlfile),' not found!'
-            CALL ctl_opn( numout, 'ocean.output', 'REPLACE', 'FORMATTED', 'SEQUENTIAL', -1, 6, .FALSE., narea )
+            IF(lwp) THEN                            ! open listing units
+              ! Fall back to the default ocean.output file
+              WRITE(*,FMT='(3A)') 'file ',TRIM(nmlfile),' not found!'
+              CALL ctl_opn( numout, 'ocean.output', 'REPLACE', 'FORMATTED', 'SEQUENTIAL', -1, 6, .FALSE., narea )
+            ENDIF
          ELSE
             ! Open CESM style log file (ocn.log.*)
             inum = get_unit()
@@ -218,26 +220,29 @@ CONTAINS
             !
             CLOSE(inum)
             !
-            IF (LEN_TRIM(logfile) > 0) THEN
-               IF (ln_ctl) THEN
-                 WRITE(logfile,FMT='(A,"_",I4.4)') TRIM(logfile), narea-1
+            IF(lwp) THEN                            ! open listing units
+            !
+               IF (LEN_TRIM(logfile) > 0) THEN
+                  IF (ln_ctl) THEN
+                    WRITE(logfile,FMT='(A,"_",I4.4)') TRIM(logfile), narea-1
+                  ENDIF
+                  numout = get_unit()
+                  OPEN(numout,FILE=TRIM(diro)//'/'//TRIM(logfile),STATUS='REPLACE', &
+                      ACCESS='SEQUENTIAL',FORM='FORMATTED',IOSTAT=rcode)
+                  IF (rcode /= 0) THEN
+                     WRITE(*,FMT='(3A,I6)') 'ERROR: opening ',TRIM(logfile),': iostat=',rcode
+                     CALL shr_sys_abort(func//': ERROR opening '//TRIM(logfile) )
+                  ENDIF
+               ELSE
+                  ! Fall back to the default ocean.output file
+                  ! WRITE(numout,FMT='(A)') 'logfile not opened'
+                  CALL ctl_opn( numout, 'ocean.output', 'REPLACE', 'FORMATTED',  &
+                      'SEQUENTIAL', -1, 6, .FALSE., narea )
                ENDIF
-               numout = get_unit()
-               OPEN(numout,FILE=TRIM(diro)//'/'//TRIM(logfile),STATUS='REPLACE', &
-                   ACCESS='SEQUENTIAL',FORM='FORMATTED',IOSTAT=rcode)
-               IF (rcode /= 0) THEN
-                  WRITE(*,FMT='(3A,I6)') 'ERROR: opening ',TRIM(logfile),': iostat=',rcode
-                  CALL shr_sys_abort(func//': ERROR opening '//TRIM(logfile) )
-               ENDIF
-            ELSE
-               ! Fall back to the default ocean.output file
-               ! WRITE(numout,FMT='(A)') 'logfile not opened'
-               CALL ctl_opn( numout, 'ocean.output', 'REPLACE', 'FORMATTED',  &
-                   'SEQUENTIAL', -1, 6, .FALSE., narea )
             ENDIF
          ENDIF
          !
-      IF(lwp) THEN                            ! open listing units
+         IF(lwp) THEN                            ! open listing units
          !
          WRITE(numout,*)
          WRITE(numout,*) '   CNRS - NERC - Met OFFICE - MERCATOR-ocean - INGV - CMCC'
