@@ -551,6 +551,7 @@ sn_rcv_co2    =       'coupled'              ,    'no'    ,     ''      ,       
    rn_aht_0         =  2000.    !  horizontal eddy diffusivity for tracers [m2/s]
    rn_ahtb_0        =     0.    !  background eddy diffusivity for ldf_iso [m2/s]
    !                                           (normally=0; not used with Griffies)
+   rn_aht_fac       =     1.    ! scaling factor of eddy diffusivity for CESM
 /
 !-----------------------------------------------------------------------
 &namtra_dmp    !   tracer: T & S newtonian damping

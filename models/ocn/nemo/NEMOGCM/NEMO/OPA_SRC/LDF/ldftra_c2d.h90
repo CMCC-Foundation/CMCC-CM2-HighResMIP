@@ -33,7 +33,6 @@
 # endif
 #if defined CCSMCOUPLED
       INTEGER  :: ii0, ii1, ij0, ij1
-      REAL(wp), SAVE :: aht_fac = 6.0_wp
 #endif
       REAL(wp) ::   za00, zd_max, zeumax, zevmax, zetmax
       !!----------------------------------------------------------------------
@@ -74,46 +73,57 @@
            !
            ii0 = 291 ;  ii1 = 295 ;  ij0 = 234 ;  ij1 = 236        ! Danish Strait
            ahtu( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1) ) = &
-             ahtu( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1) ) * aht_fac
+             ahtu( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1) ) * rn_aht_fac
            ii0 = 296 ;  ii1 = 301 ;  ij0 = 230 ;  ij1 = 233
            ahtu( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1) ) = &
-             ahtu( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1) ) * aht_fac
+             ahtu( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1) ) * rn_aht_fac
            !
            ii0 = 293 ;  ii1 = 296 ;  ij0 = 233 ;  ij1 = 235        ! Danish Strait
            ahtv( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1) ) = &
-             ahtv( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1) ) * aht_fac
+             ahtv( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1) ) * rn_aht_fac
            ii0 = 296 ;  ii1 = 301 ;  ij0 = 230 ;  ij1 = 233
            ahtv( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1) ) = &
-             ahtv( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1) ) * aht_fac
+             ahtv( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1) ) * rn_aht_fac
            !
            ii0 = 293 ;  ii1 = 296 ;  ij0 = 234 ;  ij1 = 236        ! Danish Strait
            ahtw( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1) ) = &
-             ahtw( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1) ) * aht_fac
+             ahtw( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1) ) * rn_aht_fac
            ii0 = 296 ;  ii1 = 300 ;  ij0 = 230 ;  ij1 = 233        ! Danish Strait
            ahtw( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1) ) = &
-             ahtw( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1) ) * aht_fac
+             ahtw( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1) ) * rn_aht_fac
            !
 !           ii0 = 312 ;  ii1 = 319 ;  ij0 = 206 ;  ij1 = 211        ! Bhosporus Strait
 !           ahtu( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1) ) = &
-!             ahtu( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1) ) * aht_fac
+!             ahtu( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1) ) * rn_aht_fac
            !
 !           ii0 = 312 ;  ii1 = 320 ;  ij0 = 206 ;  ij1 = 211        ! Bhosporus Strait
 !           ahtv( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1) ) = &
-!             ahtv( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1) ) * aht_fac
+!             ahtv( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1) ) * rn_aht_fac
 !           ii0 = 316 ;  ii1 = 316 ;  ij0 = 208 ;  ij1 = 208
            !
 !           ii0 = 312 ;  ii1 = 320 ;  ij0 = 206 ;  ij1 = 211        ! Bhosporus Strait
 !           ahtw( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1) ) = &
-!             ahtw( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1) ) * aht_fac
+!             ahtw( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1) ) * rn_aht_fac
            !
-!           IF(lwp) WRITE(numout,*) ' coupled CESM ORCA R1: modified diffusivities'// &
-!             ' near Danish & Bosphorus straits ', aht_fac
-!
-!           ahtu = ahtu*umask(:,:,1)
-!           ahtv = ahtv*vmask(:,:,1)
-!           ahtw = ahtw*tmask(:,:,1)
            IF(lwp) WRITE(numout,*) ' coupled CESM ORCA R1: modified diffusivities'// &
-             ' near Danish strait ', aht_fac
+             ' near Danish strait, rn_aht_fac ', rn_aht_fac
+           !
+         ELSEIF( cp_cfg == "orca" .AND. jp_cfg == 025 ) THEN
+!           ii0 = 1250 ;  ii1 = 1282 ;  ij0 = 1000 ;  ij1 = 1019        ! Ob river mouth
+!           ii0 = 163 ;  ii1 = 222 ;  ij0 = 995 ;  ij1 = 1019        ! Ob river mouth
+!           ii0 = 1176 ;  ii1 = 1190 ;  ij0 = 765 ;  ij1 = 798        ! Danish Strait
+           !
+           ii0 = 1176 ;  ii1 = 1247 ;  ij0 = 765 ;  ij1 = 871        ! Baltic  Sea
+           ahtu( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1) ) = &
+            ahtu( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1) ) * rn_aht_fac
+           ahtv( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1) ) = &
+            ahtv( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1) ) * rn_aht_fac
+!           ahtw( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1) ) = &
+!            ahtw( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1) ) * rn_aht_fac
+           !
+           IF(lwp) WRITE(numout,*) ' coupled CESM ORCA R025: modified diffusivities'// &
+             ' near Danish strait, rn_aht_fac ', rn_aht_fac
+ 
          ENDIF
 #endif
 

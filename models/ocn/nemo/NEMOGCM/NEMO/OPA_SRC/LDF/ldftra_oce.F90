@@ -37,6 +37,9 @@ MODULE ldftra_oce
 
    REAL(wp), PUBLIC ::   rldf                        !: multiplicative factor of diffusive coefficient
                                                      !: Needed to define the ratio between passive and active tracer diffusion coef. 
+#if defined CCSMCOUPLED
+   REAL(wp), PUBLIC ::   rn_aht_fac      = 1._wp     !: Scaling factor for eddy diffusivity
+#endif
 
 #if defined key_traldf_c3d
    REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   ahtt, ahtu, ahtv, ahtw   !: ** 3D coefficients ** at T-,U-,V-,W-points

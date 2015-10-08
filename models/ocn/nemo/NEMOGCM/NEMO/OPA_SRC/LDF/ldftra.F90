@@ -68,6 +68,9 @@ CONTAINS
          &                 ln_traldf_grif , ln_traldf_gdia,                   &
          &                 ln_triad_iso   , ln_botmix_grif,                   &
          &                 rn_aht_0       , rn_ahtb_0      , rn_aeiv_0,       &
+#if defined CCSMCOUPLED
+         &                 rn_aht_fac,                                        &
+#endif
          &                 rn_slpmax
       !!----------------------------------------------------------------------
 
@@ -95,6 +98,9 @@ CONTAINS
          WRITE(numout,*) '      maximum isoppycnal slope      rn_slpmax       = ', rn_slpmax
          WRITE(numout,*) '      pure lateral mixing in ML     ln_triad_iso    = ', ln_triad_iso
          WRITE(numout,*) '      lateral mixing on bottom      ln_botmix_grif  = ', ln_botmix_grif
+#if defined CCSMCOUPLED
+         WRITE(numout,*) '      Eddy diffusivity scaling (CESM)   rn_aht_fac  = ', rn_aht_fac
+#endif
          WRITE(numout,*)
       ENDIF
 
