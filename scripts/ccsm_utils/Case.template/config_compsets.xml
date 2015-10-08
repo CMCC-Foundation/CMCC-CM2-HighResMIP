@@ -1431,7 +1431,7 @@ DOCN%COPY => docn copy mode
 
 <CPL_EPBAL compset=".+"        >off</CPL_EPBAL>
 <CPL_EPBAL compset="DATM.*_POP2">ocn</CPL_EPBAL>
-<CPL_EPBAL compset="DATM.*_NEMO">ocn</CPL_EPBAL>
+<CPL_EPBAL compset="DATM.*_NEMO">off</CPL_EPBAL>
 
 <!-- ======================================= -->
 <!--          USER_DEFINED section           -->
