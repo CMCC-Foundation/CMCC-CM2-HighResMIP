@@ -274,7 +274,7 @@ CONTAINS
       call lbc_lnk(fr_i(:,:), 'T', 1._wp)
       call lbc_lnk(wndm(:,:), 'T', 1._wp)
       call lbc_lnk(atm_co2(:,:), 'T', 1._wp)
-      call lbc_lnk(pslv_x2o(:,:), 'T', 1._wp)
+      call lbc_lnk(apr(:,:), 'T', 1._wp)
 
       CALL wrk_dealloc( jpi,jpj, ztx, zty )
 
