@@ -110,7 +110,7 @@ CONTAINS
       pslv_x2o   = 0.0_wp
       duu10n_x2o = 0.0_wp
       co2_x2o    = 0.0_wp
-      apr(:,:)   = 0.0_wp
+      apr        = 0.0_wp
 
       IF (.NOT. ln_rstart) THEN
          utau(:,:) = 0.0_wp
@@ -123,9 +123,8 @@ CONTAINS
          qns(:,:)  = 0.0_wp
          fr_i(:,:) = 0.0_wp
          wndm(:,:) = 0.0_wp
-#if defined key_cpl_carbon_cycle
          atm_co2(:,:) = 0.0_wp
-#endif
+         apr(:,:) = 0.0_wp
       END IF
 
    END SUBROUTINE sbc_cpl_cesm_init
@@ -256,7 +255,6 @@ CONTAINS
       call lbc_lnk(qns(:,:),  'T', 1._wp)
 
 !     3. distribute ice cover, wind speed module
-
       fr_i(:,:) = ifrac_x2o(:,:)*tmask(:,:,1)
       ! m2/s2 -> m/s
       wndm(:,:) = 0.0_wp
@@ -264,11 +262,12 @@ CONTAINS
         wndm(:,:) = SQRT(duu10n_x2o(:,:))
       END WHERE
       wndm(:,:) = wndm(:,:)*tmask(:,:,1)
+
 !     4. distribute atmospheric co2
       atm_co2(:,:) = co2_x2o(:,:)*tmask(:,:,1)
 
-!     5. distribute atmospheric pressure
-      apr(:,:) = pslv_x2o(:,:)*tmask(:,:,1)
+!     5. distribute atmospheric pressure and convert from Pa to hPa
+      apr(:,:) = pslv_x2o(:,:)*0.01*tmask(:,:,1)
 
 !     update ghost cells for fluxes received from the coupler
       call lbc_lnk(fr_i(:,:), 'T', 1._wp)

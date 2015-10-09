@@ -1297,8 +1297,6 @@ nitrst_old = 0
 !  unpack atmospheric CO2
 !
 !-----------------------------------------------------------------------
-
-#if defined key_cpl_carbon_cycle
    if (index_x2o_Sa_co2prog > 0) then
       n = 0
       do j=lnldj,lnlej
@@ -1318,7 +1316,6 @@ nitrst_old = 0
          enddo
       enddo
    endif
-#endif
 
    ! coupling time step flag
    lrecv = .TRUE.
