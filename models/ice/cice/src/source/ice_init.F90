@@ -1027,7 +1027,7 @@
 
       integer (kind=int_kind), dimension(nx_block*ny_block) :: &
          indxi, indxj    ! compressed indices for cells with aicen > puny
-
+#ifndef NEMO_IN_CCSM
       real (kind=dbl_kind) :: &
          slope, Ti, sum, hbar, &
          ainit(ncat), &
@@ -1037,7 +1037,20 @@
          hsno_init = 0.20_dbl_kind   , & ! initial snow thickness (m)
          edge_init_nh =  70._dbl_kind, & ! initial ice edge, N.Hem. (deg) 
          edge_init_sh = -60._dbl_kind    ! initial ice edge, S.Hem. (deg)
+#else
+      real (kind=dbl_kind) :: &
+         slope, Ti, sum(2), hbar, &
+         ainit(ncat,2), &
+         hinit(ncat,2)
 
+      real (kind=dbl_kind), parameter :: &
+         hsno_init = 0.20_dbl_kind   , & ! initial snow thickness (m)
+         edge_init_nh =  70._dbl_kind, & ! initial ice edge, N.Hem. (deg) 
+         edge_init_sh = -68._dbl_kind    ! initial ice edge, S.Hem. (deg)
+
+      logical (kind=log_kind), dimension (nx_block,ny_block) :: &
+         imask      ! true for ice covered cells
+#endif
 
       indxi(:) = 0
       indxj(:) = 0
@@ -1063,6 +1076,7 @@
       eicen(:,:,:) = c0
       esnon(:,:,:) = c0
 
+#ifndef NEMO_IN_CCSM
       if (trim(ice_ic) == 'default') then
 
       !-----------------------------------------------------------------
@@ -1222,6 +1236,206 @@
             endif               ! heat_capacity
          enddo                  ! ncat
       endif                     ! ice_ic
+
+#else
+
+      if (trim(ice_ic) == 'default') then
+
+      !-----------------------------------------------------------------
+      ! Place ice where ocean surface is cold.
+      ! Note: If SST is not read from a file, then the ocean is assumed
+      !       to be at its freezing point everywhere, and ice will
+      !       extend to the prescribed edges.
+      !-----------------------------------------------------------------
+
+      ! initial category areas in cells with ice
+         hbar = c2  ! initial ice thickness with greatest area
+                    ! Note: the resulting average ice thickness 
+                    ! tends to be less than hbar due to the
+                    ! nonlinear distribution of ice thicknesses 
+         sum = c0
+         do n = 1, ncat
+            if (n < ncat) then
+               hinit(n,1) = 0.3*(hin_max(n-1) + 0.78*hin_max(n)) ! m
+               hinit(n,2) = 0.2*(hin_max(n-1) + 0.5*hin_max(n)) ! m
+            else                ! n=ncat
+               hinit(n,1) = (hin_max(n-1) + c1) ! m
+               hinit(n,2) = (hin_max(n-1) + p5) ! m
+            endif
+            ! parabola, max at h=hbar, zero at h=0, 2*hbar
+            ainit(n,1) = max(c0, (c2*hbar*hinit(n,1) - hinit(n,1)**2))
+            ainit(n,2) = max(c0, (c2*hbar*hinit(n,2) - hinit(n,2)**2))
+            sum(1) = sum(1) + ainit(n,1)
+            sum(2) = sum(2) + ainit(n,2)
+         enddo
+         do n = 1, ncat
+            ainit(n,1) = ainit(n,1) / (sum(1) + puny/ncat) ! normalize
+            ainit(n,2) = ainit(n,2) / (sum(2) + puny/ncat) ! normalize
+         enddo
+
+         if (trim(grid_type) == 'rectangular') then
+
+         ! place ice on left side of domain
+         icells = 0
+         do j = 1, ny_block
+         do i = 1, nx_block
+            if (tmask(i,j)) then
+               if (ULON(i,j) < -50./rad_to_deg) then
+                  icells = icells + 1
+                  indxi(icells) = i
+                  indxj(icells) = j
+               endif            ! ULON
+            endif               ! tmask
+         enddo                  ! i
+         enddo                  ! j
+
+         else
+
+         imask(:,:) = .false.
+         ! NP
+         where (ULAT(:,:)<=edge_init_sh/rad_to_deg ) imask(:,:)=.true.
+         ! SH
+         where (ULAT(:,:)>=74.0_dbl_kind/rad_to_deg ) imask(:,:)=.true.
+         ! Hudson bay + Labrador
+         where (ULAT(:,:)>=51.0_dbl_kind/rad_to_deg .and. &
+                ULON(:,:)>235.0_dbl_kind/rad_to_deg .and. &
+                ULON(:,:)<=303.0_dbl_kind/rad_to_deg) imask(:,:)=.true.
+         ! Labrador + Nordic sea
+         where (ULAT(:,:)>=66.0_dbl_kind/rad_to_deg .and. &
+                ULON(:,:)>303.0_dbl_kind/rad_to_deg .and. &
+                ULON(:,:)<=342.0_dbl_kind/rad_to_deg) imask(:,:)=.true.
+         ! Nordic sea
+         where (ULAT(:,:)>=75.0_dbl_kind/rad_to_deg .and. &
+                ULON(:,:)>342.0_dbl_kind/rad_to_deg) imask(:,:)=.true.
+         where (ULAT(:,:)>=75.0_dbl_kind/rad_to_deg .and. &
+                ULON(:,:)>=0.0_dbl_kind/rad_to_deg .and. &
+                ULON(:,:)<50.0_dbl_kind/rad_to_deg) imask(:,:)=.true.
+         ! Artic - Bering
+         where (ULAT(:,:)>=60.0_dbl_kind/rad_to_deg .and. &
+                ULON(:,:)>50.0_dbl_kind/rad_to_deg .and. &
+                ULON(:,:)<=205.0_dbl_kind/rad_to_deg) imask(:,:)=.true.
+         ! Artic
+         where (ULAT(:,:)>=65.0_dbl_kind/rad_to_deg .and. &
+                ULON(:,:)>205.0_dbl_kind/rad_to_deg .and. &
+                ULON(:,:)<=235.0_dbl_kind/rad_to_deg) imask(:,:)=.true.
+
+         ! place ice at high latitudes where ocean sfc is cold
+         icells = 0
+         do j = 1, ny_block
+         do i = 1, nx_block
+            if (tmask(i,j)) then
+               ! place ice in high latitudes where ocean sfc is cold
+               if ( imask(i,j) .and. (sst (i,j) <= Tf(i,j)+p2) ) then
+                   icells = icells + 1
+                   indxi(icells) = i
+                   indxj(icells) = j
+               endif            ! cold surface
+            endif               ! tmask
+         enddo                  ! i
+         enddo                  ! j
+
+         endif                  ! rectgrid
+
+         do n = 1, ncat
+
+            ! ice volume, snow volume
+!DIR$ CONCURRENT !Cray
+!cdir nodep      !NEC
+!ocl novrec      !Fujitsu
+            do ij = 1, icells
+               i = indxi(ij)
+               j = indxj(ij)
+
+               if (ULAT(i,j)>=0.0) then
+                 aicen(i,j,n) = ainit(n,1)
+                 vicen(i,j,n) = hinit(n,1) * ainit(n,1) ! m
+                 vsnon(i,j,n) =min(aicen(i,j,n)*1.5*hsno_init,0.5*vicen(i,j,n))
+               else if (ULAT(i,j)<0.0) then
+                 aicen(i,j,n) = ainit(n,2)
+                 vicen(i,j,n) = hinit(n,2) * ainit(n,2) ! m
+                 vsnon(i,j,n) =min(aicen(i,j,n)*p5*hsno_init,p2*vicen(i,j,n))
+               endif
+            enddo               ! ij
+
+            ! surface temperature
+            if (calc_Tsfc) then
+        
+               do ij = 1, icells
+                  i = indxi(ij)
+                  j = indxj(ij)
+                  trcrn(i,j,nt_Tsfc,n) = min(Tsmelt, Tair(i,j) - Tffresh) !deg C
+               enddo
+
+            else    ! Tsfc is not calculated by the ice model
+
+               do ij = 1, icells
+                  i = indxi(ij)
+                  j = indxj(ij)
+                  trcrn(i,j,nt_Tsfc,n) = Tf(i,j)   ! not used
+               enddo
+
+            endif       ! calc_Tsfc
+
+            ! other tracers (none at present)
+
+            if (heat_capacity) then
+
+               ! ice energy
+               do k = 1, nilyr
+                  do ij = 1, icells
+                     i = indxi(ij)
+                     j = indxj(ij)
+
+                     ! assume linear temp profile and compute enthalpy
+                     slope = Tf(i,j) - trcrn(i,j,nt_Tsfc,n)
+                     Ti = trcrn(i,j,nt_Tsfc,n) &
+                        + slope*(real(k,kind=dbl_kind)-p5) &
+                                /real(nilyr,kind=dbl_kind)
+
+                     eicen(i,j,ilyr1(n)+k-1) = &
+                          -(rhoi * (cp_ice*(Tmlt(k)-Ti) &
+                          + Lfresh*(c1-Tmlt(k)/Ti) - cp_ocn*Tmlt(k))) &
+                          * vicen(i,j,n)/real(nilyr,kind=dbl_kind)
+                  enddo            ! ij
+               enddo               ! nilyr
+
+               ! snow energy
+               do k = 1, nslyr
+                  do ij = 1, icells
+                     i = indxi(ij)
+                     j = indxj(ij)
+
+                     Ti = min(c0, trcrn(i,j,nt_Tsfc,n))
+                     esnon(i,j,slyr1(n)+k-1) = -rhos*(Lfresh - cp_ice*Ti) &
+                                               *vsnon(i,j,n) &
+                                               /real(nslyr,kind=dbl_kind)
+                  enddo            ! ij
+               enddo               ! nslyr
+
+            else  ! one layer with zero heat capacity
+
+               ! ice energy
+               k = 1
+
+               do ij = 1, icells
+                  i = indxi(ij)
+                  j = indxj(ij)
+                  eicen(i,j,ilyr1(n)+k-1) = &
+                          - rhoi * Lfresh * vicen(i,j,n)
+               enddo            ! ij
+
+               ! snow energy
+               do ij = 1, icells
+                  i = indxi(ij)
+                  j = indxj(ij)
+                  esnon(i,j,slyr1(n)+k-1) = & 
+                          - rhos * Lfresh * vsnon(i,j,n)
+               enddo            ! ij
+
+            endif               ! heat_capacity
+         enddo                  ! ncat
+      endif                     ! ice_ic
+#endif
 
       end subroutine set_state_var
 
