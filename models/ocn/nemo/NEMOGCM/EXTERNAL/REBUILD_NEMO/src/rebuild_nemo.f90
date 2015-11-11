@@ -401,14 +401,19 @@ PROGRAM rebuild_nemo
             SELECT CASE( xtype )
                CASE( NF90_BYTE )
                   CALL check_nf90( nf90_get_var( ncid, jv, globaldata_0d_i1 ) )
+                  globaldata_0d_i1 = 0
                CASE( NF90_SHORT )
                   CALL check_nf90( nf90_get_var( ncid, jv, globaldata_0d_i2 ) )
+                  globaldata_0d_i2 = 0
                CASE( NF90_INT )
                   CALL check_nf90( nf90_get_var( ncid, jv, globaldata_0d_i4 ) )
+                  globaldata_0d_i4 = 0
                CASE( NF90_FLOAT )
                   CALL check_nf90( nf90_get_var( ncid, jv, globaldata_0d_sp ) )
+                  globaldata_0d_sp = 0.
                CASE( NF90_DOUBLE )
                   CALL check_nf90( nf90_get_var( ncid, jv, globaldata_0d_dp ) )
+                  globaldata_0d_dp = 0.
                CASE DEFAULT
                   WRITE(numerr,*) 'Unknown nf90 type: ', xtype
                   STOP
@@ -420,18 +425,23 @@ PROGRAM rebuild_nemo
                CASE( NF90_BYTE )
                   ALLOCATE(globaldata_1d_i1(indimlens(dimids(1))))
                   CALL check_nf90( nf90_get_var( ncid, jv, globaldata_1d_i1 ) )
+                  globaldata_1d_i1(:) = 0
                CASE( NF90_SHORT )
                   ALLOCATE(globaldata_1d_i2(indimlens(dimids(1))))
                   CALL check_nf90( nf90_get_var( ncid, jv, globaldata_1d_i2 ) )
+                  globaldata_1d_i2(:) = 0
                CASE( NF90_INT )
                   ALLOCATE(globaldata_1d_i4(indimlens(dimids(1))))
                   CALL check_nf90( nf90_get_var( ncid, jv, globaldata_1d_i4 ) )
+                  globaldata_1d_i4(:) = 0
                CASE( NF90_FLOAT )
                   ALLOCATE(globaldata_1d_sp(indimlens(dimids(1))))
                   CALL check_nf90( nf90_get_var( ncid, jv, globaldata_1d_sp ) )
+                  globaldata_1d_sp(:) = 0.
                CASE( NF90_DOUBLE )
                   ALLOCATE(globaldata_1d_dp(indimlens(dimids(1))))
                   CALL check_nf90( nf90_get_var( ncid, jv, globaldata_1d_dp ) )
+                  globaldata_1d_dp(:) = 0.
                CASE DEFAULT
                   WRITE(numerr,*) 'Unknown nf90 type: ', xtype
                   STOP
@@ -443,18 +453,23 @@ PROGRAM rebuild_nemo
                CASE( NF90_BYTE )
                   ALLOCATE(globaldata_2d_i1(indimlens(dimids(1)),indimlens(dimids(2))))
                   CALL check_nf90( nf90_get_var( ncid, jv, globaldata_2d_i1 ) )
+                  globaldata_2d_i1(:,:) = 0
                CASE( NF90_SHORT )
                   ALLOCATE(globaldata_2d_i2(indimlens(dimids(1)),indimlens(dimids(2))))
                   CALL check_nf90( nf90_get_var( ncid, jv, globaldata_2d_i2 ) )
+                  globaldata_2d_i2(:,:) = 0
                CASE( NF90_INT )
                   ALLOCATE(globaldata_2d_i4(indimlens(dimids(1)),indimlens(dimids(2))))
                   CALL check_nf90( nf90_get_var( ncid, jv, globaldata_2d_i4 ) )
+                  globaldata_2d_i4(:,:) = 0
                CASE( NF90_FLOAT )
                   ALLOCATE(globaldata_2d_sp(indimlens(dimids(1)),indimlens(dimids(2))))
                   CALL check_nf90( nf90_get_var( ncid, jv, globaldata_2d_sp ) )
+                  globaldata_2d_sp(:,:) = 0.
                CASE( NF90_DOUBLE )
                   ALLOCATE(globaldata_2d_dp(indimlens(dimids(1)),indimlens(dimids(2))))
                   CALL check_nf90( nf90_get_var( ncid, jv, globaldata_2d_dp ) )
+                  globaldata_2d_dp(:,:) = 0.
                CASE DEFAULT
                   WRITE(numerr,*) 'Unknown nf90 type: ', xtype
                   STOP
@@ -467,22 +482,27 @@ PROGRAM rebuild_nemo
                   ALLOCATE(globaldata_3d_i1(indimlens(dimids(1)),indimlens(dimids(2)),       &
                      &                      indimlens(dimids(3))))
                   CALL check_nf90( nf90_get_var( ncid, jv, globaldata_3d_i1 ) )
+                  globaldata_3d_i1(:,:,:) = 0
                CASE( NF90_SHORT )
                   ALLOCATE(globaldata_3d_i2(indimlens(dimids(1)),indimlens(dimids(2)),       &
                      &                      indimlens(dimids(3))))
                   CALL check_nf90( nf90_get_var( ncid, jv, globaldata_3d_i2 ) )
+                   globaldata_3d_i2(:,:,:) = 0
                CASE( NF90_INT )
                   ALLOCATE(globaldata_3d_i4(indimlens(dimids(1)),indimlens(dimids(2)),       &
                      &                      indimlens(dimids(3))))
                   CALL check_nf90( nf90_get_var( ncid, jv, globaldata_3d_i4 ) )
+                  globaldata_3d_i4(:,:,:) = 0
                CASE( NF90_FLOAT )
                   ALLOCATE(globaldata_3d_sp(indimlens(dimids(1)),indimlens(dimids(2)),       &
                      &                      indimlens(dimids(3))))
                   CALL check_nf90( nf90_get_var( ncid, jv, globaldata_3d_sp ) )
+                  globaldata_3d_sp(:,:,:) = 0.
                CASE( NF90_DOUBLE )
                   ALLOCATE(globaldata_3d_dp(indimlens(dimids(1)),indimlens(dimids(2)),       &
                      &                      indimlens(dimids(3))))
                   CALL check_nf90( nf90_get_var( ncid, jv, globaldata_3d_dp ) )
+                  globaldata_3d_dp(:,:,:) = 0.
                CASE DEFAULT
                   WRITE(numerr,*) 'Unknown nf90 type: ', xtype
                   STOP
@@ -495,22 +515,27 @@ PROGRAM rebuild_nemo
                   ALLOCATE(globaldata_4d_i1(indimlens(dimids(1)),indimlens(dimids(2)),       &
                      &                      indimlens(dimids(3)),ntchunk))
                   CALL check_nf90( nf90_get_var( ncid, jv, globaldata_4d_i1, start=(/1,1,1,nt/) ) )
+                  globaldata_4d_i1(:,:,:,:) = 0
                CASE( NF90_SHORT )
                   ALLOCATE(globaldata_4d_i2(indimlens(dimids(1)),indimlens(dimids(2)),       &
                      &                      indimlens(dimids(3)),ntchunk))
                   CALL check_nf90( nf90_get_var( ncid, jv, globaldata_4d_i2, start=(/1,1,1,nt/) ) )
+                  globaldata_4d_i2(:,:,:,:) = 0
                CASE( NF90_INT )
                   ALLOCATE(globaldata_4d_i4(indimlens(dimids(1)),indimlens(dimids(2)),       &
                      &                      indimlens(dimids(3)),ntchunk))
                   CALL check_nf90( nf90_get_var( ncid, jv, globaldata_4d_i4, start=(/1,1,1,nt/) ) )
+                  globaldata_4d_i4(:,:,:,:) = 0
                CASE( NF90_FLOAT )
                   ALLOCATE(globaldata_4d_sp(indimlens(dimids(1)),indimlens(dimids(2)),       &
                      &                      indimlens(dimids(3)),ntchunk))
                   CALL check_nf90( nf90_get_var( ncid, jv, globaldata_4d_sp, start=(/1,1,1,nt/) ) )
+                  globaldata_4d_sp(:,:,:,:) = 0.
                CASE( NF90_DOUBLE )
                   ALLOCATE(globaldata_4d_dp(indimlens(dimids(1)),indimlens(dimids(2)),       &
                      &                      indimlens(dimids(3)),ntchunk))
                   CALL check_nf90( nf90_get_var( ncid, jv, globaldata_4d_dp, start=(/1,1,1,nt/) ) )
+                  globaldata_4d_dp(:,:,:,:) = 0.
                CASE DEFAULT
                   WRITE(numerr,*) 'Unknown nf90 type: ', xtype
                   STOP
@@ -533,14 +558,19 @@ PROGRAM rebuild_nemo
             SELECT CASE( xtype )
                CASE( NF90_BYTE )
                   ALLOCATE(globaldata_1d_i1(outdimlens(dimids(1))))
+                  globaldata_1d_i1(:) = 0
                CASE( NF90_SHORT )
                   ALLOCATE(globaldata_1d_i2(outdimlens(dimids(1))))
+                  globaldata_1d_i2(:) = 0
                CASE( NF90_INT )
                   ALLOCATE(globaldata_1d_i4(outdimlens(dimids(1))))
+                  globaldata_1d_i4(:) = 0
                CASE( NF90_FLOAT )
                   ALLOCATE(globaldata_1d_sp(outdimlens(dimids(1))))
+                  globaldata_1d_sp(:) = 0.
                CASE( NF90_DOUBLE )
                   ALLOCATE(globaldata_1d_dp(outdimlens(dimids(1))))
+                  globaldata_1d_dp(:) = 0.
                CASE DEFAULT
                   WRITE(numerr,*) 'Unknown nf90 type: ', xtype
                   STOP
@@ -551,14 +581,19 @@ PROGRAM rebuild_nemo
             SELECT CASE( xtype )
                CASE( NF90_BYTE )
                   ALLOCATE(globaldata_2d_i1(outdimlens(dimids(1)),outdimlens(dimids(2))))
+                  globaldata_2d_i1(:,:) = 0
                CASE( NF90_SHORT )
                   ALLOCATE(globaldata_2d_i2(outdimlens(dimids(1)),outdimlens(dimids(2))))
+                  globaldata_2d_i2(:,:) = 0
                CASE( NF90_INT )
                   ALLOCATE(globaldata_2d_i4(outdimlens(dimids(1)),outdimlens(dimids(2))))
+                  globaldata_2d_i4(:,:) = 0
                CASE( NF90_FLOAT )
                   ALLOCATE(globaldata_2d_sp(outdimlens(dimids(1)),outdimlens(dimids(2))))
+                  globaldata_2d_sp(:,:) = 0.
                CASE( NF90_DOUBLE )
                   ALLOCATE(globaldata_2d_dp(outdimlens(dimids(1)),outdimlens(dimids(2))))
+                  globaldata_2d_dp(:,:) = 0.
                CASE DEFAULT
                   WRITE(numerr,*) 'Unknown nf90 type: ', xtype
                   STOP
@@ -570,18 +605,23 @@ PROGRAM rebuild_nemo
                CASE( NF90_BYTE )
                   ALLOCATE(globaldata_3d_i1(outdimlens(dimids(1)),outdimlens(dimids(2)),     &
                      &                      outdimlens(dimids(3))))
+                  globaldata_3d_i1(:,:,:) = 0
                CASE( NF90_SHORT )
                   ALLOCATE(globaldata_3d_i2(outdimlens(dimids(1)),outdimlens(dimids(2)),     &
                      &                      outdimlens(dimids(3))))
+                  globaldata_3d_i2(:,:,:) = 0
                CASE( NF90_INT )
                   ALLOCATE(globaldata_3d_i4(outdimlens(dimids(1)),outdimlens(dimids(2)),     &
                      &                      outdimlens(dimids(3))))
+                  globaldata_3d_i4(:,:,:) = 0
                CASE( NF90_FLOAT )
                   ALLOCATE(globaldata_3d_sp(outdimlens(dimids(1)),outdimlens(dimids(2)),     &
                      &                      outdimlens(dimids(3))))
+                  globaldata_3d_sp(:,:,:) = 0.
                CASE( NF90_DOUBLE )
                   ALLOCATE(globaldata_3d_dp(outdimlens(dimids(1)),outdimlens(dimids(2)),     &
                      &                      outdimlens(dimids(3))))
+                  globaldata_3d_dp(:,:,:) = 0.
                CASE DEFAULT
                   WRITE(numerr,*) 'Unknown nf90 type: ', xtype
                   STOP
@@ -593,18 +633,23 @@ PROGRAM rebuild_nemo
                CASE( NF90_BYTE )
                   ALLOCATE(globaldata_4d_i1(outdimlens(dimids(1)),outdimlens(dimids(2)),     &
                      &                      outdimlens(dimids(3)),ntchunk))
+                   globaldata_4d_i1(:,:,:,:) = 0
                CASE( NF90_SHORT )
                   ALLOCATE(globaldata_4d_i2(outdimlens(dimids(1)),outdimlens(dimids(2)),     &
                      &                      outdimlens(dimids(3)),ntchunk))
+                  globaldata_4d_i2(:,:,:,:) = 0
                CASE( NF90_INT )
                   ALLOCATE(globaldata_4d_i4(outdimlens(dimids(1)),outdimlens(dimids(2)),     &
                      &                      outdimlens(dimids(3)),ntchunk))
+                  globaldata_4d_i4(:,:,:,:) = 0
                CASE( NF90_FLOAT )
                   ALLOCATE(globaldata_4d_sp(outdimlens(dimids(1)),outdimlens(dimids(2)),     &
                      &                      outdimlens(dimids(3)),ntchunk))
+                  globaldata_4d_sp(:,:,:,:) = 0.
                CASE( NF90_DOUBLE )
                   ALLOCATE(globaldata_4d_dp(outdimlens(dimids(1)),outdimlens(dimids(2)),     &
                      &                      outdimlens(dimids(3)),ntchunk))
+                  globaldata_4d_dp(:,:,:,:) = 0.
                CASE DEFAULT
                   WRITE(numerr,*) 'Unknown nf90 type: ', xtype
                   STOP
