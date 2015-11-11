@@ -186,6 +186,9 @@ CONTAINS
 # endif
 #endif
 
+      CALL lbc_lnk( ua, 'U', -1. )     !* local domain boundaries
+      CALL lbc_lnk( va, 'V', -1. )
+
       ! Time filter and swap of dynamics arrays
       ! ------------------------------------------
       IF( neuler == 0 .AND. kt == nit000 ) THEN        !* Euler at first time-step: only swap

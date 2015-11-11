@@ -668,10 +668,10 @@ CONTAINS
       IF( nperio == 0 ) THEN
          IF(lwp) WRITE(numout,*) ' mbathy set to 0 along east and west boundary: nperio = ', nperio
          IF( lk_mpp ) THEN
-            IF( nbondi == -1 .OR. nbondi == 2 ) THEN
+            IF( (nbondi == -1 .OR. nbondi == 2 ) .AND. nowe > 0 ) THEN
                IF( jperio /= 1 )   mbathy(1,:) = 0
             ENDIF
-            IF( nbondi == 1 .OR. nbondi == 2 ) THEN
+            IF( ( nbondi == 1 .OR. nbondi == 2 ) .AND. noea > 0 ) THEN
                IF( jperio /= 1 )   mbathy(nlci,:) = 0
             ENDIF
          ELSE
@@ -761,7 +761,8 @@ CONTAINS
       IF(lwp) WRITE(numout,*) '    ~~~~~~~~~~~~~'
       !
       mbkt(:,:) = MAX( mbathy(:,:) , 1 )    ! bottom k-index of T-level (=1 over land)
- 
+      mbku(:,:) = 0 
+      mbkv(:,:) = 0 
       !                                     ! bottom k-index of W-level = mbkt+1
       DO jj = 1, jpjm1                      ! bottom k-index of u- (v-) level
          DO ji = 1, jpim1
@@ -978,11 +979,16 @@ CONTAINS
          e3vw(:,:,jk) = e3w_0(jk)
       END DO
       DO jk = 1,jpk                         ! Computed as the minimum of neighbooring scale factors
-         DO jj = 1, jpjm1
+         DO jj = 1, jpj
             DO ji = 1, fs_jpim1   ! vector opt.
                e3u (ji,jj,jk) = MIN( e3t(ji,jj,jk), e3t(ji+1,jj,jk) )
-               e3v (ji,jj,jk) = MIN( e3t(ji,jj,jk), e3t(ji,jj+1,jk) )
                e3uw(ji,jj,jk) = MIN( e3w(ji,jj,jk), e3w(ji+1,jj,jk) )
+            END DO
+         END DO
+
+         DO jj = 1, jpjm1
+            DO ji = 1, jpi   ! vector opt.
+               e3v (ji,jj,jk) = MIN( e3t(ji,jj,jk), e3t(ji,jj+1,jk) )
                e3vw(ji,jj,jk) = MIN( e3w(ji,jj,jk), e3w(ji,jj+1,jk) )
             END DO
          END DO

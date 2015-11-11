@@ -101,8 +101,8 @@ CONTAINS
          neuler = 0                              ! Set time-step indicator at nit000 (euler forward)
          CALL day_init                           ! model calendar (using both namelist and restart infos)
          !                                       ! Initialization of ocean to zero
-         !   before fields      !       now fields
-         sshb (:,:)   = 0._wp   ;   sshn (:,:)   = 0._wp
+         !   before fields      !       now fields     
+         sshb (:,:)   = 0._wp   ;   sshn (:,:)   = 0._wp  ;  ssha (:,:)   = 0._wp
          ub   (:,:,:) = 0._wp   ;   un   (:,:,:) = 0._wp
          vb   (:,:,:) = 0._wp   ;   vn   (:,:,:) = 0._wp
          rotb (:,:,:) = 0._wp   ;   rotn (:,:,:) = 0._wp

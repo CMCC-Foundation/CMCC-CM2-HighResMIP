@@ -425,12 +425,13 @@ CONTAINS
             ptab( 1 ,:,:) = ptab(jpim1,:,:)
             ptab(jpi,:,:) = ptab(  2  ,:,:)
          ELSE                                     !* closed
-            IF( .NOT. cd_type == 'F' )   ptab(     1       :jpreci,:,:) = zland    ! south except F-point
-                                         ptab(nlci-jpreci+1:jpi   ,:,:) = zland    ! north
+         !   IF( .NOT. cd_type == 'F' )   ptab(     1       :jpreci,:,:) = zland    ! south except F-point
+         !                                ptab(nlci-jpreci+1:jpi   ,:,:) = zland    ! north
          ENDIF
          !                                   ! North-South boundaries (always closed)
-         IF( .NOT. cd_type == 'F' )   ptab(:,     1       :jprecj,:) = zland       ! south except F-point
-                                      ptab(:,nlcj-jprecj+1:jpj   ,:) = zland       ! north
+         !IF( .NOT. cd_type == 'F' )   ptab(:,     1       :jprecj,:) = zland       ! south except F-point
+         !                             ptab(:,nlcj-jprecj+1:jpj   ,:) = zland       ! north
+         IF ( npolj /= 0)   ptab(:,nlcj-jprecj+1:jpj   ,:) = zland       ! north
          !
       ENDIF
 
@@ -619,12 +620,13 @@ CONTAINS
             pt2d( 1 ,:) = pt2d(jpim1,:)                                    ! west
             pt2d(jpi,:) = pt2d(  2  ,:)                                    ! east
          ELSE                                     ! closed
-            IF( .NOT. cd_type == 'F' )   pt2d(     1       :jpreci,:) = zland    ! south except F-point
-                                         pt2d(nlci-jpreci+1:jpi   ,:) = zland    ! north
+         !   IF( .NOT. cd_type == 'F' )   pt2d(     1       :jpreci,:) = zland    ! south except F-point
+         !                                pt2d(nlci-jpreci+1:jpi   ,:) = zland    ! north
          ENDIF
          !                                   ! North-South boundaries (always closed)
-            IF( .NOT. cd_type == 'F' )   pt2d(:,     1       :jprecj) = zland    !south except F-point
-                                         pt2d(:,nlcj-jprecj+1:jpj   ) = zland    ! north
+         !   IF( .NOT. cd_type == 'F' )   pt2d(:,     1       :jprecj) = zland    !south except F-point
+         !                                pt2d(:,nlcj-jprecj+1:jpj   ) = zland    ! north
+         IF ( npolj /= 0)   pt2d(:,nlcj-jprecj+1:jpj   ) = zland    ! north
          !
       ENDIF
 
@@ -793,19 +795,22 @@ CONTAINS
          ptab2( 1 ,:,:) = ptab2(jpim1,:,:)
          ptab2(jpi,:,:) = ptab2(  2  ,:,:)
       ELSE                                        !* closed
-         IF( .NOT. cd_type1 == 'F' )   ptab1(     1       :jpreci,:,:) = 0.e0    ! south except at F-point
-         IF( .NOT. cd_type2 == 'F' )   ptab2(     1       :jpreci,:,:) = 0.e0
-                                       ptab1(nlci-jpreci+1:jpi   ,:,:) = 0.e0    ! north
-                                       ptab2(nlci-jpreci+1:jpi   ,:,:) = 0.e0
+      !   IF( .NOT. cd_type1 == 'F' )   ptab1(     1       :jpreci,:,:) = 0.e0    ! south except at F-point
+      !   IF( .NOT. cd_type2 == 'F' )   ptab2(     1       :jpreci,:,:) = 0.e0
+      !                                 ptab1(nlci-jpreci+1:jpi   ,:,:) = 0.e0    ! north
+      !                                 ptab2(nlci-jpreci+1:jpi   ,:,:) = 0.e0
       ENDIF
 
 
       !                                      ! North-South boundaries
-      IF( .NOT. cd_type1 == 'F' )   ptab1(:,     1       :jprecj,:) = 0.e0    ! south except at F-point
-      IF( .NOT. cd_type2 == 'F' )   ptab2(:,     1       :jprecj,:) = 0.e0
-                                    ptab1(:,nlcj-jprecj+1:jpj   ,:) = 0.e0    ! north
-                                    ptab2(:,nlcj-jprecj+1:jpj   ,:) = 0.e0
-
+      !IF( .NOT. cd_type1 == 'F' )   ptab1(:,     1       :jprecj,:) = 0.e0    ! south except at F-point
+      !IF( .NOT. cd_type2 == 'F' )   ptab2(:,     1       :jprecj,:) = 0.e0
+      !                              ptab1(:,nlcj-jprecj+1:jpj   ,:) = 0.e0    ! north
+      !                              ptab2(:,nlcj-jprecj+1:jpj   ,:) = 0.e0
+      IF ( npolj /= 0) THEN
+         ptab1(:,nlcj-jprecj+1:jpj   ,:) = 0.e0
+         ptab2(:,nlcj-jprecj+1:jpj   ,:) = 0.e0
+      ENDIF
 
       ! 2. East and west directions exchange
       ! ------------------------------------
@@ -986,8 +991,8 @@ CONTAINS
       ! Order matters Here !!!!
       !
       !                                      !* North-South boundaries (always colsed)
-      IF( .NOT. cd_type == 'F' )   pt2d(:,  1-jpr2dj   :  jprecj  ) = 0.e0    ! south except at F-point
-                                   pt2d(:,nlcj-jprecj+1:jpj+jpr2dj) = 0.e0    ! north
+      !IF( .NOT. cd_type == 'F' )   pt2d(:,  1-jpr2dj   :  jprecj  ) = 0.e0    ! south except at F-point
+      !                             pt2d(:,nlcj-jprecj+1:jpj+jpr2dj) = 0.e0    ! north
 
       !                                      ! East-West boundaries
       !                                           !* Cyclic east-west
@@ -996,8 +1001,8 @@ CONTAINS
          pt2d(   jpi  :jpi+jpr2di,:) = pt2d(     2      :2+jpr2di,:)       ! west
          !
       ELSE                                        !* closed
-         IF( .NOT. cd_type == 'F' )   pt2d(  1-jpr2di   :jpreci    ,:) = 0.e0    ! south except at F-point
-                                      pt2d(nlci-jpreci+1:jpi+jpr2di,:) = 0.e0    ! north
+      !   IF( .NOT. cd_type == 'F' )   pt2d(  1-jpr2di   :jpreci    ,:) = 0.e0    ! south except at F-point
+      !                                pt2d(nlci-jpreci+1:jpi+jpr2di,:) = 0.e0    ! north
       ENDIF
       !
 
