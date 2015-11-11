@@ -56,9 +56,19 @@ if ( "${NEMO_TOP_MODULES}" != "" ) then
     endsw
 endif
 
+# If bit-for-bit reproducibility, turn on NEMO reproducibility key
+set bfb_cpp = 
+if ( "${BFBFLAG}" == "TRUE" ) then
+   set bfb_cpp = "-Dkey_mpp_rep"
+endif
+# If debug mode is active, turn on NEMO fucntion to avoid compiler trap on signed zero
+if ( "${DEBUG}" == "TRUE" ) then
+   set bfb_cpp = "${bfb_cpp} -Dkey_nosignedzero"
+endif
+
 # NEMO CPP keys
 # TODO: add XML variables to handle NEMO CPPs
-set nemodefs = "${res_cpp} ${top_cpp} ${nemodefs}"
+set nemodefs = "${res_cpp} ${top_cpp} ${nemodefs} ${bfb_cpp}"
 
 #######################################################################
 
