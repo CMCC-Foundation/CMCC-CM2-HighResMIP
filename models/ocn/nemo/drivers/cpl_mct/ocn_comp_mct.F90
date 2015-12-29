@@ -894,6 +894,9 @@ nitrst_old = 0
       i, j, n,        &
       lsize, gsize,   &
       ier
+    logical      ::   &
+      mpp_ocn
+ 
 
 !-----------------------------------------------------------------------
 !  Build the NEMO grid numbering for MCT
@@ -905,12 +908,22 @@ nitrst_old = 0
 !  and to the North folding are removed (lnohalo=.true.).
 !  This is equivalent to remove from the *global* domain the first and
 !  the last colums and the last row.
+!
+!  2015-10-12 TL: add control to check if nemo is initialized with ocean
+!                 domain decomposition only and bypass check on total
+!                 number of grid points coherence. 
 !-----------------------------------------------------------------------
 
     ! Currently only global cyclic east-west boundary condition is implemented
     if (jperio /= 4 .and. jperio /= 6) &
        call shr_sys_abort('ocn_comp_mct: ocn_SetGSMap_mct: unexpected lateral domain '// &
        'boundary condition (jperio /= [4, 6])!')
+
+    ! Check if ocean domain decomposition only or not
+    mpp_ocn = .false.
+    if ( jpnij < jpni * jpnj ) then
+       mpp_ocn = .true.
+    endif
 
     ! Global domain size
     ljpiglo = jpiglo
@@ -961,11 +974,15 @@ nitrst_old = 0
 
     n = lsize
     call mpp_sum(n)
-    if (gsize /= n) then
+    if (gsize /= n .and. .NOT. mpp_ocn ) then
        write(numout,FMT='(A)') 'ocn_comp_mct: ocn_SetGSMap_mct: number of points in the global domain'
        write(numout,FMT='(2(A,I))') ' gsize=', gsize, ' mpp_sum(lsize)=', n
        if (lk_mpp) call mppsync       ! sync PEs
        call shr_sys_abort('ocn_comp_mct: ocn_SetGSMap_mct: mpp_sum(lsize) /= gsize !')
+    elseif (gsize /= n .and. mpp_ocn .and. lwp ) then
+       write(numout,FMT='(A)') 'ocn_comp_mct: ocn_SetGSMap_mct: NEMO is using ocean only domains (mpp_init2)'
+       write(numout,FMT='(2(A,I))') ' gsize=', gsize, ' mpp_sum(lsize)=', n
+       write(numout,FMT='(2(A,I))') ' jpnij=', jpnij, ' < jpni * jpnj=', jpni * jpnj
     end if
     if (lwp) &
       write(*,*) 'ocn_comp_mct: ocn_SetGSMap_mct: mpp_sum(lsize)=', n
@@ -1136,7 +1153,7 @@ nitrst_old = 0
     deallocate(idata)
 
     area = glob_sum(e1e2t(:,:))
-    if (nproc==0) write(numout,*) 'Global ocean area (m**2)', area
+    if (nproc==0) write(numout,'(a,1es28.19)') 'Global ocean area (m**2)', area
 
 !-----------------------------------------------------------------------
 !EOC
