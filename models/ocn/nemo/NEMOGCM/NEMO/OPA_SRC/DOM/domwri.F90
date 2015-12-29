@@ -86,8 +86,6 @@ CONTAINS
       CALL wrk_alloc( jpi, jpj, zprt, zprw )
       CALL wrk_alloc( jpi, jpj, jpk, zdepu, zdepv )
       !
-      zdepv(:,:,:) = 0._wp   ; zdepu(:,:,:) = 0._wp
-      !
       IF(lwp) WRITE(numout,*)
       IF(lwp) WRITE(numout,*) 'dom_wri : create NetCDF mesh and mask information file(s)'
       IF(lwp) WRITE(numout,*) '~~~~~~~'

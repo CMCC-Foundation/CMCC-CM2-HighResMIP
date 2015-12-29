@@ -271,14 +271,14 @@
             imil = ijm1+(jpni+1)/2
             IF( jarea > ijm1 ) ipolj(ii,ij) = 3
             IF( MOD(jpni,2) == 1 .AND. jarea == imil ) ipolj(ii,ij) = 4
-            IF( ipolj(ii,ij) == 3 ) iono(ii,ij) = jpni*jpnj-jarea+ijm1    ! MPI rank of northern neighbour
+            IF( ipolj(ii,ij) == 3 ) iono(ii,ij) = jpni*jpnj-jarea+ijm1 - 1   ! MPI rank of northern neighbour
          ENDIF
          IF( jperio == 5 .OR. jperio == 6 ) THEN
             ijm1 = jpni*(jpnj-1)
             imil = ijm1+(jpni+1)/2
             IF( jarea > ijm1) ipolj(ii,ij) = 5
             IF( MOD(jpni,2) == 1 .AND. jarea == imil ) ipolj(ii,ij) = 6
-            IF( ipolj(ii,ij) == 5) iono(ii,ij) = jpni*jpnj-jarea+ijm1     ! MPI rank of northern neighbour
+            IF( ipolj(ii,ij) == 5) iono(ii,ij) = jpni*jpnj-jarea+ijm1 - 1    ! MPI rank of northern neighbour
          ENDIF
 
          isurf = 0
@@ -403,18 +403,6 @@
       nproc = narea-1
       ii = iin(narea)
       ij = ijn(narea)
-
-      ! set default neighbours
-      noso = ioso(ii,ij)
-      nowe = iowe(ii,ij)
-      noea = ioea(ii,ij)
-      nono = iono(ii,ij) 
-      npse = iose(ii,ij)
-      npsw = iosw(ii,ij)
-      npne = ione(ii,ij)
-      npnw = ionw(ii,ij)
-
-      ! check neighbours location
       IF( ioso(ii,ij) >= 0 .AND. ioso(ii,ij) <= (jpni*jpnj-1) ) THEN 
          iiso = 1 + MOD(ioso(ii,ij),jpni)
          ijso = 1 +    (ioso(ii,ij))/jpni
@@ -485,7 +473,6 @@
       ! Save processor layout in ascii file
       IF (lwp) THEN
          CALL ctl_opn( inum, 'layout.dat', 'REPLACE', 'FORMATTED', 'SEQUENTIAL', -1, numout, .FALSE., narea )
-         WRITE(inum,'(a)') '   jpnij     jpi     jpj     jpk  jpiglo  jpjglo'
          WRITE(inum,'(6i8)') jpnij,jpi,jpj,jpk,jpiglo,jpjglo
          WRITE(inum,'(a)') 'NAREA nlci nlcj nldi nldj nlei nlej nimpp njmpp'
 
@@ -504,7 +491,7 @@
 
       IF( jperio >= 3 .AND. jperio <= 6 .AND. jpni > 1 ) THEN
          CALL mpp_ini_north
-         !IF(lwp) WRITE(numout,*) ' mpp_init2 : North fold boundary prepared for jpni >1'
+         IF(lwp) WRITE(numout,*) ' mpp_init2 : North fold boundary prepared for jpni >1'
       ENDIF
 
       ! Defined npolj, either 0, 3 , 4 , 5 , 6
@@ -523,28 +510,29 @@
          IF( ij == jpnj ) npolj = 5
       ENDIF
 
-      ! Periodicity : no corner if nbondi = 2 and nperio != 1
-
-      IF(lwp) THEN
-         WRITE(numout,*) ' nproc  = ', nproc
-         WRITE(numout,*) ' nowe   = ', nowe  , ' noea   =  ', noea
-         WRITE(numout,*) ' nono   = ', nono  , ' noso   =  ', noso
-         WRITE(numout,*) ' nbondi = ', nbondi
-         WRITE(numout,*) ' nbondj = ', nbondj
-         WRITE(numout,*) ' npolj  = ', npolj
-         WRITE(numout,*) ' nperio = ', nperio
-         WRITE(numout,*) ' nlci   = ', nlci
-         WRITE(numout,*) ' nlcj   = ', nlcj
-         WRITE(numout,*) ' nimpp  = ', nimpp
-         WRITE(numout,*) ' njmpp  = ', njmpp
-         WRITE(numout,*) ' nreci  = ', nreci  , ' npse   = ', npse
-         WRITE(numout,*) ' nrecj  = ', nrecj  , ' npsw   = ', npsw
-         WRITE(numout,*) ' jpreci = ', jpreci , ' npne   = ', npne
-         WRITE(numout,*) ' jprecj = ', jprecj , ' npnw   = ', npnw
-      ENDIF
-
       ! Prepare NetCDF output file (if necessary)
       CALL mpp_init_ioipsl
 
+      ! Periodicity : no corner if nbondi = 2 and nperio != 1
+
+      IF(lwp) THEN
+         WRITE(numout,*) ' nproc=  ',nproc
+         WRITE(numout,*) ' nowe=   ',nowe
+         WRITE(numout,*) ' noea=   ',noea
+         WRITE(numout,*) ' nono=   ',nono
+         WRITE(numout,*) ' noso=   ',noso
+         WRITE(numout,*) ' nbondi= ',nbondi
+         WRITE(numout,*) ' nbondj= ',nbondj
+         WRITE(numout,*) ' npolj=  ',npolj
+         WRITE(numout,*) ' nperio= ',nperio
+         WRITE(numout,*) ' nlci=   ',nlci
+         WRITE(numout,*) ' nlcj=   ',nlcj
+         WRITE(numout,*) ' nimpp=  ',nimpp
+         WRITE(numout,*) ' njmpp=  ',njmpp
+         WRITE(numout,*) ' nbse=   ',nbse,' npse= ',npse
+         WRITE(numout,*) ' nbsw=   ',nbsw,' npsw= ',npsw
+         WRITE(numout,*) ' nbne=   ',nbne,' npne= ',npne
+         WRITE(numout,*) ' nbnw=   ',nbnw,' npnw= ',npnw
+      ENDIF
 
    END SUBROUTINE mpp_init2

@@ -123,9 +123,6 @@ CONTAINS
       !
       zww(:,:,:) = 0._wp
       zwz(:,:,:) = 0._wp
-      zdzr(:,:,:) = 0._wp
-      zgru(:,:,:) = 0._wp
-      zgrv(:,:,:) = 0._wp
       !
       DO jk = 1, jpk             !==   i- & j-gradient of density   ==!
          DO jj = 1, jpjm1
@@ -203,7 +200,6 @@ CONTAINS
          END DO
       END DO
       CALL lbc_lnk( zwz, 'U', -1. )   ;   CALL lbc_lnk( zww, 'V', -1. )      ! lateral boundary conditions
-      CALL lbc_lnk( zwz, 'U', -1. )   ;   CALL lbc_lnk( zww, 'V', -1. )      ! lateral boundary conditions
       !
       !                                            !* horizontal Shapiro filter
       DO jk = 2, jpkm1
@@ -250,9 +246,6 @@ CONTAINS
       ! II.  slopes at w point           | wslpi = mij( d/di( prd ) / d/dz( prd )
       ! ===========================      | wslpj = mij( d/dj( prd ) / d/dz( prd )
       !
-      zww(:,:,:) = 0._wp
-      zwz(:,:,:) = 0._wp
-
       DO jk = 2, jpkm1
          DO jj = 2, jpjm1
             DO ji = fs_2, fs_jpim1   ! vector opt.
@@ -288,7 +281,6 @@ CONTAINS
             END DO
          END DO
       END DO
-      CALL lbc_lnk( zwz, 'T', -1. )   ;    CALL lbc_lnk( zww, 'T', -1. )      ! lateral boundary conditions
       CALL lbc_lnk( zwz, 'T', -1. )   ;    CALL lbc_lnk( zww, 'T', -1. )      ! lateral boundary conditions
       !
       !                                           !* horizontal Shapiro filter

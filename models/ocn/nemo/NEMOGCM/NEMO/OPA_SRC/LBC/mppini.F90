@@ -130,7 +130,7 @@ CONTAINS
       INTEGER  ::   ii, ij, ifreq, il1, il2            ! local integers
       INTEGER  ::   iresti, irestj, ijm1, imil, inum   !   -      -
       REAL(wp) ::   zidom, zjdom                       ! local scalars
-      INTEGER, DIMENSION(jpni,jpnj) ::   iimppt, ijmppt, ilcit, ilcjt, nfipproc  ! local workspace
+      INTEGER, DIMENSION(jpni,jpnj) ::   iimppt, ijmppt, ilcit, ilcjt   ! local workspace
       !!----------------------------------------------------------------------
 
       IF(lwp) WRITE(numout,*)
@@ -200,6 +200,47 @@ CONTAINS
       END DO
       
 #endif
+      IF(lwp) THEN
+         WRITE(numout,*)
+         WRITE(numout,*) '           defines mpp subdomains'
+         WRITE(numout,*) '           ----------------------'
+         WRITE(numout,*) '           iresti=',iresti,' irestj=',irestj
+         WRITE(numout,*) '           jpni  =',jpni  ,' jpnj  =',jpnj
+         ifreq = 4
+         il1   = 1
+         DO jn = 1, (jpni-1)/ifreq+1
+            il2 = MIN( jpni, il1+ifreq-1 )
+            WRITE(numout,*)
+            WRITE(numout,9200) ('***',ji = il1,il2-1)
+            DO jj = jpnj, 1, -1
+               WRITE(numout,9203) ('   ',ji = il1,il2-1)
+               WRITE(numout,9202) jj, ( ilcit(ji,jj),ilcjt(ji,jj),ji = il1,il2 )
+               WRITE(numout,9203) ('   ',ji = il1,il2-1)
+               WRITE(numout,9200) ('***',ji = il1,il2-1)
+            END DO
+            WRITE(numout,9201) (ji,ji = il1,il2)
+            il1 = il1+ifreq
+         END DO
+ 9200    FORMAT('     ***',20('*************',a3))
+ 9203    FORMAT('     *     ',20('         *   ',a3))
+ 9201    FORMAT('        ',20('   ',i3,'          '))
+ 9202    FORMAT(' ',i3,' *  ',20(i3,'  x',i3,'   *   '))
+      ENDIF
+
+      zidom = nreci
+      DO ji = 1, jpni
+         zidom = zidom + ilcit(ji,1) - nreci
+      END DO
+      IF(lwp) WRITE(numout,*)
+      IF(lwp) WRITE(numout,*)' sum ilcit(i,1) = ', zidom, ' jpiglo = ', jpiglo
+      
+      zjdom = nrecj
+      DO jj = 1, jpnj
+         zjdom = zjdom + ilcjt(1,jj) - nrecj
+      END DO
+      IF(lwp) WRITE(numout,*)' sum ilcit(1,j) = ', zjdom, ' jpjglo = ', jpjglo
+      IF(lwp) WRITE(numout,*)
+      
 
       !  2. Index arrays for subdomains
       ! -------------------------------
@@ -262,63 +303,16 @@ CONTAINS
          nldjt(jn) = nldj
          nlejt(jn) = nlej
       END DO
-
-      ! 4. Subdomain print
-      ! ------------------
       
-      IF(lwp) WRITE(numout,*)
-      IF(lwp) WRITE(numout,*) ' mpp_init: defines mpp subdomains'
-      IF(lwp) WRITE(numout,*) ' ~~~~~~  ----------------------'
-      IF(lwp) WRITE(numout,*)
-      IF(lwp) WRITE(numout,*) 'iresti=',iresti,' irestj=',irestj
-      IF(lwp) WRITE(numout,*)
-      IF(lwp) WRITE(numout,*) 'jpni=',jpni,' jpnj=',jpnj
-      zidom = nreci
-      DO ji = 1, jpni
-         zidom = zidom + ilcit(ji,1) - nreci
-      END DO
-      IF(lwp) WRITE(numout,*)
-      IF(lwp) WRITE(numout,*)' sum ilcit(i,1)=', zidom, ' jpiglo=', jpiglo
 
-      zjdom = nrecj
-      DO jj = 1, jpnj
-         zjdom = zjdom + ilcjt(1,jj) - nrecj
-      END DO
-      IF(lwp) WRITE(numout,*)' sum ilcit(1,j)=', zjdom, ' jpjglo=', jpjglo
-      IF(lwp) WRITE(numout,*)
-
-      IF(lwp) THEN
-         ifreq = 4
-         il1   = 1
-         DO jn = 1, (jpni-1)/ifreq+1
-            il2 = MIN( jpni, il1+ifreq-1 )
-            WRITE(numout,*)
-            WRITE(numout,9200) ('***',ji = il1,il2-1)
-            DO jj = jpnj, 1, -1
-               WRITE(numout,9203) ('   ',ji = il1,il2-1)
-               WRITE(numout,9202) jj, ( ilcit(ji,jj),ilcjt(ji,jj),ji = il1,il2 )
-               WRITE(numout,9204) (nfipproc(ji,jj),ji=il1,il2)
-               WRITE(numout,9203) ('   ',ji = il1,il2-1)
-               WRITE(numout,9200) ('***',ji = il1,il2-1)
-            END DO
-            WRITE(numout,9201) (ji,ji = il1,il2)
-            il1 = il1+ifreq
-         END DO
- 9200     FORMAT('     ***',20('*************',a3))
- 9203     FORMAT('     *     ',20('         *   ',a3))
- 9201     FORMAT('        ',20('   ',i3,'          '))
- 9202     FORMAT(' ',i3,' *  ',20(i3,'  x',i3,'   *   '))
- 9204     FORMAT('     *  ',20('      ',i3,'   *   '))
-      ENDIF
-
-      ! 5. From global to local
+      ! 4. From global to local
       ! -----------------------
 
       nperio = 0
       IF( jperio == 2 .AND. nbondj == -1 )   nperio = 2
 
 
-      ! 6. Subdomain neighbours
+      ! 5. Subdomain neighbours
       ! ----------------------
 
       nproc = narea - 1
@@ -441,10 +435,10 @@ CONTAINS
          WRITE(numout,*) ' nlcj   = ', nlcj
          WRITE(numout,*) ' nimpp  = ', nimpp
          WRITE(numout,*) ' njmpp  = ', njmpp
-         WRITE(numout,*) ' nreci  = ', nreci  , ' npse   = ', npse
-         WRITE(numout,*) ' nrecj  = ', nrecj  , ' npsw   = ', npsw
-         WRITE(numout,*) ' jpreci = ', jpreci , ' npne   = ', npne
-         WRITE(numout,*) ' jprecj = ', jprecj , ' npnw   = ', npnw
+         WRITE(numout,*) ' nbse   = ', nbse  , ' npse   = ', npse
+         WRITE(numout,*) ' nbsw   = ', nbsw  , ' npsw   = ', npsw
+         WRITE(numout,*) ' nbne   = ', nbne  , ' npne   = ', npne
+         WRITE(numout,*) ' nbnw   = ', nbnw  , ' npnw   = ', npnw
       ENDIF
 
       IF( nperio == 1 .AND. jpni /= 1 ) CALL ctl_stop( ' mpp_init: error on cyclicity' )
