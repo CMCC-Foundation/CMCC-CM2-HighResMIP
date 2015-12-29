@@ -397,16 +397,27 @@ CONTAINS
       ! CAUTION : The fmask may be further modified in dyn_vor_init ( dynvor.F90 )
             
       IF( nprint == 1 .AND. lwp ) THEN      ! Control print
+         WRITE (numout,*)
+         WRITE (numout,*) 'tmask_i: tmask interior for each level'
+         WRITE (numout,*) ' ----------------------------'
          imsk(:,:) = INT( tmask_i(:,:) )
-         WRITE(numout,*) ' tmask_i : '
          CALL prihin( imsk(:,:), jpi, jpj, 1, jpi, 1,   &
                &                           1, jpj, 1, 1, numout)
          WRITE (numout,*)
          WRITE (numout,*) ' dommsk: tmask for each level'
          WRITE (numout,*) ' ----------------------------'
-         DO jk = 1, jpk
+         DO jk = 1, 1 !jpk
             imsk(:,:) = INT( tmask(:,:,jk) )
-
+            WRITE(numout,*)
+            WRITE(numout,*) ' level = ',jk
+            CALL prihin( imsk(:,:), jpi, jpj, 1, jpi, 1,   &
+               &                              1, jpj, 1, 1, numout)
+         END DO
+         WRITE(numout,*)
+         WRITE(numout,*) ' dom_msk: umask for each level'
+         WRITE(numout,*) ' -----------------------------'
+         DO jk = 1, 1 !jpk
+            imsk(:,:) = INT( umask(:,:,jk) )
             WRITE(numout,*)
             WRITE(numout,*) ' level = ',jk
             CALL prihin( imsk(:,:), jpi, jpj, 1, jpi, 1,   &
@@ -415,7 +426,7 @@ CONTAINS
          WRITE(numout,*)
          WRITE(numout,*) ' dom_msk: vmask for each level'
          WRITE(numout,*) ' -----------------------------'
-         DO jk = 1, jpk
+         DO jk = 1, 1 !jpk
             imsk(:,:) = INT( vmask(:,:,jk) )
             WRITE(numout,*)
             WRITE(numout,*) ' level = ',jk
@@ -425,7 +436,7 @@ CONTAINS
          WRITE(numout,*)
          WRITE(numout,*) ' dom_msk: fmask for each level'
          WRITE(numout,*) ' -----------------------------'
-         DO jk = 1, jpk
+         DO jk = 1, 1 !jpk
             imsk(:,:) = INT( fmask(:,:,jk) )
             WRITE(numout,*)
             WRITE(numout,*) ' level = ',jk
