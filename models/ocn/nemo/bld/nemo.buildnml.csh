@@ -10,11 +10,11 @@
 ########################################################################
 
 ########################################################################
-# 1. NEMO namelist & XIO server definitions
+# 1. NEMO namelist & XIOS definitions
 # TODO: In CESM namelists & I/O related files should be generated
 # by the script build-namelist based on the specific compset/resolution
 # while user specific changes should go in the file user_nl_nemo. TO BE DONE!
-# For now NEMO namelist and XIO server files are copied from existing
+# For now NEMO namelist and XIOS xml files are copied from existing
 # template files in ${CODEROOT}/ocn/${COMP_OCN}/bld to
 # ${CASEBUILD}/nemoconf and ${RUNDIR} .
 # The user should modify the files in ${CASEBUILD}/nemoconf after case
