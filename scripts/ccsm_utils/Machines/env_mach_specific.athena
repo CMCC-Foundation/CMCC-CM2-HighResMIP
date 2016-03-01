@@ -97,6 +97,10 @@ endif
 
 setenv NETCDF_PATH ${NETCDF}
 
+# LOAD XIOS libraries (should become a module on athena)
+set COMPILER_VER = `mpiifort --version | grep "ifort" | cut -d ' ' -f3 | cut -c1-2`
+setenv XIOS_PATH  "/users/home/models/nemo/xios2/intel_xe_20${COMPILER_VER}"
+
 # -------------------------------------------------------------------------
 # Build and runtime environment variables - edit before the initial build 
 # -------------------------------------------------------------------------

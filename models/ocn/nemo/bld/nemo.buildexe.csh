@@ -24,7 +24,6 @@ case "tn1v?":
   set res_cpp = "-Dkey_diaeiv -Dkey_dynldf_c3d -Dkey_traldf_eiv -Dkey_zdftmx"
   breaksw
 case "tn0.5v?":
-  set res_cpp = "-Dkey_orca_r05"
   echo "ORCA05 configuration not yet implemented in CESM!"
   exit 2
   breaksw
@@ -57,7 +56,7 @@ if ( "${NEMO_TOP_MODULES}" != "" ) then
 endif
 
 # If bit-for-bit reproducibility, turn on NEMO reproducibility key
-#set bfb_cpp = 
+set bfb_cpp = 
 #if ( "${BFBFLAG}" == "TRUE" ) then
 #   set bfb_cpp = "-Dkey_mpp_rep"
 #endif
@@ -113,8 +112,10 @@ $CODEROOT/ocn/nemo/NEMOGCM/NEMO/TOP_SRC/TRP
 EOF1
 endif
 
+# Include XIOS libraries for nemo
+set INC_XIOS = "$XIOS_PATH/inc"
 
-${GMAKE} complib -j ${GMAKE_J} MODEL=nemo COMPLIB=${LIBROOT}/libocn.a -f ${CASETOOLS}/Makefile USER_CPPDEFS="${nemodefs}" MACFILE=${CASEROOT}/Macros.${MACH} || exit 2
+${GMAKE} complib -j ${GMAKE_J} MODEL=nemo COMPLIB=${LIBROOT}/libocn.a -f ${CASETOOLS}/Makefile USER_CPPDEFS="${nemodefs}" USER_INCLDIR="-I$INC_XIOS" MACFILE=${CASEROOT}/Macros.${MACH} || exit 2
 
 # Compile NEMO REBUILD tool
 
