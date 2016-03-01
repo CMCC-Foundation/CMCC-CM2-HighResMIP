@@ -12,7 +12,9 @@
    nn_date0    =  20010101   !  date at nit_0000 (format yyyymmdd) used if ln_rstart=F or (ln_rstart=T and nn_rstctl=0 or 1)
    nn_leapy    =       0   !  Leap year calendar (1) or not (0)
    ln_rstart   = .false.   !  start from rest (F) or from a restart file (T)
+   nn_rstctl   =       0   !  restart control ==> activated only if ln_rstart=T
    nn_stock    =   17520   !  frequency of creation of a restart file (modulo referenced to 1)
+   nn_write    =   17520   !  frequency of write in the output file   (modulo referenced to nn_it000)
 /
 !-----------------------------------------------------------------------
 &namcfg        !   parameters of the configuration
@@ -97,11 +99,12 @@
 &namsbc        !   Surface Boundary Condition (surface module)
 !-----------------------------------------------------------------------
    nn_fsbc     = 1         !  frequency of surface boundary condition computation
-   ln_blk_core = .false.    !  CORE bulk formulation                     (T => fill namsbc_core)
+   ln_cpl      = .true.    !  atmosphere coupled   formulation          ( requires key_oasis3 )
+   ln_blk_core = .false.   !  CORE bulk formulation                     (T => fill namsbc_core)
    nn_ice      = 0         !  =0 no ice boundary condition   ,
    nn_ice_embd = 0         ! embedded sea-ice (full salt and mass exchanges and pressure)
    nn_fwb      = 1
-   ln_rnf      = .false.    !  runoffs                                   (T   => fill namsbc_rnf)
+   ln_rnf      = .false.   !  runoffs                                   (T   => fill namsbc_rnf)
    ln_ssr      = .false.   !  Sea Surface Restoring on T and/or S       (T => fill namsbc_ssr)
 /
 !-----------------------------------------------------------------------

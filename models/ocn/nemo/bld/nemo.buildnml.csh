@@ -28,18 +28,20 @@ if !(-d ${CASEBUILD}/nemoconf) mkdir -p ${CASEBUILD}/nemoconf
 
 cd ${CASEBUILD}/nemoconf || exit 1
 
-# Copy NEMO template namelist (modified later at run-time, see below)
-if !( -f namelist ) then
-  set f = "${CODEROOT}/ocn/${COMP_OCN}/bld/namelist.${OCN_GRID}"
-  if ( -f ${f} ) then
-    cp ${f} namelist
+# Copy NEMO cfg and ref namelists (cfg is modified later at run-time, see below)
+if !( -f namelist_cfg || -f namelist_ref ) then
+  set f1 = "${CODEROOT}/ocn/${COMP_OCN}/bld/nml/namelist_cfg.${OCN_GRID}"
+  set f2 = "${CODEROOT}/ocn/${COMP_OCN}/bld/nml/SHARED/namelist_ref"
+  if ( -f ${f1} && -f ${f2} ) then
+    cp ${f1} namelist_cfg
+    cp ${f2} .
   else
-    echo "ERROR: file not found ${f}"
+    echo "ERROR: file not found. Check ${f1} and ${f2}"
     exit 1
   endif
 endif
 
-# TOP passive tracers module
+# Copy TOP passive tracers module
 set NEMO_TOP_AGE = 0
 set NEMO_TOP_CFC = 0
 set NEMO_TOP_C14 = 0
@@ -49,12 +51,14 @@ if ( "${NEMO_TOP_MODULES}" != "" ) then
       case "age":
         # Copy TOP module template namelist
         set NEMO_TOP_AGE = 1
-	if !( -f namelist_top ) then
-          set f = "${CODEROOT}/ocn/${COMP_OCN}/bld/namelist_top.${OCN_GRID}"
-          if ( -f ${f} ) then
-            cp ${f} namelist_top
+	if !( -f namelist_top_cfg || -f namelist_top_ref ) then
+          set f1 = "${CODEROOT}/ocn/${COMP_OCN}/bld/nml/namelist_top_cfg.${OCN_GRID}"
+          set f2 = "${CODEROOT}/ocn/${COMP_OCN}/bld/nml/SHARED/namelist_top_ref"
+          if ( -f ${f1} && -f ${f2} ) then
+            cp ${f1} namelist_top_cfg
+            cp ${f2} .
           else
-            echo "ERROR: file not found ${f}"
+            echo "ERROR: file not found. Check ${f1} and ${f2}"
             exit 1
           endif
 	endif
@@ -62,12 +66,14 @@ if ( "${NEMO_TOP_MODULES}" != "" ) then
       case "cfc":
         # Copy CFCs module template namelist
         set NEMO_TOP_CFC = 1
-	if !( -f namelist_cfc ) then
-          set f = "${CODEROOT}/ocn/${COMP_OCN}/bld/namelist_cfc.${OCN_GRID}"
-          if ( -f ${f} ) then
-            cp ${f} namelist_cfc
+	if !( -f namelist_cfc_cfg || -f namelist_cfc_ref ) then
+          set f1 = "${CODEROOT}/ocn/${COMP_OCN}/bld/nml/namelist_cfc_cfg.${OCN_GRID}"
+          set f2 = "${CODEROOT}/ocn/${COMP_OCN}/bld/nml/SHARED/namelist_cfc_cfg.${OCN_GRID}"
+          if ( -f ${f1} && -f ${f2} ) then
+            cp ${f1} namelist_cfc_cfg
+            cp ${f2} .
           else
-            echo "ERROR: file not found ${f}"
+            echo "ERROR: file not found. Check ${f1} and ${f2}"
             exit 1
           endif
 	endif
@@ -75,12 +81,14 @@ if ( "${NEMO_TOP_MODULES}" != "" ) then
 # C14 not implemented/tested yet
 #      case "c14":
 #        set NEMO_TOP_C14 = 1
-#        if !( -f namelist_c14 ) then
-#          set f = "${CODEROOT}/ocn/${COMP_OCN}/bld/namelist_c14.${OCN_GRID}"
-#          if ( -f ${f} ) then
-#            cp ${f} namelist_c14
+#        if !( -f namelist_c14_cfg || -f namelist_c14_ref ) then
+#          set f1 = "${CODEROOT}/ocn/${COMP_OCN}/bld/nml/namelist_c14_cfg.${OCN_GRID}"
+#          set f2 = "${CODEROOT}/ocn/${COMP_OCN}/bld/nml/SHARED/namelist_c14_ref"
+#          if ( -f ${f1} && -f ${f2} ) then
+#            cp ${f1} namelist_c14_cfg
+#            cp ${f2} .
 #          else
-#            echo "ERROR: file not found ${f}"
+#            echo "ERROR: file not found. Check ${f1} and ${f2}"
 #            exit 1
 #          endif
 #        endif
@@ -93,36 +101,25 @@ if ( "${NEMO_TOP_MODULES}" != "" ) then
   end
 endif
 
-# Copy XIO server files
-if !( -f xmlio_server.def ) then
-  set f = "${CODEROOT}/ocn/${COMP_OCN}/bld/xmlio_server.def"
-  if ( -f ${f} ) then
-    cp ${CODEROOT}/ocn/${COMP_OCN}/bld/xmlio_server.def .
-  else
-    echo "ERROR: file not found ${f}"
-    exit 1
-  endif
-endif
-# NEMO XIO definition (XIO Server XML specification file)
-# Edit ${CASEBUILD}/nemo.iodef.xml iodef.xml  as you need!!!
+# Copy XIOS XML specification files
+# Edit ${CASEBUILD}/file_def.xml  as you need!!!
 if !( -f iodef.xml ) then
-  set f = "${CODEROOT}/ocn/${COMP_OCN}/bld/iodef.xml"
+  set f = "${CODEROOT}/ocn/${COMP_OCN}/bld/nml/iodef.xml"
   if ( -f ${f} ) then
-    # Mostly monthly output frequency
-    cp ${CODEROOT}/ocn/${COMP_OCN}/bld/iodef.xml .
+    # Copy all xml files that contribute to iodef.xml
+    cp ${CODEROOT}/ocn/${COMP_OCN}/bld/nml/*.xml .
   else
     echo "ERROR: file not found ${f}"
     exit 1
   endif
 endif
 
-# Now copy namelist & XIO server files to the run dir ${RUNDIR}
+# Now copy namelist & XIOS files to the run dir ${RUNDIR}
 
 cd ${RUNDIR} || exit 1
 
 cp ${CASEBUILD}/nemoconf/namelist* . || exit 1
-cp ${CASEBUILD}/nemoconf/xmlio_server.def . || exit 1
-cp ${CASEBUILD}/nemoconf/iodef.xml . || exit 1
+cp ${CASEBUILD}/nemoconf/*.xml . || exit 1
 
 # NEMO postrun template script for output files rebuild
 if !( -f ${CASEBUILD}/nemoconf/postrun.tpl ) then
@@ -222,8 +219,8 @@ endif
 if (-e chlorophyll.nc == 0 && ${?CHLOROPHYLL} == 1 ) then
   ln -s ${NEMO_IN}/${CHLOROPHYLL}.nc chlorophyll.nc
 endif
-if (-e ahmcoef == 0 && ${?AHMCOEF} == 1 ) then
-  ln -s ${NEMO_IN}/${AHMCOEF}        ahmcoef
+if (-e ahmcoef.nc == 0 && ${?AHMCOEF} == 1 ) then
+  ln -s ${NEMO_IN}/${AHMCOEF}.nc        ahmcoef.nc
 endif
 if (-e bathy_meter.nc == 0 && ${?BATHYMETRY} == 1 ) then
   ln -s ${NEMO_IN}/${BATHYMETRY}.nc  bathy_meter.nc
@@ -596,55 +593,95 @@ endif
 ########################################################################
 # 6. NEMO run-time namelist settings
 ########################################################################
+# Merge namelist PERL script (from BFM v5.1)
+set merge_nml = "${CODEROOT}/ocn/${COMP_OCN}/bld/merge_namelist.pl"
 
-# Frewsh water budget control
+# Fresh water budget control
 if ("${COMP_ATM}" == "datm") then
   set nnfwb = 1
 else if ("${COMP_ATM}" == "cam") then
   set nnfwb = 0
 endif
 
-sed -e 's/^[[:blank:]]*cn_exp .*$/cn_exp = "'${CASE}'"/' \
-    -e 's/^[[:blank:]]*nn_closea .*$/nn_closea = 1/' \
-    -e 's/^[[:blank:]]*ln_zco .*$/ln_zco = .false./' \
-    -e 's/^[[:blank:]]*ln_zps .*$/ln_zps = .true./' \
-    -e 's/^[[:blank:]]*ln_sco .*$/ln_sco = .false./' \
-    -e 's/^[[:blank:]]*nn_fwb .*$/nn_fwb = '"${nnfwb}"'/' \
-    -e 's/^[[:blank:]]*nn_ice .*$/nn_ice = 0/' \
-    -e 's/^[[:blank:]]*ln_rnf .*$/ln_rnf = .false./' \
-    -e 's/^[[:blank:]]*ln_ssr .*$/ln_ssr = .false./' \
-    -e 's/^[[:blank:]]*rn_shlat .*$/rn_shlat = 0.0/' \
-    -e 's/^[[:blank:]]*nn_evdm .*$/nn_evdm = 1/' \
-    -e 's/^[[:blank:]]*rn_avevd .*$/rn_avevd = 10.0/' \
-    -e 's/^[[:blank:]]*nn_fsbc .*$/nn_fsbc = '"${nnfsbc}"'/' \
-    -e 's/^[[:blank:]]*ln_cpl .*$/ln_cpl = .true./' \
-    -e 's/^[[:blank:]]*ln_blk_core .*$/ln_blk_core = .false./' \
-    -e 's/^[[:blank:]]*rn_rdt .*$/rn_rdt = '"${DTSEC}"'./' \
-    -e 's/^[[:blank:]]*nn_it000 .*$/nn_it000 = '"${nit000}"'/' \
-    -e 's/^[[:blank:]]*nn_itend .*$/nn_itend = '"${nitend}"'/' \
-    -e 's/^[[:blank:]]*nn_date0 .*$/nn_date0 = '"${date0}"'/' \
-    -e 's/^[[:blank:]]*nn_stock .*$/nn_stock = '"${nstock}"'/' \
-    -e 's/^[[:blank:]]*nn_write .*$/nn_write = '"${nstock}"'/' \
-    -e 's/^[[:blank:]]*nn_fwri .*$/nn_fwri = '"${ts_per_day}"'/' \
-    -e 's/^[[:blank:]]*nn_rstctl .*$/nn_rstctl = '"${rstctl}"'/' \
-    -e 's/^[[:blank:]]*ln_rstart .*$/ln_rstart = '"${rstart}"'/' \
-    -e 's/^[[:blank:]]*nn_msh .*$/nn_msh = '"${msh}"'/' \
-    namelist > namelist.tmp && \
-    mv -f namelist.tmp namelist
+########################################################################
+# 6.1 OPA run-time namelist settings
+########################################################################
+# Merge namelist with PERL script from BFM v5.1.
+# Variables are substituted only if present in file, not added if missing.
+
+\cat >>  namelist_cfg.new << EOF1
+&namrun
+    cn_exp    = '${CASE}'
+    nn_it000  = ${nit000}
+    nn_itend  = ${nitend}
+    sn_date0  = ${date0}
+    nn_stock  = ${nstock}
+    nn_write  = ${nstock}
+    nn_rstctl = ${rstctl}
+    ln_rstart = ${rstart}
+/
+&namzgr
+    ln_zco = .false.
+    ln_zps = .true.
+    ln_sco = .false.
+/
+&namdom
+    rn_rdt    = ${DTSEC}
+    nn_closea = 1
+    nn_msh    = ${msh}
+/
+&namsbc
+    nn_fsbc     = ${nnfsbc}
+    nn_fwb      = ${nnfwb}
+    ln_cpl      = .true.
+    ln_blk_core = .false.
+    nn_ice      = 0 
+    nn_ice_embd = 0 
+    ln_rnf      = .false.
+    ln_ssr      = .false.
+/
+&namzdf
+    nn_evdm  = 1 
+    rn_avevd = 10.0
+/
+EOF1
+
+${merge_nml} namelist_cfg namelist_cfg.new tmp
+mv -f tmp namelist_cfg
+rm -f namelist_cfg.new
 
 ########################################################################
-# 7. TOP run-time namelist settings
+# 6.2. TOP run-time namelist settings
 ########################################################################
 
 if ( "${NEMO_TOP_MODULES}" != "" ) then
-  sed -e 's/^[[:blank:]]*nn_dttrc .*$/nn_dttrc = 1/' \
-      -e 's/^[[:blank:]]*nn_writetrc .*$/nn_writetrc = '"${ts_per_day}"'/' \
-      -e 's/^[[:blank:]]*nn_writedia .*$/nn_writedia = '"${ts_per_day}"'/' \
-      -e 's/^[[:blank:]]*ln_trcrad .*$/ln_trcrad = .true./' \
-      -e 's/^[[:blank:]]*nn_rstctl .*$/nn_rstctl = '"${rstctl}"'/' \
-      -e 's/^[[:blank:]]*ln_rsttr .*$/ln_rsttr = '"${rstart}"'/' \
-      namelist_top > namelist_top.tmp && \
-      mv -f namelist_top.tmp namelist_top
+
+\cat >>  namelist_top_cfg.new << EOF1
+&namtrc_run
+    nn_dttrc    = 1
+    nn_writetrc = ${ts_per_day}
+    ln_top_euler = .false.
+    ln_rsttr = ${rstart}
+    nn_rsttr = ${rstctl}
+    cn_trcrst_in  = "restart_trc"
+    cn_trcrst_out = "restart_trc"
+/
+&namtrc_adv
+    ln_trcadv_tvd     =  .false.
+    ln_trcadv_muscl   =  .true.
+/
+&namtrc_rad
+    ln_trcrad   =  .true.
+/
+&namtrc_dia
+    ln_diatrc     =  .false.
+    nn_writedia   =  ${ts_per_day}
+/
+EOF1
+
+${merge_nml} namelist_top_cfg namelist_top_cfg.new tmp
+mv -f tmp namelist_top_cfg
+rm -f namelist_top_cfg.new
 
 endif
 
