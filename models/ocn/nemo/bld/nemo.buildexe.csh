@@ -57,9 +57,9 @@ endif
 
 # If bit-for-bit reproducibility, turn on NEMO reproducibility key
 set bfb_cpp = 
-#if ( "${BFBFLAG}" == "TRUE" ) then
-#   set bfb_cpp = "-Dkey_mpp_rep"
-#endif
+if ( "${BFBFLAG}" == "TRUE" ) then
+   set bfb_cpp = "-Dkey_nosignedzero"
+endif
 # If debug mode is active, turn on NEMO fucntion to avoid compiler trap on signed zero
 if ( "${DEBUG}" == "TRUE" ) then
    set bfb_cpp = "${bfb_cpp} -Dkey_nosignedzero"

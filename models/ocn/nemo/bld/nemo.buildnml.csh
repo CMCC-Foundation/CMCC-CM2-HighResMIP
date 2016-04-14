@@ -122,8 +122,8 @@ cp ${CASEBUILD}/nemoconf/namelist* . || exit 1
 cp ${CASEBUILD}/nemoconf/*.xml . || exit 1
 
 # NEMO postrun template script for output files rebuild
-if !( -f ${CASEBUILD}/nemoconf/postrun.tpl ) then
-  cp ${CODEROOT}/ocn/${COMP_OCN}/bld/postrun.tpl ${CASEBUILD}/nemoconf/ || exit 1
+if !( -f ${CASEBUILD}/nemoconf/postrun_tpl ) then
+  cp ${CODEROOT}/ocn/${COMP_OCN}/bld/postrun_tpl ${CASEBUILD}/nemoconf/ || exit 1
 endif
 
 ########################################################################
@@ -272,6 +272,8 @@ endif
 #
 # Restart files
 #
+set ocerstinp = "restart"
+set trcrstinp = "restart_trc"
 if ("${CONTINUE_RUN}" == "TRUE" || "${RUN_TYPE}" != "startup") then
   #
   if ("${CONTINUE_RUN}" == "FALSE" && "${RUN_TYPE}" != "startup") then
@@ -282,26 +284,17 @@ if ("${CONTINUE_RUN}" == "TRUE" || "${RUN_TYPE}" != "startup") then
     set EXPID = ${CASE}
   endif
   #
-  # Looks for restart files (1 file per PE case)
+  # Looks for restart files and set the variable for the namelist substitution
   set flist = `ls -1rt ${EXPID}_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_restart_[0-9][0-9][0-9][0-9].nc | tail -1`
   if (${?flist} == 1 && "x${flist}" != "x" ) then
-    set flist = `ls -1rt ${EXPID}_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_restart_[0-9][0-9][0-9][0-9].nc`
-    # TODO: check consistency with $NTASKS_OCN
-    foreach f (${flist})
-      set pe = `echo ${f} | sed -e "s/\.nc//" | awk -F '_' '{ print $NF ; }'`
-#      if (-e restart_${pe}.nc) then
-        rm -f restart_${pe}.nc
-#      endif
-      ln -s ${f} restart_${pe}.nc
-    end
-    set rest_file = "restart_0000.nc"
+    set ocerstinp = `echo ${flist} | cut -d "_" -f 1-3`
+    set rest_file = "${ocerstinp}_0000.nc"
   else
     # Looks for restart file (single restart file case)
     set flist = `ls -1rt ${EXPID}_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_restart.nc | tail -1`
     if (${?flist} == 1 && "x${flist}" != "x") then
-      rm -f restart.nc
-      ln -s ${flist} restart.nc
-      set rest_file = "restart.nc"
+      set ocerstinp = `echo ${flist} | cut -d "." -f 1`
+      set rest_file = "${ocerstinp}.nc"
     else
       # No restart file found
       if ("${CONTINUE_RUN}" == "TRUE") then
@@ -327,21 +320,12 @@ if ("${CONTINUE_RUN}" == "TRUE" || "${RUN_TYPE}" != "startup") then
     # Looks for restart files (1 file per PE case)
     set flist = `ls -1rt ${EXPID}_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_restart_trc_[0-9][0-9][0-9][0-9].nc | tail -1`
     if (${?flist} == 1 && "x${flist}" != "x") then
-      set flist = `ls -1rt ${EXPID}_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_restart_trc_[0-9][0-9][0-9][0-9].nc`
-      # TODO: check consistency with $NTASKS_OCN
-      foreach f (${flist})
-        set pe = `echo ${f} | sed -e "s/\.nc//" | awk -F '_' '{ print $NF ; }'`
-#        if (-e restart_trc_${pe}.nc) then
-          rm -f restart_trc_${pe}.nc
-#        endif
-        ln -s ${f} restart_trc_${pe}.nc
-      end
+      set trcrstinp = `echo ${flist} | cut -d "_" -f 1-4`
     else
       # Looks for restart file (single restart file case)
       set flist = `ls -1rt ${EXPID}_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_restart_trc.nc | tail -1`
       if (${?flist} == 1 && "x${flist}" != "x") then
-        rm -f restart_trc.nc
-        ln -s ${flist} restart_trc.nc
+        set trcrstinp = `echo ${flist} | cut -d "." -f 1`
       else
         # No restart file found
         if ("${CONTINUE_RUN}" == "TRUE") then
@@ -611,38 +595,48 @@ endif
 
 \cat >>  namelist_cfg.new << EOF1
 &namrun
-    cn_exp    = '${CASE}'
-    nn_it000  = ${nit000}
-    nn_itend  = ${nitend}
-    sn_date0  = ${date0}
-    nn_stock  = ${nstock}
-    nn_write  = ${nstock}
-    nn_rstctl = ${rstctl}
-    ln_rstart = ${rstart}
+    cn_exp    = '${CASE}'    !  experiment name
+    nn_it000  = ${nit000}    !  first time step
+    nn_itend  = ${nitend}    !  last  time step
+    nn_date0  = ${date0}     !  date at nit_0000 (format yyyymmdd)     
+    nn_stock  = ${nstock}    !  frequency of creation of a restart file
+    nn_write  = ${nstock}    !  frequency of write in the output file (no iomput)
+    nn_rstctl = ${rstctl}    !  restart control ==> activated only if ln_rstart=T
+    ln_rstart = ${rstart}    !  start from rest (F) or from a restart file (T)
+    cn_ocerst_in = "${ocerstinp}" !  suffix of ocean restart name (input)
 /
 &namzgr
-    ln_zco = .false.
-    ln_zps = .true.
-    ln_sco = .false.
+    ln_zco     = .false.     !  z-coordinate - full    steps
+    ln_zps     = .true.      !  z-coordinate - partial steps
+    ln_sco     = .false.     !  s- or hybrid z-s-coordinate
+    ln_isfcav  = .false.     !  ice shelf cavity
 /
 &namdom
-    rn_rdt    = ${DTSEC}
-    nn_closea = 1
-    nn_msh    = ${msh}
+    rn_rdt    = ${DTSEC}     !  time step for the dynamics
+    nn_closea = 1            !  remove (=0) or keep (=1) closed seas and lakes
+    nn_msh    = ${msh}       !  create (=1) a mesh file or not (=0)
 /
 &namsbc
-    nn_fsbc     = ${nnfsbc}
-    nn_fwb      = ${nnfwb}
-    ln_cpl      = .true.
-    ln_blk_core = .false.
-    nn_ice      = 0 
-    nn_ice_embd = 0 
-    ln_rnf      = .false.
-    ln_ssr      = .false.
+    nn_fsbc     = ${nnfsbc}  !  frequency of surface boundary condition computation
+    nn_fwb      = ${nnfwb}   !  FreshWater Budget: =0 unchecked, =1 global mean of e-p-r set to zero at each time step
+    ln_cpl      = .true.     !  atmosphere coupled   formulation
+    ln_blk_core = .false.    !  CORE bulk formulation
+    nn_ice      = 0          !  =0 no ice boundary condition from LIM model
+    nn_ice_embd = 0          !  ice shelf melting/freezing, 0 =no isf
+    ln_rnf      = .true.     !  runoffs
+    ln_ssr      = .false.    !  Sea Surface Restoring on T and/or S
+/
+&namsbc_rnf
+   ln_rnf_mouth = .false.    !  specific treatment at rivers mouths
+   ln_rnf_depth = .true.     !  compute depth propagation of runoff (uses rn_hrnf)
+   rn_rnf_bnd   =  0.0       !  max allowed runoff (redistribute otherwise) [kg/m2/s]
 /
 &namzdf
-    nn_evdm  = 1 
-    rn_avevd = 10.0
+    nn_evdm  = 1             !  evd apply on tracer (=0) or on tracer and momentum (=1)
+    rn_avevd = 10.0          !  evd mixing coefficient [m2/s]
+/
+&namctl
+   ln_ctl      = .false.     !  trends control print (expensive!)
 /
 EOF1
 
@@ -658,24 +652,24 @@ if ( "${NEMO_TOP_MODULES}" != "" ) then
 
 \cat >>  namelist_top_cfg.new << EOF1
 &namtrc_run
-    nn_dttrc    = 1
-    nn_writetrc = ${ts_per_day}
-    ln_top_euler = .false.
-    ln_rsttr = ${rstart}
-    nn_rsttr = ${rstctl}
-    cn_trcrst_in  = "restart_trc"
-    cn_trcrst_out = "restart_trc"
+    nn_dttrc    = 1                   !  time step frequency for passive tracers coupling
+    nn_writetrc = ${ts_per_day}       !  time step frequency for tracer outputs
+    ln_top_euler = .false.            !  use Euler time-stepping for TOP
+    ln_rsttr = ${rstart}              !  start from a restart file (T) or not (F)
+    nn_rsttr = ${rstctl}              !  restart control = 0 initial time step is not compared to the restart
+    cn_trcrst_in  = "${trcrstinp}"    !  suffix of pass. tracer restart name (input)
+    cn_trcrst_out = "restart_trc"     !  suffix of pass. tracer restart name (output)
 /
 &namtrc_adv
-    ln_trcadv_tvd     =  .false.
-    ln_trcadv_muscl   =  .true.
+    ln_trcadv_tvd     =  .false.      !  TVD scheme
+    ln_trcadv_muscl   =  .true.       !  MUSCL scheme
 /
 &namtrc_rad
-    ln_trcrad   =  .true.
+    ln_trcrad   =  .true.             !  artificially correct negative concentrations (T) or not (F)
 /
 &namtrc_dia
-    ln_diatrc     =  .false.
-    nn_writedia   =  ${ts_per_day}
+    ln_diatrc     =  .false.          !  save additional diag. (T) or not (F)
+    nn_writedia   =  ${ts_per_day}    !  output time step frequency for diagnostics
 /
 EOF1
 

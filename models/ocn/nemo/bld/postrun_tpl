@@ -1,23 +1,25 @@
-#!/bin/sh
+#!/bin/bash
 #BSUB -J postrun          # Name of the job.
 #BSUB -o postrun_%J.out   # Appends std output to file %J.out.
 #BSUB -e postrun_%J.out   # Appends std error to  file %J.out.
 #BSUB -q serial_6h             # queue
-#BSUB -n 4                 # Number of CPUs
-#BSUB -R "span[ptile=4]"   #
+#BSUB -n REBPROC                 # Number of CPUs
+#BSUB -R "span[ptile=16]"   #
 #BSUB -N 
 #BSUB -W 01:30
-#BSUB -L /bin/sh
+#BSUB -L /bin/bash
 
 #######################################################################
 
 set -xv
 
 #######################################################################
+# LOAD environemnt
+#######################################################################
 
 which module
 stat=$?
-set -e
+set -exv
 if [ ${stat} -ne 0 ]; then
   source /usr/share/Modules/init/sh
 fi
@@ -42,64 +44,100 @@ module load INTEL/intel_xe_2015.3.187
 module load IMPI/intel_mpi_5.0.3.048
 
 #######################################################################
+# General settings
+#######################################################################
 
 OUTDIR="DOUT_S_ROOT"
 AUXDIR=`echo ${OUTDIR} | sed -e "s/\/archive\//\/postproc\//" -e "s/\/hist//"`
 EXPID="CASE"
 CONF="ORCA1"   # redefined later
+restart="RESTART"
 
 CDO="cdo"
 
 REBUILD="./rebuild_nemo"
 
 #######################################################################
+# show environment settings
+#######################################################################
 
 module list
 printenv | sort
 
+#######################################################################
+#           REBUILD single PEs output files if present                #
 #######################################################################
 
 NCPU=`echo ${LSB_HOSTS} | wc -w`
 
 y1="YYYYMMDD1"
 y2="YYYYMMDD2"
-freqs="1h 6h 1d 5d 1m 1y"
-fouts="grid_W grid_T ptrc_T grid_U grid_V diaptr"
 
 nproc=0
-for freq in ${freqs} ; do
-  for v in ${fouts} ; do
+flist=`ls ${EXPID}_*_${y1}_${y2}_*0000.nc 2> /dev/null | wc -w`
 
-    nproc=`ps -f -u ${USER} | grep "${REBUILD}" | grep ${y1} | wc -l`
-    while [ ${nproc} -ge ${NCPU} ]; do
-      sleep 10
-      nproc=`ps -f -u ${USER} | grep "${REBUILD}" | grep ${y1} | wc -l`
-    done
+if [ ${flist} -gt 0 ] ; then
 
-    if [ -f ${EXPID}_${freq}_${y1}_${y2}_${v}.nc -a -f ${EXPID}_${freq}_${y1}_${y2}_${v}_0000.nc ]; then
-      rm -f ${EXPID}_${freq}_${y1}_${y2}_${v}.nc
-    fi
-    if [ -f ${EXPID}_${freq}_${y1}_${y2}_${v}_0000.nc ]; then
-      npes=`ls ${EXPID}_${freq}_${y1}_${y2}_${v}_[0-9][0-9][0-9][0-9].nc | wc -w`
-        ${REBUILD} ${EXPID}_${freq}_${y1}_${y2}_${v} ${npes} && \
-      rm -f ${EXPID}_${freq}_${y1}_${y2}_${v}_[0-9][0-9][0-9][0-9].nc || exit 1 &
-    fi
-  done
-done
+   flist=`ls ${EXPID}_*_${y1}_${y2}_*0000.nc`
+
+   for ff in ${flist} ; do
+   
+       thisfile=`echo ${ff} |  sed -e "s/_0000.nc//"`
+        
+       nproc=`ps -f -u ${USER} | grep "${REBUILD}" | grep ${y1} | wc -l`
+       while [ ${nproc} -ge ${NCPU} ]; do
+         sleep 10
+         nproc=`ps -f -u ${USER} | grep "${REBUILD}" | grep ${y1} | wc -l`
+       done
+
+       if [ -f ${thisfile}.nc -a -f ${thisfile}_0000.nc ]; then
+         rm -f ${thisfile}.nc
+       fi
+  
+       # scalar files only renamed
+       isscal=0
+       if [[ "${thisfile}" == *"scalar"* ]] ; then
+         isscal=1
+         mv ${thisfile}_0000.nc ${thisfile}.nc
+       fi
+
+       # standard file
+       if [ -f ${thisfile}_0000.nc -a ${isscal} -eq 0 ]; then
+         npes=`ls ${thisfile}_[0-9][0-9][0-9][0-9].nc | wc -w`
+           ${REBUILD} ${thisfile} ${npes} && \
+         rm -f ${thisfile}_[0-9][0-9][0-9][0-9].nc || exit 1 &
+       fi
+   done
+   #
+   # move merged file to EXPID short term archive only when it is locked!
+   while [ -f ../${EXPID}.st_archive.lock ]; do
+     sleep 10
+   done
+
+   mv ${EXPID}_*${y1}_${y2}*[z-aA-Z].nc ${OUTDIR}/ || exit 1
+
+else
+   echo "No files found for rebuild process."
+fi
 
 wait
 
-if [ -f ${EXPID}_1m_${y1}_${y2}_grid_T.nc ]; then
-  fname="${EXPID}_1m_${y1}_${y2}_grid_T.nc"
-  freq="1m"
-elif [ -f ${EXPID}_1d_${y1}_${y2}_grid_T.nc ]; then
-  fname="${EXPID}_1d_${y1}_${y2}_grid_T.nc"
-  freq="1d"
-elif [ -f ${EXPID}_1y_${y1}_${y2}_grid_T.nc ]; then
-  fname="${EXPID}_1y_${y1}_${y2}_grid_T.nc"
-  freq="1y"
+#######################################################################
+#   Create metrics for post-processing (only once if not restart)     #
+#######################################################################
+if [ "${restart}" == "FALSE" ] ; then
+
+#
+# 1. Check coherence of model horizontal grid resolution
+#
+if [ -f ${OUTDIR}/${EXPID}_1m_${y1}_${y2}_grid_T.nc ]; then
+  fname="${OUTDIR}/${EXPID}_1m_${y1}_${y2}_grid_T.nc"
+elif [ -f ${OUTDIR}/${EXPID}_1d_${y1}_${y2}_grid_T.nc ]; then
+  fname="${OUTDIR}/${EXPID}_1d_${y1}_${y2}_grid_T.nc"
+elif [ -f ${OUTDIR}/${EXPID}_1y_${y1}_${y2}_grid_T.nc ]; then
+  fname="${OUTDIR}/${EXPID}_1y_${y1}_${y2}_grid_T.nc"
 else
-  echo "ERROR: unknown resolution! nlon = ${nlon}"
+  echo "ERROR: unable to find an output grid_T file to verify this model resolution"
   exit 1
 fi
 nlon=`${CDO} griddes ${fname} | grep -i xsize | cut -d'=' -f2 | tr -d '[:blank:]'`
@@ -120,31 +158,37 @@ case ${nlon} in
   ;;
 esac
 
+#
+# 2. Create CDO grid description files
+#
+# Here we used monthly files by default
 
-if [ ! -f ${CONF}_grid_T_griddes.txt -a -f ${EXPID}_${freq}_${y1}_${y2}_grid_T.nc ]; then
-    ${CDO} -f nc griddes -selname,sosstsst \
-    ${EXPID}_${freq}_${y1}_${y2}_grid_T.nc >${CONF}_grid_T_griddes.txt
+if [ ! -f ${CONF}_grid_T_griddes.txt -a -f ${OUTDIR}/${EXPID}_1m_${y1}_${y2}_grid_T.nc ]; then
+    ${CDO} -f nc griddes -selname,tos \
+    ${OUTDIR}/${EXPID}_1m_${y1}_${y2}_grid_T.nc >${CONF}_grid_T_griddes.txt
 fi
-if [ ! -f ${CONF}_grid_U_griddes.txt -a -f ${EXPID}_1m_${y1}_${y2}_grid_U.nc ]; then
-    ${CDO} -f nc griddes -selname,vozocrtx \
-    ${EXPID}_1m_${y1}_${y2}_grid_U.nc >${CONF}_grid_U_griddes.txt
+if [ ! -f ${CONF}_grid_U_griddes.txt -a -f ${OUTDIR}/${EXPID}_1m_${y1}_${y2}_grid_U.nc ]; then
+    ${CDO} -f nc griddes -selname,uo \
+    ${OUTDIR}/${EXPID}_1m_${y1}_${y2}_grid_U.nc >${CONF}_grid_U_griddes.txt
 fi
-if [ ! -f ${CONF}_grid_V_griddes.txt -a -f ${EXPID}_1m_${y1}_${y2}_grid_V.nc ]; then
-    ${CDO} -f nc griddes -selname,vomecrty \
-    ${EXPID}_1m_${y1}_${y2}_grid_V.nc >${CONF}_grid_V_griddes.txt
+if [ ! -f ${CONF}_grid_V_griddes.txt -a -f ${OUTDIR}/${EXPID}_1m_${y1}_${y2}_grid_V.nc ]; then
+    ${CDO} -f nc griddes -selname,vo \
+    ${OUTDIR}/${EXPID}_1m_${y1}_${y2}_grid_V.nc >${CONF}_grid_V_griddes.txt
 fi
-if [ ! -f ${CONF}_grid_T_zaxisdes.txt -a -f ${EXPID}_1m_${y1}_${y2}_grid_T.nc ]; then
-    ${CDO} -f nc zaxisdes -selname,votemper \
-    ${EXPID}_1m_${y1}_${y2}_grid_T.nc | \
-    sed -e "s/generic/depth_below_sea/" >${CONF}_grid_T_zaxisdes.txt
+if [ ! -f ${CONF}_grid_T_zaxisdes.txt -a -f ${OUTDIR}/${EXPID}_1m_${y1}_${y2}_grid_T.nc ]; then
+    ${CDO} -f nc zaxisdes -selname,thetao \
+    ${OUTDIR}/${EXPID}_1m_${y1}_${y2}_grid_T.nc | \
+    sed -e "s/generic/depth_below_sea/" | sed -n "/bounds/q;p" >${CONF}_grid_T_zaxisdes.txt
 fi
-if [ ! -f ${CONF}_grid_W_zaxisdes.txt -a -f ${EXPID}_1m_${y1}_${y2}_grid_W.nc ]; then
-    ${CDO} -f nc zaxisdes -selname,vovecrtz \
-    ${EXPID}_1m_${y1}_${y2}_grid_W.nc | \
-    sed -e "s/generic/depth_below_sea/" >${CONF}_grid_W_zaxisdes.txt
+if [ ! -f ${CONF}_grid_W_zaxisdes.txt -a -f ${OUTDIR}/${EXPID}_1m_${y1}_${y2}_grid_W.nc ]; then
+    ${CDO} -f nc zaxisdes -selname,wo \
+    ${OUTDIR}/${EXPID}_1m_${y1}_${y2}_grid_W.nc | \
+    sed -e "s/generic/depth_below_sea/" | sed -n "/bounds/q;p" >${CONF}_grid_W_zaxisdes.txt
 fi
 
-#######################################################################
+#
+# 3. Rebuild mesh_mask and create grid metrics
+#
 
 meshmask="${EXPID}_mesh_mask.nc"
 
@@ -187,8 +231,8 @@ for v in t u v ; do
   fi
 
   if [ ! -f ${EXPID}_${v}volume.nc -a -f ${meshmask} ]; then
-    ${CDO} selname,e3${v} ${meshmask} ${EXPID}_e3${v}.nc
-    ${CDO} setmissval,-1.e30 -ifthen ${EXPID}_${v}maskutil.nc ${EXPID}_e3${v}.nc ${EXPID}_e3${v}_masked.nc
+    ${CDO} -chname,e3${v}_0,e3${v} -selname,e3${v}_0 ${meshmask} ${EXPID}_e3${v}.nc
+    ${CDO} -setmissval,-1.e30 -ifthen ${EXPID}_${v}maskutil.nc ${EXPID}_e3${v}.nc ${EXPID}_e3${v}_masked.nc
     ${CDO} -f nc -setzaxis,${CONF}_grid_T_zaxisdes.txt -setgrid,${CONF}_grid_${g}_griddes.txt \
       -chname,e3${v},cell_volume -mul ${EXPID}_e3${v}.nc ${EXPID}_${v}area.nc ${EXPID}_${v}volume.nc
     ${CDO} -f nc setmissval,-1.e30 -ifthen ${EXPID}_${v}mask.nc \
@@ -197,60 +241,58 @@ for v in t u v ; do
   fi
 done
 
-while [ -f ../${EXPID}.st_archive.lock ]; do
-  sleep 10
-done
+# 
+# Store metrics in postprocessing folder ${AUXDIR}
 #
 
 if [ ! -d ${AUXDIR} ]; then
   mkdir -p ${AUXDIR}
 fi
 
-mv ${EXPID}_*${y1}_${y2}*[z-aA-Z].nc ${OUTDIR}/ || exit 1
-
 for v in T_griddes U_griddes V_griddes T_zaxisdes W_zaxisdes ; do
   if [ ! -f ${AUXDIR}/${CONF}_grid_${v}.txt ]; then
-    cp ${CONF}_grid_${v}.txt ${AUXDIR}/
+    mv ${CONF}_grid_${v}.txt ${AUXDIR}/
   fi
 done
 #
 if [ ! -f ${AUXDIR}/${meshmask} ]; then
-  cp ${meshmask} ${AUXDIR}/
+  mv ${meshmask} ${AUXDIR}/
 fi
 #
 for v in tmaskutil umaskutil vmaskutil tmask umask vmask ; do
   if [ ! -f ${AUXDIR}/${EXPID}_${v}.nc ]; then
-    cp ${EXPID}_${v}.nc ${AUXDIR}/
+    mv ${EXPID}_${v}.nc ${AUXDIR}/
   fi
 done
 #
 for v in t u v ; do
   if [ ! -f ${AUXDIR}/${EXPID}_${v}area.nc -a -f ${EXPID}_${v}area.nc ]; then
-    cp ${EXPID}_${v}area.nc ${AUXDIR}/
+    mv ${EXPID}_${v}area.nc ${AUXDIR}/
   fi
   if [ ! -f ${AUXDIR}/${EXPID}_${v}area_masked.nc -a -f ${EXPID}_${v}area_masked.nc ]; then
-    cp ${EXPID}_${v}area_masked.nc ${AUXDIR}/
+    mv ${EXPID}_${v}area_masked.nc ${AUXDIR}/
   fi
   if [ ! -f ${AUXDIR}/${EXPID}_${v}area_int.nc -a -f ${EXPID}_${v}area_int.nc ]; then
-    cp ${EXPID}_${v}area_int.nc ${AUXDIR}/
+    mv ${EXPID}_${v}area_int.nc ${AUXDIR}/
   fi
   if [ ! -f ${AUXDIR}/${EXPID}_${v}volume.nc -a -f ${EXPID}_${v}volume.nc ]; then
-    cp ${EXPID}_${v}volume.nc ${AUXDIR}/
+    mv ${EXPID}_${v}volume.nc ${AUXDIR}/
   fi
   if [ ! -f ${AUXDIR}/${EXPID}_${v}volume_masked.nc -a -f ${EXPID}_${v}volume_masked.nc ]; then
-    cp ${EXPID}_${v}volume_masked.nc ${AUXDIR}/
+    mv ${EXPID}_${v}volume_masked.nc ${AUXDIR}/
   fi
   if [ ! -f ${AUXDIR}/${EXPID}_${v}volume_int.nc -a -f ${EXPID}_${v}volume_int.nc ]; then
-    cp ${EXPID}_${v}volume_int.nc ${AUXDIR}/
+    mv ${EXPID}_${v}volume_int.nc ${AUXDIR}/
   fi
   for m in e1 e2 e3 ; do
     if [ ! -f ${AUXDIR}/${EXPID}_${m}${v}.nc -a -f ${EXPID}_${m}${v}.nc ]; then
-      cp ${EXPID}_${m}${v}.nc ${AUXDIR}/
+      mv ${EXPID}_${m}${v}.nc ${AUXDIR}/
     fi
     if [ ! -f ${AUXDIR}/${EXPID}_${m}${v}_masked.nc -a -f ${EXPID}_${m}${v}_masked.nc ]; then
-      cp ${EXPID}_${m}${v}_masked.nc ${AUXDIR}/
+      mv ${EXPID}_${m}${v}_masked.nc ${AUXDIR}/
     fi
   done
 done
 #
 
+fi # control on restart
