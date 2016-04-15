@@ -329,7 +329,7 @@ do
     set ${CASE}*diad*.nc ;                                                                                                                     dispose ifiles_n ${ocndatarepo}  $*
     set ${CASE}*icemod*.nc ;                                                                                                                   dispose ifiles_n ${ocndatarepo}  $*
           # handle restart files
-    lastrst=`ls -rt ${CASE}*_restart*.nc 2> /dev/null | tail -1 | cut -d "_" -f 2`
+    lastrst=`ls -rt ${CASE}*_restart*.nc 2> /dev/null | tail -1 | sed -e "s;${CASE}_;;" | cut -d "_" -f 1`
     set ${CASE}_*_restart*.nc ;     latest=`ls -rt ${CASE}_${lastrst}_restart*.nc 2> /dev/null`; mv $latest ${sta}/rest/${dname} 2> /dev/null; dispose ifiles_y ${sta}/ocn/rest $*
           # handle mask files 
     set mesh_*[0-9][0-9][0-9][0-9].nc ;    dispose ifiles_n ${DOUT_NEMO_REBUILD} $*
