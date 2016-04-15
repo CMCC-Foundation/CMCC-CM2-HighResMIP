@@ -134,19 +134,16 @@
 <dT_mlt_in cam5='.true.'> 1.00 </dT_mlt_in>
 <dT_mlt_in hgrid='gx3v7'> 2.00 </dT_mlt_in>
 <dT_mlt_in hgrid='tn1v1'> 2.00 </dT_mlt_in>
-<dT_mlt_in hgrid='tn0.25v1'> 0.50 </dT_mlt_in>
 
 <rsnw_melt_in              > 1500. </rsnw_melt_in>
 <rsnw_melt_in cam5='.true.'> 1000. </rsnw_melt_in>
 <rsnw_melt_in hgrid='gx3v7'> 2000. </rsnw_melt_in>
 <rsnw_melt_in hgrid='tn1v1'> 2000. </rsnw_melt_in>
-<rsnw_melt_in hgrid='tn0.25v1'> 100. </rsnw_melt_in>
 
 <R_snw              >  1.50 </R_snw>
 <R_snw cam5='.true.'>  1.75 </R_snw>
 <R_snw hgrid='gx3v7'> -2.00 </R_snw>
 <R_snw hgrid='tn1v1'> -2.00 </R_snw>
-<R_snw hgrid='tn0.25v1'> 1.00 </R_snw>
 
 <advection>'remap'</advection>
 
@@ -243,6 +240,7 @@
 
 <f_frzmlt                       >'xxxxx'</f_frzmlt
 <f_frzmlt cice_mode='prescribed'>'xxxxx'</f_frzmlt
+<f_frzmlt          hgrid='tn1v1'>'mxxxx'</f_frzmlt>
 
 <f_strtltx                       >'xxxxx'</f_strtltx>  
 <f_strtltx cice_mode='prescribed'>'xxxxx'</f_strtltx>  
