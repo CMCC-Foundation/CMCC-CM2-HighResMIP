@@ -6,15 +6,20 @@
 !-----------------------------------------------------------------------
 &namrun        !   parameters of the run
 !-----------------------------------------------------------------------
-   cn_exp      =  "N36rback03"  !  experience name
-   nn_it000    =       1   !  first time step
-   nn_itend    =   10   !  last  time step (std 5475)
-   nn_date0    =  20010101   !  date at nit_0000 (format yyyymmdd) used if ln_rstart=F or (ln_rstart=T and nn_rstctl=0 or 1)
-   nn_leapy    =       0   !  Leap year calendar (1) or not (0)
-   ln_rstart   = .false.   !  start from rest (F) or from a restart file (T)
-   nn_rstctl   =       0   !  restart control ==> activated only if ln_rstart=T
-   nn_stock    =   17520   !  frequency of creation of a restart file (modulo referenced to 1)
-   nn_write    =   17520   !  frequency of write in the output file   (modulo referenced to nn_it000)
+   cn_exp      =  "NEMO36"     !  experience name
+   nn_it000    =       1       !  first time step
+   nn_itend    =   10          !  last  time step (std 5475)
+   nn_date0    =  20010101     !  date at nit_0000 (format yyyymmdd) used if ln_rstart=F or (ln_rstart=T and nn_rstctl=0 or 1)
+   nn_leapy    =       0       !  Leap year calendar (1) or not (0)
+   ln_rstart   = .false.       !  start from rest (F) or from a restart file (T)
+   nn_rstctl   =       0       !  restart control ==> activated only if ln_rstart=T
+   cn_ocerst_in  = "restart"   !  suffix of ocean restart name (input)
+   cn_ocerst_indir = "."       !  directory from which to read input ocean restarts
+   cn_ocerst_out = "restart"   !  suffix of ocean restart name (output)
+   cn_ocerst_outdir = "."      !  directory in which to write output ocean restarts
+   nn_istate   =       0       !  output the initial state (1) or not (0)
+   nn_stock    =   17520       !  frequency of creation of a restart file (modulo referenced to 1)
+   nn_write    =   17520       !  frequency of write in the output file   (modulo referenced to nn_it000)
 /
 !-----------------------------------------------------------------------
 &namcfg        !   parameters of the configuration
@@ -68,7 +73,7 @@
    nn_closea   =    1      !  remove (=0) or keep (=1) closed seas and lakes (ORCA)
 /
 !-----------------------------------------------------------------------
-&namsplit                                                               ("key_dynspg_ts")
+&namsplit      !   time splitting parameters                            ("key_dynspg_ts")
 !----------------------------------------------------------------------- 
    ln_bt_fw      =    .TRUE.           !  Forward integration of barotropic equations
    ln_bt_av      =    .TRUE.           !  Time filtering of barotropic variables
@@ -80,7 +85,7 @@
    nn_bt_flt     =    1                !  Time filter choice
                                        !  = 0 None
                                        !  = 1 Boxcar over   nn_baro barotropic steps
-                                       !  = 2 Boxcar over 2*nn_baro     "        
+                                       !  = 2 Boxcar over 2*nn_baro     "        "
 /
 !-----------------------------------------------------------------------
 &namcrs        !   Grid coarsening for dynamics output and/or
@@ -104,7 +109,7 @@
    nn_ice      = 0         !  =0 no ice boundary condition   ,
    nn_ice_embd = 0         ! embedded sea-ice (full salt and mass exchanges and pressure)
    nn_fwb      = 1
-   ln_rnf      = .false.   !  runoffs                                   (T   => fill namsbc_rnf)
+   ln_rnf      = .true.   !  runoffs                                   (T   => fill namsbc_rnf)
    ln_ssr      = .false.   !  Sea Surface Restoring on T and/or S       (T => fill namsbc_ssr)
 /
 !-----------------------------------------------------------------------
@@ -146,14 +151,15 @@
    sn_dep_rnf  = 'runoffs'            ,         0         , 'rodepth' ,   .false.    , .true. , 'yearly'  , ''       , ''       , ''
 
    ln_rnf_mouth = .false.    !  specific treatment at rivers mouths
-   ln_rnf_depth = .false.    !  read in depth information for runoff
+   ln_rnf_depth = .true.     !  read in depth information for runoff
+   rn_hrnf = 20.0            !  depth over which enhanced vertical mixing and runoff spread is used in CESM
    ln_rnf_tem   = .false.    !  read in temperature information for runoff
    ln_rnf_sal   = .false.    !  read in salinity information for runoff
    ln_rnf_depth_ini = .false. !  compute depth at initialisation from runoff file
    rn_rnf_max   = 0.05       !  max value of the runoff climatology over global domain ( if ln_rnf_depth_ini = .true )
    rn_dep_max = 150.         !  depth over which runoffs is spread ( ln_rnf_depth_ini = .true )
-   rn_hrnf = 20.0
    nn_rnf_depth_file = 0     ! create (=1) a runoff depth file or not (=0)
+   rn_rnf_bnd   =  0.0       !  max allowed runoff (redistribute otherwise) [kg/m2/s]
 /
 !-----------------------------------------------------------------------
 &namsbc_apr    !   Atmospheric pressure used as ocean forcing or in bulk
@@ -284,6 +290,7 @@ ln_useCT    = .false.  ! use of Conservative Temp. ==> surface CT converted in P
    ln_botmix_grif   =  .false.   !  griffies operator with lateral mixing on bottom (require "key_ldfslp")
    rn_aht_0         =  1000.    !  horizontal eddy diffusivity for tracers [m2/s]
    rn_aeiv_0        =  1000.    !  eddy induced velocity coefficient [m2/s]    (require "key_traldf_eiv")
+   rn_aht_fac       =     6.    !  Scaling factor for eddy diffusivity in ldftra_c2d (CESM)
 /
 !-----------------------------------------------------------------------
 &namtra_dmp    !   tracer: T & S newtonian damping
@@ -389,7 +396,7 @@ ln_useCT    = .false.  ! use of Conservative Temp. ==> surface CT converted in P
 !-----------------------------------------------------------------------
 &namctl        !   Control prints & Benchmark
 !----------------------------------------------------------------------- 
-   ln_ctl      = .true.   !  trends control print (expensive!)
+   ln_ctl      = .false.   !  trends control print (expensive!)
 /
 !-----------------------------------------------------------------------
 &namptr       !   Poleward Transport Diagnostic
@@ -398,7 +405,7 @@ ln_useCT    = .false.  ! use of Conservative Temp. ==> surface CT converted in P
 !-----------------------------------------------------------------------
 &namhsb       !  Heat and salt budgets
 !-----------------------------------------------------------------------
-   ln_diahsb  = .false.  
+   ln_diahsb  = .true.  
 /
 !-----------------------------------------------------------------------
 &namdyn_nept  !   Neptune effect (simplified: lateral and vertical diffusions removed)
