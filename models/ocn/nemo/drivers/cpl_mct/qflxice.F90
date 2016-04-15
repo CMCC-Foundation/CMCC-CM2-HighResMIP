@@ -139,7 +139,7 @@ module qflxice
 
 !   cp_over_lhfusion = rau0*rcp/(lfus*raufw)
    cp_over_lhfusion = rau0*rcp/(lfus*rhoic)
-   hflux_factor     = ro0cpr
+   hflux_factor     = 1. / ( rau0*rcp )
 
    kmxice           = 1
    lactive_ice      = .true.

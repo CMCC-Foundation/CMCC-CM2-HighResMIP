@@ -20,11 +20,12 @@ module ocn_comp_mct
    use lib_mpp
    use lbclnk
    use sbccpl_cesm
+   use sbc_oce,   ONLY: nn_fsbc
    use in_out_manager
    use geo2ocean
    use step
    use restart
-   use nemogcm,    ONLY: cform_aaa, nemo_cesm_init, nemo_closefile
+   use nemogcm,    ONLY: cform_aaa, nemo_init, nemo_closefile
    use lib_fortran
    use iom
 
@@ -235,11 +236,11 @@ contains
     end if
 
 
-    call t_startf ('nemo_cesm_init')
+    call t_startf ('nemo_init')
 
     ! NEMO initialization
     ! NOTE: we can't use any NEMO variable/routine before the following call
-    call nemo_cesm_init(mpicom_o)
+    call nemo_init(mpicom_o)
 
     ! check that all process are still there...
     ! If some process have an error, they will never enter in step and other
@@ -248,7 +249,7 @@ contains
     if (nstop /= 0) then
        if (lwp) then   ! error print
           write(numout,cform_err)
-          write(numout,*) nstop, ' error have been found' 
+          write(numout,*) nstop, ' error have been found after nemo_init from ocn_comp_mct' 
        end if
        if (lk_mpp) call mppsync       ! sync PEs
        call shr_sys_abort('ocn_comp_mct: ocn_init_mct: '//SubName//': nstop>0 !')
@@ -514,7 +515,7 @@ contains
           if (nstop /= 0) then
              if (lwp) then   ! error print
                 write(numout,cform_err)
-                write(numout,*) nstop, ' error have been found' 
+                write(numout,*) nstop, ' error have been found in step from ocn_comp_mct' 
              end if
              if (lk_mpp) call mppsync       ! sync PEs
              call shr_sys_abort('ocn_comp_mct: '//SubName//': nstop>0 !')
@@ -846,7 +847,12 @@ nitrst_old = 0
       write(numout,*) nstop, 'error have been found'
    endif
    !
+   CALL iom_context_finalize( cxios_context )   ! Finalize xios files
+   IF( ln_crs ) CALL iom_context_finalize( trim(cxios_context)//"_crs" ) !
+   !
    call nemo_closefile
+   ! 
+   CALL xios_finalize                           ! end mpp communications with xios
 
    ! Free allocated space
    call sbc_cpl_cesm_finalize
@@ -1182,6 +1188,7 @@ nitrst_old = 0
 !    o  salt   -- salt                                     (kg(salt)/m2/s)
 !    o  swnet  -- net short-wave heat flux                 (W/m2   )
 !    o  sen    -- sensible heat flux                       (W/m2   )
+!    o  lat    -- latent heat flux                         (W/m2   )
 !    o  lwup   -- longwave radiation (up)                  (W/m2   )
 !    o  lwdn   -- longwave radiation (down)                (W/m2   )
 !    o  melth  -- heat flux from snow&ice melt             (W/m2   )
@@ -1314,6 +1321,7 @@ nitrst_old = 0
 !  unpack atmospheric CO2
 !
 !-----------------------------------------------------------------------
+#if defined key_cpl_carbon_cycle
    if (index_x2o_Sa_co2prog > 0) then
       n = 0
       do j=lnldj,lnlej
@@ -1333,6 +1341,7 @@ nitrst_old = 0
          enddo
       enddo
    endif
+#endif
 
    ! coupling time step flag
    lrecv = .TRUE.
