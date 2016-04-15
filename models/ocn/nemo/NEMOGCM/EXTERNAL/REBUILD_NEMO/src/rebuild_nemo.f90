@@ -216,7 +216,7 @@ PROGRAM rebuild_nemo
       WRITE(numerr,*) 'ERROR! : number of files to rebuild in file does not agree with namelist'
       WRITE(numerr,*) 'Attribute DOMAIN_number_total is : ', ndomain_file
       WRITE(numerr,*) 'Number of files specified in namelist is: ', ndomain
-      STOP
+      STOP 9
    ENDIF
   
 !2.1 Set up the output file
@@ -284,7 +284,7 @@ PROGRAM rebuild_nemo
       WRITE(numerr,*) 'ERROR! : DOMAIN_local_sizes attribute does not match rebuild dimension lengths in the first file'
       WRITE(numerr,*) 'Attribute DOMAIN_local_sizes is : ', local_sizes
       WRITE(numerr,*) 'Dimensions to be rebuilt are of size : ', outdimlens(rebuild_dims(1)), outdimlens(rebuild_dims(2)) 
-      STOP
+      STOP 9
    ENDIF
 
    IF (l_findDims) THEN
@@ -400,23 +400,23 @@ PROGRAM rebuild_nemo
 
             SELECT CASE( xtype )
                CASE( NF90_BYTE )
-                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_0d_i1 ) )
                   globaldata_0d_i1 = 0
+                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_0d_i1 ) )
                CASE( NF90_SHORT )
-                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_0d_i2 ) )
                   globaldata_0d_i2 = 0
+                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_0d_i2 ) )
                CASE( NF90_INT )
-                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_0d_i4 ) )
                   globaldata_0d_i4 = 0
+                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_0d_i4 ) )
                CASE( NF90_FLOAT )
-                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_0d_sp ) )
                   globaldata_0d_sp = 0.
+                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_0d_sp ) )
                CASE( NF90_DOUBLE )
-                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_0d_dp ) )
                   globaldata_0d_dp = 0.
+                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_0d_dp ) )
                CASE DEFAULT
                   WRITE(numerr,*) 'Unknown nf90 type: ', xtype
-                  STOP
+                  STOP 9
             END SELECT
 
          ELSEIF( ndims == 1 ) THEN
@@ -424,27 +424,27 @@ PROGRAM rebuild_nemo
             SELECT CASE( xtype )
                CASE( NF90_BYTE )
                   ALLOCATE(globaldata_1d_i1(indimlens(dimids(1))))
-                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_1d_i1 ) )
                   globaldata_1d_i1(:) = 0
+                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_1d_i1 ) )
                CASE( NF90_SHORT )
                   ALLOCATE(globaldata_1d_i2(indimlens(dimids(1))))
-                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_1d_i2 ) )
                   globaldata_1d_i2(:) = 0
+                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_1d_i2 ) )
                CASE( NF90_INT )
                   ALLOCATE(globaldata_1d_i4(indimlens(dimids(1))))
-                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_1d_i4 ) )
                   globaldata_1d_i4(:) = 0
+                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_1d_i4 ) )
                CASE( NF90_FLOAT )
                   ALLOCATE(globaldata_1d_sp(indimlens(dimids(1))))
-                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_1d_sp ) )
                   globaldata_1d_sp(:) = 0.
+                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_1d_sp ) )
                CASE( NF90_DOUBLE )
                   ALLOCATE(globaldata_1d_dp(indimlens(dimids(1))))
-                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_1d_dp ) )
                   globaldata_1d_dp(:) = 0.
+                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_1d_dp ) )
                CASE DEFAULT
                   WRITE(numerr,*) 'Unknown nf90 type: ', xtype
-                  STOP
+                  STOP 9
             END SELECT
 
          ELSEIF( ndims == 2 ) THEN
@@ -452,27 +452,27 @@ PROGRAM rebuild_nemo
             SELECT CASE( xtype )
                CASE( NF90_BYTE )
                   ALLOCATE(globaldata_2d_i1(indimlens(dimids(1)),indimlens(dimids(2))))
-                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_2d_i1 ) )
                   globaldata_2d_i1(:,:) = 0
+                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_2d_i1 ) )
                CASE( NF90_SHORT )
                   ALLOCATE(globaldata_2d_i2(indimlens(dimids(1)),indimlens(dimids(2))))
-                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_2d_i2 ) )
                   globaldata_2d_i2(:,:) = 0
+                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_2d_i2 ) )
                CASE( NF90_INT )
                   ALLOCATE(globaldata_2d_i4(indimlens(dimids(1)),indimlens(dimids(2))))
-                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_2d_i4 ) )
                   globaldata_2d_i4(:,:) = 0
+                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_2d_i4 ) )
                CASE( NF90_FLOAT )
                   ALLOCATE(globaldata_2d_sp(indimlens(dimids(1)),indimlens(dimids(2))))
-                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_2d_sp ) )
                   globaldata_2d_sp(:,:) = 0.
+                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_2d_sp ) )
                CASE( NF90_DOUBLE )
                   ALLOCATE(globaldata_2d_dp(indimlens(dimids(1)),indimlens(dimids(2))))
-                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_2d_dp ) )
                   globaldata_2d_dp(:,:) = 0.
+                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_2d_dp ) )
                CASE DEFAULT
                   WRITE(numerr,*) 'Unknown nf90 type: ', xtype
-                  STOP
+                  STOP 9
             END SELECT
 
          ELSEIF( ndims == 3 ) THEN
@@ -481,31 +481,31 @@ PROGRAM rebuild_nemo
                CASE( NF90_BYTE )
                   ALLOCATE(globaldata_3d_i1(indimlens(dimids(1)),indimlens(dimids(2)),       &
                      &                      indimlens(dimids(3))))
-                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_3d_i1 ) )
                   globaldata_3d_i1(:,:,:) = 0
+                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_3d_i1 ) )
                CASE( NF90_SHORT )
                   ALLOCATE(globaldata_3d_i2(indimlens(dimids(1)),indimlens(dimids(2)),       &
                      &                      indimlens(dimids(3))))
+                  globaldata_3d_i2(:,:,:) = 0
                   CALL check_nf90( nf90_get_var( ncid, jv, globaldata_3d_i2 ) )
-                   globaldata_3d_i2(:,:,:) = 0
                CASE( NF90_INT )
                   ALLOCATE(globaldata_3d_i4(indimlens(dimids(1)),indimlens(dimids(2)),       &
                      &                      indimlens(dimids(3))))
-                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_3d_i4 ) )
                   globaldata_3d_i4(:,:,:) = 0
+                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_3d_i4 ) )
                CASE( NF90_FLOAT )
                   ALLOCATE(globaldata_3d_sp(indimlens(dimids(1)),indimlens(dimids(2)),       &
                      &                      indimlens(dimids(3))))
-                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_3d_sp ) )
                   globaldata_3d_sp(:,:,:) = 0.
+                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_3d_sp ) )
                CASE( NF90_DOUBLE )
                   ALLOCATE(globaldata_3d_dp(indimlens(dimids(1)),indimlens(dimids(2)),       &
                      &                      indimlens(dimids(3))))
-                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_3d_dp ) )
                   globaldata_3d_dp(:,:,:) = 0.
+                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_3d_dp ) )
                CASE DEFAULT
                   WRITE(numerr,*) 'Unknown nf90 type: ', xtype
-                  STOP
+                  STOP 9
             END SELECT
 
          ELSEIF( ndims == 4 ) THEN
@@ -514,31 +514,31 @@ PROGRAM rebuild_nemo
                CASE( NF90_BYTE )
                   ALLOCATE(globaldata_4d_i1(indimlens(dimids(1)),indimlens(dimids(2)),       &
                      &                      indimlens(dimids(3)),ntchunk))
-                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_4d_i1, start=(/1,1,1,nt/) ) )
                   globaldata_4d_i1(:,:,:,:) = 0
+                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_4d_i1, start=(/1,1,1,nt/) ) )
                CASE( NF90_SHORT )
                   ALLOCATE(globaldata_4d_i2(indimlens(dimids(1)),indimlens(dimids(2)),       &
                      &                      indimlens(dimids(3)),ntchunk))
-                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_4d_i2, start=(/1,1,1,nt/) ) )
                   globaldata_4d_i2(:,:,:,:) = 0
+                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_4d_i2, start=(/1,1,1,nt/) ) )
                CASE( NF90_INT )
                   ALLOCATE(globaldata_4d_i4(indimlens(dimids(1)),indimlens(dimids(2)),       &
                      &                      indimlens(dimids(3)),ntchunk))
-                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_4d_i4, start=(/1,1,1,nt/) ) )
                   globaldata_4d_i4(:,:,:,:) = 0
+                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_4d_i4, start=(/1,1,1,nt/) ) )
                CASE( NF90_FLOAT )
                   ALLOCATE(globaldata_4d_sp(indimlens(dimids(1)),indimlens(dimids(2)),       &
                      &                      indimlens(dimids(3)),ntchunk))
-                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_4d_sp, start=(/1,1,1,nt/) ) )
                   globaldata_4d_sp(:,:,:,:) = 0.
+                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_4d_sp, start=(/1,1,1,nt/) ) )
                CASE( NF90_DOUBLE )
                   ALLOCATE(globaldata_4d_dp(indimlens(dimids(1)),indimlens(dimids(2)),       &
                      &                      indimlens(dimids(3)),ntchunk))
-                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_4d_dp, start=(/1,1,1,nt/) ) )
                   globaldata_4d_dp(:,:,:,:) = 0.
+                  CALL check_nf90( nf90_get_var( ncid, jv, globaldata_4d_dp, start=(/1,1,1,nt/) ) )
                CASE DEFAULT
                   WRITE(numerr,*) 'Unknown nf90 type: ', xtype
-                  STOP
+                  STOP 9
             END SELECT
 
          ENDIF
@@ -573,7 +573,7 @@ PROGRAM rebuild_nemo
                   globaldata_1d_dp(:) = 0.
                CASE DEFAULT
                   WRITE(numerr,*) 'Unknown nf90 type: ', xtype
-                  STOP
+                  STOP 9
             END SELECT
 
          ELSEIF( ndims == 2 ) THEN
@@ -596,7 +596,7 @@ PROGRAM rebuild_nemo
                   globaldata_2d_dp(:,:) = 0.
                CASE DEFAULT
                   WRITE(numerr,*) 'Unknown nf90 type: ', xtype
-                  STOP
+                  STOP 9
             END SELECT
 
          ELSEIF( ndims == 3 ) THEN
@@ -624,7 +624,7 @@ PROGRAM rebuild_nemo
                   globaldata_3d_dp(:,:,:) = 0.
                CASE DEFAULT
                   WRITE(numerr,*) 'Unknown nf90 type: ', xtype
-                  STOP
+                  STOP 9
             END SELECT
 
          ELSEIF( ndims == 4 ) THEN
@@ -652,11 +652,11 @@ PROGRAM rebuild_nemo
                   globaldata_4d_dp(:,:,:,:) = 0.
                CASE DEFAULT
                   WRITE(numerr,*) 'Unknown nf90 type: ', xtype
-                  STOP
+                  STOP 9
             END SELECT
          ELSE
             WRITE(numerr,*) 'ERROR! : A netcdf variable has more than 4 dimensions which is not taken into account'
-            STOP
+            STOP 9
          ENDIF
 
 !$OMP  PARALLEL DO DEFAULT(NONE)                                                          &
@@ -1028,7 +1028,7 @@ PROGRAM rebuild_nemo
 
             IF( nthreads == 1 .AND. istop /= nf90_noerr )  THEN
                WRITE(numerr,*) '*** NEMO rebuild failed! ***'
-               STOP
+               STOP 9
             ENDIF
         
          END DO  ! loop over files
@@ -1037,7 +1037,7 @@ PROGRAM rebuild_nemo
 !3.6 Abort if any of the OMP threads failed
          IF( istop /= nf90_noerr )  THEN
             WRITE(numerr,*) '*** NEMO rebuild failed! ***'
-            STOP
+            STOP 9
          ENDIF
 
       ENDIF ! ndims > 2
@@ -1111,7 +1111,7 @@ PROGRAM rebuild_nemo
                DEALLOCATE(globaldata_2d_dp)
             CASE DEFAULT   
                WRITE(numerr,*) 'Unknown nf90 type: ', xtype
-               STOP
+               STOP 9
          END SELECT     
                       
       ELSEIF( ndims == 3 ) THEN
@@ -1134,7 +1134,7 @@ PROGRAM rebuild_nemo
                DEALLOCATE(globaldata_3d_dp)
             CASE DEFAULT   
                WRITE(numerr,*) 'Unknown nf90 type: ', xtype
-               STOP
+               STOP 9
          END SELECT     
     
       ELSEIF( ndims == 4 ) THEN
@@ -1157,7 +1157,7 @@ PROGRAM rebuild_nemo
                DEALLOCATE(globaldata_4d_dp)
             CASE DEFAULT   
                WRITE(numerr,*) 'Unknown nf90 type: ', xtype
-               STOP
+               STOP 9
          END SELECT     
     
       ENDIF
@@ -1207,7 +1207,7 @@ CONTAINS
          ELSE
             WRITE(numerr,*) "*** NEMO rebuild failed ***"
             WRITE(numerr,*)
-            STOP
+            STOP 9
          ENDIF
       ENDIF
 
