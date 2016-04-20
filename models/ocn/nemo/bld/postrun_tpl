@@ -23,25 +23,51 @@ set -exv
 if [ ${stat} -ne 0 ]; then
   source /usr/share/Modules/init/sh
 fi
+compver="COMPILERVER"
+
 module purge
 module purge   # Needed! Not an error!
-#
-module load SZIP/szip-2.1_int15
-module load UDUNITS/udunits-1.12.11_int15
-module load UDUNITS/udunits-2.2.19
-module load GRIB_API/grib_api-1.13.1
-module load HDF5/hdf5-1.8.15-patch1
-module load NETCDF/netcdf-C_4.3.3.1-F_4.4.2_C++_4.2.1
-module load ESMF/esmf-6.3.0rp1-mpiuni-64-O_int15
-module load MAGICS/magics-2.24.7
-module load EMOS/emos_000392
-module load EMOS/libemos-4.0.6
-module load CDO/cdo-1.7.0rc2
-module load NCO/nco-4.4.9
-module unload INTEL/intel_xe_2013
-module unload INTEL/intel_xe_2013.5.192
-module load INTEL/intel_xe_2015.3.187
-module load IMPI/intel_mpi_5.0.3.048
+
+if [ "20${compver}" == "2013" ] ; then
+   # IFORT 2013
+   module load SZIP/szip-2.1
+   module load CMAKE/cmake-3.3.0-rc1
+   module load UDUNITS/udunits-2.1.24
+   module load UDUNITS/udunits-1.12.11
+   module load GRIB_API/grib_api-1.10.0
+   module load NETCDF/netcdf-4.3
+   module load HDF5/hdf5-1.8.11
+   module load ESMF/esmf-6.3.0rp1-mpiuni-64-O
+   module laod MAGICS/Magics-2.18.12
+   module load CDO/cdo-1.6.4
+   module load NCO/nco-4.2.5
+   module unload INTEL/intel_xe_2013
+   module unload INTEL/intel_xe_2015.3.187
+   module unload IMPI/intel_mpi_5.0.3.048
+   module load INTEL/intel_xe_2013.5.192
+
+elif [ "20${compver}" == "2015" ] ; then
+   # IFORT 2015
+   module load SZIP/szip-2.1_int15
+   module load UDUNITS/udunits-1.12.11_int15
+   module load UDUNITS/udunits-2.2.19
+   module load GRIB_API/grib_api-1.13.1
+   module load HDF5/hdf5-1.8.15-patch1
+   module load NETCDF/netcdf-C_4.3.3.1-F_4.4.2_C++_4.2.1
+   module load ESMF/esmf-6.3.0rp1-mpiuni-64-O_int15
+   module load MAGICS/magics-2.24.7
+   module load EMOS/emos_000392
+   module load EMOS/libemos-4.0.6
+   module load CDO/cdo-1.7.0rc2
+   module load NCO/nco-4.4.9
+   module unload INTEL/intel_xe_2013
+   module unload INTEL/intel_xe_2013.5.192
+   module load INTEL/intel_xe_2015.3.187
+   module load IMPI/intel_mpi_5.0.3.048
+
+else
+   exit "BAD COMPILER VERSION: ${compver}"
+fi
 
 #######################################################################
 # General settings
@@ -113,6 +139,8 @@ if [ ${flist} -gt 0 ] ; then
    while [ -f ../${EXPID}.st_archive.lock ]; do
      sleep 10
    done
+
+   if [ ! -d ${OUTDIR} ] ; then  mkdir -p ${OUTDIR} ; fi ;
 
    mv ${EXPID}_*${y1}_${y2}*[z-aA-Z].nc ${OUTDIR}/ || exit 1
 

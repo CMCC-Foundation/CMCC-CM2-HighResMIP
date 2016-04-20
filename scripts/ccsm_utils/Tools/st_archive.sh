@@ -406,6 +406,7 @@ if [ "${COMP_OCN}" == "nemo" -a "${NEMO_REBUILD}" == "TRUE" ]; then
   fi
   sed -e "s/YYYYMMDD1/${y1}/" \
       -e "s/YYYYMMDD2/${y2}/" \
+      -e "s@COMPILERVER@${COMPILER_VER}@" \
       -e "s@DOUT_S_ROOT@${DOUT_S_ROOT}/ocn/hist@" \
       -e "s@RESTART@${CONTINUE_RUN}@" \
       -e "s@REBPROC@${REBPROC}@" \
