@@ -22,64 +22,42 @@ module purge
 
 if ( $COMPILER == "intel" ) then
   #
-  module load SZIP/szip-2.1_int15
+  module load SZIP/szip-2.1
   module load CMAKE/cmake-3.3.0-rc1
   #module load TRILINOS/trilinos_11.6.1
   #
   if ( $MPILIB == "mpi-serial") then
     # Load serial libraries
-    module load NETCDF/netcdf-C_4.3.3.1-F_4.4.2_C++_4.2.1
-    module load HDF5/hdf5-1.8.15-patch1
+    module load NETCDF/netcdf-4.3
+    module load HDF5/hdf5-1.8.11
     if ( $DEBUG == "TRUE") then
-      module load ESMF/esmf-6.3.0rp1-mpiuni-64-g_int15
+      module load ESMF/esmf-6.3.0rp1-mpiuni-64-g
     else
-      module load ESMF/esmf-6.3.0rp1-mpiuni-64-O_int15
+      module load ESMF/esmf-6.3.0rp1-mpiuni-64-O
     endif
     #
     setenv USER_FC ifort
     setenv USER_CC icc
     setenv USER_LINKER ifort
-    setenv HDF5 /users/home/opt-intel_2015.3.187/hdf5/hdf5-1.8.15-patch1
+    setenv HDF5 /users/home/opt/hdf5/hdf5-1.8.11
     #
   else
     # Load parallel libraries
-    module load IMPI/intel_mpi_5.0.3.048
-    module load PARALLEL_NETCDF/parallel-netcdf-1.6.1
+    module load NETCDF/parallel-netcdf-1.3.1
     if ( $DEBUG == "TRUE") then
-      module load ESMF/esmf-6.3.0rp1-intelmpi-64-g_int15
-      setenv I_MPI_DEBUG 5
+      module load ESMF/esmf-6.3.0rp1-intelmpi-64-g
     else
-      module load ESMF/esmf-6.3.0rp1-intelmpi-64-O_int15
+      module load ESMF/esmf-6.3.0rp1-mpiuni-64-O
     endif
     #
-    module unload HDF5/hdf5-1.8.15-patch1
-    module unload NETCDF/netcdf-C_4.3.3.1-F_4.4.2_C++_4.2.1
-    module unload SZIP/szip-2.1
-    module unload UDUNITS/udunits-2.1.24
-    module unload HDF5/hdf5-1.8.11
-    module unload NETCDF/netcdf-4.3
-    module load HDF5/hdf5-1.8.15-patch1_parallel
-    module load NETCDF/netcdf-C_4.3.3.1-F_4.4.2_C++_4.2.1_parallel
+    module load HDF5/hdf5-1.8.11_parallel
+    module load NETCDF/netcdf-4.3_parallel
     #
     setenv USER_FC mpiifort
     setenv USER_CC mpiicc
     setenv USER_LINKER mpiifort
-    setenv HDF5 /users/home/opt-intel_2015.3.187/hdf5/hdf5-1.8.15-patch1_parallel
+    setenv HDF5 /users/home/opt/hdf5/hdf5-1.8.11_parallel
     #
-    # Patch to make sure of using Intel MPI 5 library
-    setenv PATH `echo ${PATH}|tr ':' '\n'|sed -e "/\/opt\/intel\/impi\/4.1.0.024\/intel64\/bin/d"|tr '\n' ':'`
-    setenv LD_LIBRARY_PATH `echo ${LD_LIBRARY_PATH}|tr ':' '\n'|sed -e "/\/opt\/intel\/impi\/4.1.0.024\/intel64\/lib/d"|tr '\n' ':'`
-    #
-    setenv I_MPI_EXTRA_FILESYSTEM_LIST       gpfs
-    setenv I_MPI_EXTRA_FILESYSTEM            on
-    setenv I_MPI_PLATFORM                    snb
-    setenv I_MPI_HYDRA_BOOTSTRAP             lsf 
-    setenv I_MPI_LSF_USE_COLLECTIVE_LAUNCH   1
-    setenv I_MPI_DAPL_UD                     on
-    setenv I_MPI_DAPL_SCALABLE_PROGRESS      on
-    #setenv I_MPI_SHM_BYPASS                  on
-    #setenv I_MPI_WAIT_MODE                   on
-    #setenv I_MPI_DAPL_RDMA_WRITE_IMM         on
     #
   endif
   #
@@ -87,8 +65,9 @@ if ( $COMPILER == "intel" ) then
   setenv HDF5_LIB_DIRS ${HDF5}/lib
   #
   module unload INTEL/intel_xe_2013
-  module unload INTEL/intel_xe_2013.5.192
-  module load INTEL/intel_xe_2015.3.187
+  module unload INTEL/intel_xe_2015.3.187
+  #
+  module load INTEL/intel_xe_2013.5.192
   #
 else
   echo "ERROR: compiler $COMPILER not supported !"
@@ -98,8 +77,8 @@ endif
 setenv NETCDF_PATH ${NETCDF}
 
 # LOAD XIOS libraries (should become a module on athena)
-set COMPILER_VER = `mpiifort --version | grep "ifort" | cut -d ' ' -f3 | cut -c1-2`
-setenv XIOS_PATH  "/users/home/models/nemo/xios2/intel_xe_20${COMPILER_VER}"
+setenv COMPILER_VER  `mpiifort --version | grep "ifort" | cut -d ' ' -f3 | cut -c1-2`
+setenv XIOS_PATH     "/users/home/models/nemo/xios2/intel_xe_20${COMPILER_VER}"
 
 # -------------------------------------------------------------------------
 # Build and runtime environment variables - edit before the initial build 
@@ -113,4 +92,19 @@ limit stacksize unlimited
 limit datasize  unlimited
 
 setenv OMP_STACKSIZE 256M
+setenv MP_LABELIO yes
 
+# MPI Environment
+setenv MP_INFOLEVEL                 2
+setenv MP_SHARED_MEMORY             yes
+setenv MP_EUILIB                    us
+setenv MP_MPILIB                    $MPILIB
+setenv MP_STDOUTMODE                unordered
+setenv MP_EAGER_LIMIT               0
+setenv MP_RC_USE_LMC                yes
+
+if ( $DEBUG == "TRUE" ) then
+    setenv MP_EUIDEVELOP yes
+else
+    setenv MP_EUIDEVELOP no
+endif
