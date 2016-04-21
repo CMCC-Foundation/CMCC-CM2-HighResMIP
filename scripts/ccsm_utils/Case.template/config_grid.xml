@@ -55,26 +55,15 @@ Each grid is associated with three names
 <GRID sname="T62_tx0.1v2" alias="T62_t12" compset="(DATM|XATM|SATM)">a%T62_l%T62_oi%tx0.1v2_r%rx1_m%tx0.1v2_g%null_w%null</GRID>
 <GRID sname="T62_gx1v6"   alias="T62_g16" compset="(DATM|XATM|SATM)">a%T62_l%T62_oi%gx1v6_r%rx1_m%gx1v6_g%null_w%null</GRID>
 <GRID sname="T62_mpas120" alias="T62_m120" compset="(DATM|XATM|SATM)">a%T62_l%T62_oi%mpas120_r%rx1_m%mpas120_g%null_w%null</GRID>
-<GRID sname="T62_tn2v1"   alias="T62_n21" compset="(DATM|XATM|SATM)">a%T62_l%T62_oi%tn2v1_r%rx1_m%tn2v1_g%null_w%null</GRID>
-<GRID sname="T62_tn1v1"   alias="T62_n11" compset="(DATM|XATM|SATM)">a%T62_l%T62_oi%tn1v1_r%rx1_m%tn1v1_g%null_w%null</GRID>
-<GRID sname="T62_tn0.5v1" alias="T62_n051" compset="(DATM|XATM|SATM)">a%T62_l%T62_oi%tn0.5v1_r%rx1_m%tn0.5v1_g%null_w%null</GRID>
-<GRID sname="T62_tn0.25v1" alias="T62_n0251" compset="(DATM|XATM|SATM)">a%T62_l%T62_oi%tn0.25v1_r%rx1_m%tn0.25v1_g%null_w%null</GRID>
 
 <!-- finite volume grids -->
 
 <GRID sname="0.23x0.31_gx1v6"   alias="f02_g16">a%0.23x0.31_l%0.23x0.31_oi%gx1v6_r%r05_m%gx1v6_g%null_w%null</GRID>
 <GRID sname="0.23x0.31_tx0.1v2" alias="f02_t12">a%0.23x0.31_l%0.23x0.31_oi%tx0.1v2_r%r05_m%tx0.1v2_g%null_w%null</GRID>
-<GRID sname="0.23x0.31_tn1v1"   alias="f02_n11">a%0.23x0.31_l%0.23x0.31_oi%tn1v1_r%r05_m%tn1v1_g%null_w%null</GRID>
-<GRID sname="0.23x0.31_tn0.25v1" alias="f02_n0251">a%0.23x0.31_l%0.23x0.31_oi%tn0.25v1_r%r05_m%tn0.25v1_g%null_w%null</GRID>
 <GRID sname="0.47x0.63_gx1v6"   alias="f05_g16">a%0.47x0.63_l%0.47x0.63_oi%gx1v6_r%r05_m%gx1v6_g%null_w%null</GRID>
 <GRID sname="0.47x0.63_tx0.1v2" alias="f05_t12">a%0.47x0.63_l%0.47x0.63_oi%tx0.1v2_r%r05_m%tx0.1v2_g%null_w%null</GRID>
-<GRID sname="0.47x0.63_tn1v1"   alias="f05_n11">a%0.47x0.63_l%0.47x0.63_oi%t1v1_r%r05_m%t1v1_g%null_w%null</GRID>
-<GRID sname="0.47x0.63_tn0.25v1" alias="f05_n0251">a%0.47x0.63_l%0.47x0.63_oi%t0.25v1_r%r05_m%t0.25v1_g%null_w%null</GRID>
 <GRID sname="0.9x1.25_gx1v6"    alias="f09_g16">a%0.9x1.25_l%0.9x1.25_oi%gx1v6_r%r05_m%gx1v6_g%null_w%null</GRID>
-<GRID sname="0.9x1.25_tn1v1"    alias="f09_n11">a%0.9x1.25_l%0.9x1.25_oi%tn1v1_r%r05_m%tn1v1_g%null_w%null</GRID>
-<GRID sname="0.9x1.25_tn0.25v1" alias="f09_n0251">a%0.9x1.25_l%0.9x1.25_oi%tn0.25v1_r%r05_m%tn0.25v1_g%null_w%null</GRID>
 <GRID sname="1.9x2.5_gx1v6"     alias="f19_g16">a%1.9x2.5_l%1.9x2.5_oi%gx1v6_r%r05_m%gx1v6_g%null_w%null</GRID>
-<GRID sname="1.9x2.5_tn1v1"     alias="f19_n11">a%1.9x2.5_l%1.9x2.5_oi%tn1v1_r%r05_m%tn1v1_g%null_w%null</GRID>
 <GRID sname="1.9x2.5_tx1v1"     alias="f19_s11">a%1.9x2.5_l%1.9x2.5_oi%tx1v1_r%r05_m%tx1v1_g%null_w%null</GRID>
 <GRID sname="4x5_gx3v7"         alias="f45_g37">a%4x5_l%4x5_oi%gx3v7_r%r05_m%gx3v7_g%null_w%null</GRID>
 <GRID sname="1.9x2.5_gx1v6_r01" alias="f19_g16_r01">a%1.9x2.5_l%1.9x2.5_oi%gx1v6_r%r01_m%gx1v6_g%null_w%null</GRID>
@@ -91,8 +80,6 @@ Each grid is associated with three names
 
 <GRID sname="ne16np4_gx3v7"              alias="ne16_g37"     >a%ne16np4_l%ne16np4_oi%gx3v7_r%r05_m%gx3v7_g%null_w%null</GRID>
 <GRID sname="ne30np4_gx1v6"              alias="ne30_g16"     >a%ne30np4_l%ne30np4_oi%gx1v6_r%r05_m%gx1v6_g%null_w%null</GRID>
-<GRID sname="ne30np4_tn1v1"              alias="ne30_n11"     >a%ne30np4_l%ne30np4_oi%tn1v1_r%r05_m%tn1v1_g%null_w%null</GRID>
-<GRID sname="ne30np4_tn0.25v1"           alias="ne30_n0251"     >a%ne30np4_l%ne30np4_oi%tn0.25v1_r%r05_m%tn0.25v1_g%null_w%null</GRID>
 <GRID sname="ne30np4_1.9x2.5_gx1v6"      alias="ne30_f19_g16" >a%ne30np4_l%1.9x2.5_oi%gx1v6_r%r05_m%gx1v6_g%null_w%null</GRID>  
 <GRID sname="ne30np4_0.9x1.25_gx1v6"     alias="ne30_f09_g16" >a%ne30np4_l%0.9x1.25_oi%gx1v6_r%r05_m%gx1v6_g%null_w%null</GRID> 
 <GRID sname="ne60np4_gx1v6"              alias="ne60_g16"     >a%ne60np4_l%ne60np4_oi%gx1v6_r%r05_m%gx1v6_g%null_w%null</GRID>
@@ -100,8 +87,6 @@ Each grid is associated with three names
 <GRID sname="ne120np4_tx0.1v2"           alias="ne120_t12"    >a%ne120np4_l%ne120np4_oi%tx0.1v2_r%r05_m%tx0.1v2_g%null_w%null</GRID>
 <GRID sname="ne120np4_0.9x1.25_gx1v6"    alias="ne120_f09_g16">a%ne120np4_l%0.9x1.25_oi%gx1v6_r%r05_m%gx1v6_g%null_w%null</GRID>      
 <GRID sname="ne120np4_0.23x0.31_tx0.1v2" alias="ne120_f02_t12">a%ne120np4_l%0.23x0.31_oi%tx0.1v2_r%r05_m%tx0.1v2_g%null_w%null</GRID> 
-<GRID sname="ne120np4_tn1v1"             alias="ne120_n11"    >a%ne120np4_l%ne120np4_oi%tn1v1_r%r05_m%tn1v1_g%null_w%null</GRID>
-<GRID sname="ne120np4_tn0.25v1"          alias="ne120_n0251"    >a%ne120np4_l%ne120np4_oi%tn0.25v1_r%r05_m%tn0.25v1_g%null_w%null</GRID>
 <GRID sname="ne240np4_gx1v6"             alias="ne240_g16"    >a%ne240np4_l%ne240np4_oi%gx1v6_r%r01_m%gx1v6_g%null_w%null</GRID>
 <GRID sname="ne240np4_0.23x0.31_gx1v6"   alias="ne240_f02_g16">a%ne240np4_l%0.23x0.31_oi%gx1v6_r%r05_m%gx1v6_g%null_w%null</GRID>
 <GRID sname="ne240np4_0.23x0.31_tx0.1v2" alias="ne240_f02_t12">a%ne240np4_l%0.23x0.31_oi%tx0.1v2_r%r05_m%tx0.1v2_g%null_w%null</GRID>
@@ -350,30 +335,6 @@ use the T62_g16 resolution instead:
 </desc >
 </gridhorz>
 
-<!-- NEMO grids
-     NOTE: NEMO grids size does not take into account the global domain halo
--->
-
-<gridhorz name="tn2v1">
-  <nx>180</nx> <ny>148</ny> 
-  <desc>tn2v1 is NEMO ORCA2 tripole grid at 2 deg:</desc>
-</gridhorz>
-
-<gridhorz name="tn1v1">
-  <nx>360</nx> <ny>291</ny> 
-  <desc>tn1v1 is NEMO ORCA1 tripole grid at 1 deg:</desc>
-</gridhorz>
-
-<gridhorz name="tn0.5v1">
-  <nx>720</nx> <ny>510</ny> 
-  <desc>tn0.5v1 is NEMO ORCA05 tripole grid at 1/2 deg:</desc>
-</gridhorz>
-
-<gridhorz name="tn0.25v1">
-  <nx>1440</nx> <ny>1020</ny> 
-  <desc>tn0.25v1 is NEMO ORCA025 tripole grid at 1/4 deg:</desc>
-</gridhorz>
-
 <!-- MPAS grids -->
 
 <gridhorz name="mpas120">
@@ -449,26 +410,6 @@ use the T62_g16 resolution instead:
 <griddom grid="mpas120" mask="mpas120">
   <ICE_DOMAIN_FILE>domain.ocn.mpas120.121116.nc</ICE_DOMAIN_FILE>
   <OCN_DOMAIN_FILE>domain.ocn.mpas120.121116.nc</OCN_DOMAIN_FILE>
-</griddom>
-
-<griddom grid="tn2v1" mask="tn2v1">
-  <ICE_DOMAIN_FILE>domain.ocn.tn2v1.131031.nc </ICE_DOMAIN_FILE>
-  <OCN_DOMAIN_FILE>domain.ocn.tn2v1.131031.nc </OCN_DOMAIN_FILE>
-</griddom>
-
-<griddom grid="tn1v1" mask="tn1v1">
-  <ICE_DOMAIN_FILE>domain.ocn.tn1v1.130426.nc </ICE_DOMAIN_FILE>
-  <OCN_DOMAIN_FILE>domain.ocn.tn1v1.130426.nc </OCN_DOMAIN_FILE>
-</griddom>
-
-<griddom grid="tn0.5v1" mask="tn0.5v1">
-  <ICE_DOMAIN_FILE>domain.ocn.tn0.5v1.140317.nc </ICE_DOMAIN_FILE>
-  <OCN_DOMAIN_FILE>domain.ocn.tn0.5v1.140317.nc </OCN_DOMAIN_FILE>
-</griddom>
-
-<griddom grid="tn0.25v1" mask="tn0.25v1">
-  <ICE_DOMAIN_FILE>domain.ocn.tn0.25v1.140424.nc </ICE_DOMAIN_FILE>
-  <OCN_DOMAIN_FILE>domain.ocn.tn0.25v1.140424.nc </OCN_DOMAIN_FILE>
 </griddom>
 
 <!-- ======================================================== -->
@@ -685,36 +626,6 @@ use the T62_g16 resolution instead:
   <OCN2ATM_SMAPNAME>cpl/cpl6/map_tx0.1v2_to_fv0.23x0.31_aave_da_090127.nc </OCN2ATM_SMAPNAME>
 </gridmap>
 
-<griddom grid="0.23x0.31" mask="tn1v1">
-  <ATM_DOMAIN_FILE>domain.lnd.fv0.23x0.31_tn1v1.130426.nc</ATM_DOMAIN_FILE>
-  <LND_DOMAIN_FILE>domain.lnd.fv0.23x0.31_tn1v1.130426.nc</LND_DOMAIN_FILE>
-  <ICE_DOMAIN_FILE>domain.ocn.fv0.23x0.31_tn1v1.130426.nc</ICE_DOMAIN_FILE>
-  <OCN_DOMAIN_FILE>domain.ocn.fv0.23x0.31_tn1v1.130426.nc</OCN_DOMAIN_FILE>
-</griddom>
-
-<gridmap atm_grid="0.23x0.31" ocn_grid="tn1v1">
-  <ATM2OCN_FMAPNAME>cpl/cpl6/map_fv0.23x0.31_TO_tn1v1_aave.130426.nc</ATM2OCN_FMAPNAME>
-  <ATM2OCN_SMAPNAME>cpl/cpl6/map_fv0.23x0.31_TO_tn1v1_blin.130426.nc</ATM2OCN_SMAPNAME>
-  <ATM2OCN_VMAPNAME>cpl/cpl6/map_fv0.23x0.31_TO_tn1v1_blin.130426.nc</ATM2OCN_VMAPNAME>
-  <OCN2ATM_FMAPNAME>cpl/cpl6/map_tn1v1_TO_fv0.23x0.31_aave.130426.nc</OCN2ATM_FMAPNAME>
-  <OCN2ATM_SMAPNAME>cpl/cpl6/map_tn1v1_TO_fv0.23x0.31_aave.130426.nc</OCN2ATM_SMAPNAME>
-</gridmap>
-
-<griddom grid="0.23x0.31" mask="tn0.25v1">
-  <ATM_DOMAIN_FILE>domain.lnd.fv0.23x0.31_tn0.25v1.140424.nc</ATM_DOMAIN_FILE>
-  <LND_DOMAIN_FILE>domain.lnd.fv0.23x0.31_tn0.25v1.140424.nc</LND_DOMAIN_FILE>
-  <ICE_DOMAIN_FILE>domain.ocn.fv0.23x0.31_tn0.25v1.140424.nc</ICE_DOMAIN_FILE>
-  <OCN_DOMAIN_FILE>domain.ocn.fv0.23x0.31_tn0.25v1.140424.nc</OCN_DOMAIN_FILE>
-</griddom>
-
-<gridmap atm_grid="0.23x0.31" ocn_grid="tn0.25v1">
-  <ATM2OCN_FMAPNAME>cpl/cpl6/map_fv0.23x0.31_TO_tn0.25v1_aave.140424.nc</ATM2OCN_FMAPNAME>
-  <ATM2OCN_SMAPNAME>cpl/cpl6/map_fv0.23x0.31_TO_tn0.25v1_blin.140424.nc</ATM2OCN_SMAPNAME>
-  <ATM2OCN_VMAPNAME>cpl/cpl6/map_fv0.23x0.31_TO_tn0.25v1_blin.140424.nc</ATM2OCN_VMAPNAME>
-  <OCN2ATM_FMAPNAME>cpl/cpl6/map_tn0.25v1_TO_fv0.23x0.31_aave.140424.nc</OCN2ATM_FMAPNAME>
-  <OCN2ATM_SMAPNAME>cpl/cpl6/map_tn0.25v1_TO_fv0.23x0.31_aave.140424.nc</OCN2ATM_SMAPNAME>
-</gridmap>
-
 <!-- ====================  -->
 <!-- atm fv: 0.47x0.63     -->
 <!-- ====================  -->
@@ -745,36 +656,6 @@ use the T62_g16 resolution instead:
   <ATM2OCN_VMAPNAME>cpl/cpl6/map_fv0.47x0.63_to_tx0.1v2_bilin_da_090218.nc</ATM2OCN_VMAPNAME> 
   <OCN2ATM_FMAPNAME>cpl/cpl6/map_tx0.1v2_to_fv0.47x0.63_aave_da_090218.nc </OCN2ATM_FMAPNAME> 
   <OCN2ATM_SMAPNAME>cpl/cpl6/map_tx0.1v2_to_fv0.47x0.63_aave_da_090218.nc </OCN2ATM_SMAPNAME> 
-</gridmap>
-
-<griddom grid="0.47x0.63" mask="tn1v1"> 
-  <ATM_DOMAIN_FILE>domain.lnd.fv0.47x0.63_tn1v1.130426.nc</ATM_DOMAIN_FILE>
-  <LND_DOMAIN_FILE>domain.lnd.fv0.47x0.63_tn1v1.130426.nc</LND_DOMAIN_FILE>
-  <ICE_DOMAIN_FILE>domain.ocn.fv0.47x0.63_tn1v1.130426.nc</ICE_DOMAIN_FILE>
-  <OCN_DOMAIN_FILE>domain.ocn.fv0.47x0.63_tn1v1.130426.nc</OCN_DOMAIN_FILE>
-</griddom>
-
-<gridmap atm_grid="0.47x0.63" ocn_grid="tn1v1">
-  <ATM2OCN_FMAPNAME>cpl/cpl6/map_fv0.47x0.63_TO_tn1v1_aave.130426.nc</ATM2OCN_FMAPNAME>
-  <ATM2OCN_SMAPNAME>cpl/cpl6/map_fv0.47x0.63_TO_tn1v1_patc.130426.nc</ATM2OCN_SMAPNAME>
-  <ATM2OCN_VMAPNAME>cpl/cpl6/map_fv0.47x0.63_TO_tn1v1_patc.130426.nc</ATM2OCN_VMAPNAME>
-  <OCN2ATM_FMAPNAME>cpl/cpl6/map_tn1v1_TO_fv0.47x0.63_aave.130426.nc</OCN2ATM_FMAPNAME>
-  <OCN2ATM_SMAPNAME>cpl/cpl6/map_tn1v1_TO_fv0.47x0.63_aave.130426.nc</OCN2ATM_SMAPNAME>
-</gridmap>
-
-<griddom grid="0.47x0.63" mask="tn0.25v1"> 
-  <ATM_DOMAIN_FILE>domain.lnd.fv0.47x0.63_tn0.25v1.140424.nc</ATM_DOMAIN_FILE>
-  <LND_DOMAIN_FILE>domain.lnd.fv0.47x0.63_tn0.25v1.140424.nc</LND_DOMAIN_FILE>
-  <ICE_DOMAIN_FILE>domain.ocn.fv0.47x0.63_tn0.25v1.140424.nc</ICE_DOMAIN_FILE>
-  <OCN_DOMAIN_FILE>domain.ocn.fv0.47x0.63_tn0.25v1.140424.nc</OCN_DOMAIN_FILE>
-</griddom>
-
-<gridmap atm_grid="0.47x0.63" ocn_grid="tn0.25v1">
-  <ATM2OCN_FMAPNAME>cpl/cpl6/map_fv0.47x0.63_TO_tn0.25v1_aave.140424.nc</ATM2OCN_FMAPNAME>
-  <ATM2OCN_SMAPNAME>cpl/cpl6/map_fv0.47x0.63_TO_tn0.25v1_blin.140424.nc</ATM2OCN_SMAPNAME>
-  <ATM2OCN_VMAPNAME>cpl/cpl6/map_fv0.47x0.63_TO_tn0.25v1_blin.140424.nc</ATM2OCN_VMAPNAME>
-  <OCN2ATM_FMAPNAME>cpl/cpl6/map_tn0.25v1_TO_fv0.47x0.63_aave.140424.nc</OCN2ATM_FMAPNAME>
-  <OCN2ATM_SMAPNAME>cpl/cpl6/map_tn0.25v1_TO_fv0.47x0.63_aave.140424.nc</OCN2ATM_SMAPNAME>
 </gridmap>
 
 <!-- ====================  -->
@@ -809,36 +690,6 @@ use the T62_g16 resolution instead:
   <OCN2ATM_SMAPNAME>cpl/cpl6/map_mp120v1_to_fv0.9x1.25_aave_da_111004.nc</OCN2ATM_SMAPNAME>>
 </gridmap>
   
-<griddom grid="0.9x1.25" mask="tn1v1">
-  <ATM_DOMAIN_FILE>domain.lnd.fv0.9x1.25_tn1v1.130426.nc</ATM_DOMAIN_FILE>
-  <LND_DOMAIN_FILE>domain.lnd.fv0.9x1.25_tn1v1.130426.nc</LND_DOMAIN_FILE>
-  <ICE_DOMAIN_FILE>domain.ocn.fv0.9x1.25_tn1v1.130426.nc</ICE_DOMAIN_FILE>
-  <OCN_DOMAIN_FILE>domain.ocn.fv0.9x1.25_tn1v1.130426.nc</OCN_DOMAIN_FILE>
-</griddom>
-
-<gridmap atm_grid="0.9x1.25" ocn_grid="tn1v1">
-  <ATM2OCN_FMAPNAME>cpl/cpl6/map_fv0.9x1.25_TO_tn1v1_aave.130426.nc</ATM2OCN_FMAPNAME>
-  <ATM2OCN_SMAPNAME>cpl/cpl6/map_fv0.9x1.25_TO_tn1v1_blin.130426.nc</ATM2OCN_SMAPNAME>
-  <ATM2OCN_VMAPNAME>cpl/cpl6/map_fv0.9x1.25_TO_tn1v1_patc.130426.nc</ATM2OCN_VMAPNAME>
-  <OCN2ATM_FMAPNAME>cpl/cpl6/map_tn1v1_TO_fv0.9x1.25_aave.130426.nc</OCN2ATM_FMAPNAME>
-  <OCN2ATM_SMAPNAME>cpl/cpl6/map_tn1v1_TO_fv0.9x1.25_aave.130426.nc</OCN2ATM_SMAPNAME>
-</gridmap>
-
-<griddom grid="0.9x1.25" mask="tn0.25v1">
-  <ATM_DOMAIN_FILE>domain.lnd.fv0.9x1.25_tn0.25v1.140424.nc</ATM_DOMAIN_FILE>
-  <LND_DOMAIN_FILE>domain.lnd.fv0.9x1.25_tn0.25v1.140424.nc</LND_DOMAIN_FILE>
-  <ICE_DOMAIN_FILE>domain.ocn.fv0.9x1.25_tn0.25v1.140424.nc</ICE_DOMAIN_FILE>
-  <OCN_DOMAIN_FILE>domain.ocn.fv0.9x1.25_tn0.25v1.140424.nc</OCN_DOMAIN_FILE>
-</griddom>
-
-<gridmap atm_grid="0.9x1.25" ocn_grid="tn0.25v1">
-  <ATM2OCN_FMAPNAME>cpl/cpl6/map_fv0.9x1.25_TO_tn0.25v1_aave.140424.nc</ATM2OCN_FMAPNAME>
-  <ATM2OCN_SMAPNAME>cpl/cpl6/map_fv0.9x1.25_TO_tn0.25v1_blin.140424.nc</ATM2OCN_SMAPNAME>
-  <ATM2OCN_VMAPNAME>cpl/cpl6/map_fv0.9x1.25_TO_tn0.25v1_blin.140424.nc</ATM2OCN_VMAPNAME>
-  <OCN2ATM_FMAPNAME>cpl/cpl6/map_tn0.25v1_TO_fv0.9x1.25_aave.140424.nc</OCN2ATM_FMAPNAME>
-  <OCN2ATM_SMAPNAME>cpl/cpl6/map_tn0.25v1_TO_fv0.9x1.25_aave.140424.nc</OCN2ATM_SMAPNAME>
-</gridmap>
-
 <!-- ====================  -->
 <!--  atm fv: 1.9x2.5      -->
 <!-- ====================  -->
@@ -869,21 +720,6 @@ use the T62_g16 resolution instead:
   <ATM2OCN_VMAPNAME>cpl/cpl6/map_fv1.9x2.5_to_tx1v1_bilin_da_090710.nc</ATM2OCN_VMAPNAME>
   <OCN2ATM_FMAPNAME>cpl/cpl6/map_tx1v1_to_fv1.9x2.5_aave_da_090710.nc</OCN2ATM_FMAPNAME>
   <OCN2ATM_SMAPNAME>cpl/cpl6/map_tx1v1_to_fv1.9x2.5_aave_da_090710.nc</OCN2ATM_SMAPNAME>
-</gridmap>
-
-<griddom grid="1.9x2.5" mask="tn1v1">
-  <ATM_DOMAIN_FILE>domain.lnd.fv1.9x2.5_tn1v1.130426.nc</ATM_DOMAIN_FILE>
-  <LND_DOMAIN_FILE>domain.lnd.fv1.9x2.5_tn1v1.130426.nc</LND_DOMAIN_FILE>
-  <ICE_DOMAIN_FILE>domain.ocn.fv1.9x2.5_tn1v1.130426.nc</ICE_DOMAIN_FILE>
-  <OCN_DOMAIN_FILE>domain.ocn.fv1.9x2.5_tn1v1.130426.nc</OCN_DOMAIN_FILE>
-</griddom>
-
-<gridmap atm_grid="1.9x2.5" ocn_grid="tn1v1">
-  <ATM2OCN_FMAPNAME>cpl/cpl6/map_fv1.9x2.5_TO_tn1v1_aave.130426.nc</ATM2OCN_FMAPNAME>
-  <ATM2OCN_SMAPNAME>cpl/cpl6/map_fv1.9x2.5_TO_tn1v1_blin.130426.nc</ATM2OCN_SMAPNAME>
-  <ATM2OCN_VMAPNAME>cpl/cpl6/map_fv1.9x2.5_TO_tn1v1_patc.130426.nc</ATM2OCN_VMAPNAME>
-  <OCN2ATM_FMAPNAME>cpl/cpl6/map_tn1v1_TO_fv1.9x2.5_aave.130426.nc</OCN2ATM_FMAPNAME>
-  <OCN2ATM_SMAPNAME>cpl/cpl6/map_tn1v1_TO_fv1.9x2.5_aave.130426.nc</OCN2ATM_SMAPNAME>
 </gridmap>
 
 <!-- ====================  -->
@@ -983,36 +819,6 @@ use the T62_g16 resolution instead:
   <LND2ATM_SMAPNAME>cpl/cpl6/map_fv1.9x2.5_to_ne30np4_aave_da_091230.nc</LND2ATM_SMAPNAME>
 </gridmap>
 
-<griddom grid="ne30np4" mask="tn1v1">
-  <ATM_DOMAIN_FILE>domain.lnd.ne30np4_tn1v1.130426.nc</ATM_DOMAIN_FILE>
-  <LND_DOMAIN_FILE>domain.lnd.ne30np4_tn1v1.130426.nc</LND_DOMAIN_FILE>
-  <ICE_DOMAIN_FILE>domain.ocn.ne30np4_tn1v1.130426.nc</ICE_DOMAIN_FILE>
-  <OCN_DOMAIN_FILE>domain.ocn.ne30np4_tn1v1.130426.nc</OCN_DOMAIN_FILE>
-</griddom>
-
-<gridmap atm_grid="ne30np4" ocn_grid="tn1v1">
-  <ATM2OCN_FMAPNAME>cpl/cpl6/map_ne30np4_TO_tn1v1_aave.130426.nc</ATM2OCN_FMAPNAME>
-  <ATM2OCN_SMAPNAME>cpl/cpl6/map_ne30np4_TO_tn1v1_native.130426.nc</ATM2OCN_SMAPNAME>
-  <ATM2OCN_VMAPNAME>cpl/cpl6/map_ne30np4_TO_tn1v1_native.130426.nc</ATM2OCN_VMAPNAME>
-  <OCN2ATM_FMAPNAME>cpl/cpl6/map_tn1v1_TO_ne30np4_aave.130426.nc</OCN2ATM_FMAPNAME>
-  <OCN2ATM_SMAPNAME>cpl/cpl6/map_tn1v1_TO_ne30np4_aave.130426.nc</OCN2ATM_SMAPNAME>
-</gridmap>
-
-<griddom grid="ne30np4" mask="tn0.25v1">
-  <ATM_DOMAIN_FILE>domain.lnd.ne30np4_tn0.25v1.140424.nc</ATM_DOMAIN_FILE>
-  <LND_DOMAIN_FILE>domain.lnd.ne30np4_tn0.25v1.140424.nc</LND_DOMAIN_FILE>
-  <ICE_DOMAIN_FILE>domain.ocn.ne30np4_tn0.25v1.140424.nc</ICE_DOMAIN_FILE>
-  <OCN_DOMAIN_FILE>domain.ocn.ne30np4_tn0.25v1.140424.nc</OCN_DOMAIN_FILE>
-</griddom>
-
-<gridmap atm_grid="ne30np4" ocn_grid="tn0.25v1">
-  <ATM2OCN_FMAPNAME>cpl/cpl6/map_ne30np4_TO_tn0.25v1_aave.140423.nc</ATM2OCN_FMAPNAME>
-  <ATM2OCN_SMAPNAME>cpl/cpl6/map_ne30np4_TO_tn0.25v1_blin.140423.nc</ATM2OCN_SMAPNAME>
-  <ATM2OCN_VMAPNAME>cpl/cpl6/map_ne30np4_TO_tn0.25v1_blin.140423.nc</ATM2OCN_VMAPNAME>
-  <OCN2ATM_FMAPNAME>cpl/cpl6/map_tn0.25v1_TO_ne30np4_aave.140423.nc</OCN2ATM_FMAPNAME>
-  <OCN2ATM_SMAPNAME>cpl/cpl6/map_tn0.25v1_TO_ne30np4_aave.140423.nc</OCN2ATM_SMAPNAME>
-</gridmap>
-
 <!-- ====================  -->
 <!--  atm se: ne60np4     -->
 <!-- ====================  -->
@@ -1075,36 +881,6 @@ use the T62_g16 resolution instead:
   <ATM2LND_SMAPNAME>cpl/gridmaps/ne120np4/map_ne120np4_to_fv0.23x0.31_aave_110331.nc</ATM2LND_SMAPNAME>
   <LND2ATM_FMAPNAME>cpl/gridmaps/fv0.23x0.31/map_fv0.23x0.31_to_ne120np4_aave_110331.nc</LND2ATM_FMAPNAME>
   <LND2ATM_SMAPNAME>cpl/gridmaps/fv0.23x0.31/map_fv0.23x0.31_to_ne120np4_aave_110331.nc</LND2ATM_SMAPNAME>
-</gridmap>
-
-<griddom grid="ne120np4" mask="tn1v1">
-  <ATM_DOMAIN_FILE>domain.lnd.ne120_tn1v1.130426.nc</ATM_DOMAIN_FILE>
-  <LND_DOMAIN_FILE>domain.lnd.ne120_tn1v1.130426.nc</LND_DOMAIN_FILE>
-  <ICE_DOMAIN_FILE>domain.ocn.ne120_tn1v1.130426.nc</ICE_DOMAIN_FILE>
-  <OCN_DOMAIN_FILE>domain.ocn.ne120_tn1v1.130426.nc</OCN_DOMAIN_FILE>
-</griddom>
-
-<gridmap atm_grid="ne120np4" ocn_grid="tn1v1">
-  <ATM2OCN_FMAPNAME>cpl/cpl6/map_ne120_TO_tn1v1_aave.130426.nc</ATM2OCN_FMAPNAME>
-  <ATM2OCN_SMAPNAME>cpl/cpl6/map_ne120_TO_tn1v1_blin.130426.nc</ATM2OCN_SMAPNAME>
-  <ATM2OCN_VMAPNAME>cpl/cpl6/map_ne120_TO_tn1v1_blin.130426.nc</ATM2OCN_VMAPNAME>
-  <OCN2ATM_FMAPNAME>cpl/cpl6/map_tn1v1_TO_ne120_aave.130426.nc</OCN2ATM_FMAPNAME>
-  <OCN2ATM_SMAPNAME>cpl/cpl6/map_tn1v1_TO_ne120_aave.130426.nc</OCN2ATM_SMAPNAME>
-</gridmap>
-
-<griddom grid="ne120np4" mask="tn0.25v1">
-  <ATM_DOMAIN_FILE>domain.lnd.ne120np4_tn0.25v1.140424.nc</ATM_DOMAIN_FILE>
-  <LND_DOMAIN_FILE>domain.lnd.ne120np4_tn0.25v1.140424.nc</LND_DOMAIN_FILE>
-  <ICE_DOMAIN_FILE>domain.ocn.ne120np4_tn0.25v1.140424.nc</ICE_DOMAIN_FILE>
-  <OCN_DOMAIN_FILE>domain.ocn.ne120np4_tn0.25v1.140424.nc</OCN_DOMAIN_FILE>
-</griddom>
-
-<gridmap atm_grid="ne120np4" ocn_grid="tn0.25v1">
-  <ATM2OCN_FMAPNAME>cpl/cpl6/map_ne120np4_TO_tn0.25v1_aave.140423.nc</ATM2OCN_FMAPNAME>
-  <ATM2OCN_SMAPNAME>cpl/cpl6/map_ne120np4_TO_tn0.25v1_blin.140423.nc</ATM2OCN_SMAPNAME>
-  <ATM2OCN_VMAPNAME>cpl/cpl6/map_ne120np4_TO_tn0.25v1_blin.140423.nc</ATM2OCN_VMAPNAME>
-  <OCN2ATM_FMAPNAME>cpl/cpl6/map_tn0.25v1_TO_ne120np4_aave.140423.nc</OCN2ATM_FMAPNAME>
-  <OCN2ATM_SMAPNAME>cpl/cpl6/map_tn0.25v1_TO_ne120np4_aave.140423.nc</OCN2ATM_SMAPNAME>
 </gridmap>
 
 <!-- ====================  -->
@@ -1170,26 +946,6 @@ use the T62_g16 resolution instead:
   <LND_DOMAIN_FILE>domain.lnd.T62_mpas120.121116.nc</LND_DOMAIN_FILE>
 </griddom>
 
-<griddom grid="T62" mask="tn2v1"> <!--- datm/slnd/drof only -->
-  <ATM_DOMAIN_FILE>domain.lnd.T62_tn2v1.131031.nc</ATM_DOMAIN_FILE>
-  <LND_DOMAIN_FILE>domain.lnd.T62_tn2v1.131031.nc</LND_DOMAIN_FILE>
-</griddom>					 
-
-<griddom grid="T62" mask="tn1v1"> <!--- datm/slnd/drof only -->
-  <ATM_DOMAIN_FILE>domain.lnd.T62_tn1v1.130426.nc</ATM_DOMAIN_FILE>
-  <LND_DOMAIN_FILE>domain.lnd.T62_tn1v1.130426.nc</LND_DOMAIN_FILE>
-</griddom>					 
-
-<griddom grid="T62" mask="tn0.5v1"> <!--- datm/slnd/drof only -->
-  <ATM_DOMAIN_FILE>domain.lnd.T62_tn0.5v1.140317.nc</ATM_DOMAIN_FILE>
-  <LND_DOMAIN_FILE>domain.lnd.T62_tn0.5v1.140317.nc</LND_DOMAIN_FILE>
-</griddom>					 
-
-<griddom grid="T62" mask="tn0.25v1"> <!--- datm/slnd/drof only -->
-  <ATM_DOMAIN_FILE>domain.lnd.T62_tn0.25v1.140424.nc</ATM_DOMAIN_FILE>
-  <LND_DOMAIN_FILE>domain.lnd.T62_tn0.25v1.140424.nc</LND_DOMAIN_FILE>
-</griddom>					 
-
 <gridmap atm_grid="T62" ocn_grid="gx3v7">
   <ATM2OCN_FMAPNAME>cpl/gridmaps/T62/map_T62_TO_gx3v7_aave.130322.nc</ATM2OCN_FMAPNAME>
   <ATM2OCN_SMAPNAME>cpl/gridmaps/T62/map_T62_TO_gx3v7_blin.130322.nc</ATM2OCN_SMAPNAME>
@@ -1228,38 +984,6 @@ use the T62_g16 resolution instead:
   <ATM2OCN_VMAPNAME>cpl/gridmaps/T62/map_T62_TO_mpas120_aave.121116.nc</ATM2OCN_VMAPNAME>
   <OCN2ATM_FMAPNAME>cpl/gridmaps/mpas120/map_mpas120_TO_T62_aave.121116.nc</OCN2ATM_FMAPNAME>
   <OCN2ATM_SMAPNAME>cpl/gridmaps/mpas120/map_mpas120_TO_T62_aave.121116.nc</OCN2ATM_SMAPNAME>
-</gridmap>
-
-<gridmap atm_grid="T62" ocn_grid="tn2v1">
-  <ATM2OCN_FMAPNAME>cpl/cpl6/map_T62_TO_tn2v1_aave.131031.nc</ATM2OCN_FMAPNAME>
-  <ATM2OCN_SMAPNAME>cpl/cpl6/map_T62_TO_tn2v1_blin.131031.nc</ATM2OCN_SMAPNAME>
-  <ATM2OCN_VMAPNAME>cpl/cpl6/map_T62_TO_tn2v1_patc.131031.nc</ATM2OCN_VMAPNAME>
-  <OCN2ATM_FMAPNAME>cpl/cpl6/map_tn2v1_TO_T62_aave.131031.nc</OCN2ATM_FMAPNAME>
-  <OCN2ATM_SMAPNAME>cpl/cpl6/map_tn2v1_TO_T62_aave.131031.nc</OCN2ATM_SMAPNAME>
-</gridmap>
-
-<gridmap atm_grid="T62" ocn_grid="tn1v1">
-  <ATM2OCN_FMAPNAME>cpl/cpl6/map_T62_TO_tn1v1_aave.130426.nc</ATM2OCN_FMAPNAME>
-  <ATM2OCN_SMAPNAME>cpl/cpl6/map_T62_TO_tn1v1_blin.130426.nc</ATM2OCN_SMAPNAME>
-  <ATM2OCN_VMAPNAME>cpl/cpl6/map_T62_TO_tn1v1_patc.130426.nc</ATM2OCN_VMAPNAME>
-  <OCN2ATM_FMAPNAME>cpl/cpl6/map_tn1v1_TO_T62_aave.130426.nc</OCN2ATM_FMAPNAME>
-  <OCN2ATM_SMAPNAME>cpl/cpl6/map_tn1v1_TO_T62_aave.130426.nc</OCN2ATM_SMAPNAME>
-</gridmap>
-
-<gridmap atm_grid="T62" ocn_grid="tn0.5v1">
-  <ATM2OCN_FMAPNAME>cpl/cpl6/map_T62_TO_tn0.5v1_aave.140314.nc</ATM2OCN_FMAPNAME>
-  <ATM2OCN_SMAPNAME>cpl/cpl6/map_T62_TO_tn0.5v1_blin.140314.nc</ATM2OCN_SMAPNAME>
-  <ATM2OCN_VMAPNAME>cpl/cpl6/map_T62_TO_tn0.5v1_blin.140314.nc</ATM2OCN_VMAPNAME>
-  <OCN2ATM_FMAPNAME>cpl/cpl6/map_tn0.5v1_TO_T62_aave.140314.nc</OCN2ATM_FMAPNAME>
-  <OCN2ATM_SMAPNAME>cpl/cpl6/map_tn0.5v1_TO_T62_aave.140314.nc</OCN2ATM_SMAPNAME>
-</gridmap>
-
-<gridmap atm_grid="T62" ocn_grid="tn0.25v1">
-  <ATM2OCN_FMAPNAME>cpl/cpl6/map_T62_TO_tn0.25v1_aave.140424.nc</ATM2OCN_FMAPNAME>
-  <ATM2OCN_SMAPNAME>cpl/cpl6/map_T62_TO_tn0.25v1_blin.140424.nc</ATM2OCN_SMAPNAME>
-  <ATM2OCN_VMAPNAME>cpl/cpl6/map_T62_TO_tn0.25v1_blin.140424.nc</ATM2OCN_VMAPNAME>
-  <OCN2ATM_FMAPNAME>cpl/cpl6/map_tn0.25v1_TO_T62_aave.140424.nc</OCN2ATM_FMAPNAME>
-  <OCN2ATM_SMAPNAME>cpl/cpl6/map_tn0.25v1_TO_T62_aave.140424.nc</OCN2ATM_SMAPNAME>
 </gridmap>
 
 <!-- ====================  -->
@@ -1500,18 +1224,6 @@ use the T62_g16 resolution instead:
 <gridmap rof_grid="r05" ocn_grid="gx1v6" >
   <ROF2OCN_FMAPNAME>cpl/cpl6/map_r05_TO_g16_aave.120920.nc</ROF2OCN_FMAPNAME>
 </gridmap>
-<gridmap rof_grid="r05" ocn_grid="tn2v1" >
-  <ROF2OCN_FMAPNAME>cpl/cpl6/map_r05_TO_tn2v1_aave.150424.nc</ROF2OCN_FMAPNAME>
-</gridmap>
-<gridmap rof_grid="r05" ocn_grid="tn1v1" >
-  <ROF2OCN_FMAPNAME>cpl/cpl6/map_r05_TO_tn1v1_aave.150423.nc</ROF2OCN_FMAPNAME>
-</gridmap>
-<gridmap rof_grid="r05" ocn_grid="tn0.5v1" >
-  <ROF2OCN_FMAPNAME>cpl/cpl6/map_r05_TO_tn0.5v1_aave.150424.nc</ROF2OCN_FMAPNAME>
-</gridmap>
-<gridmap rof_grid="r05" ocn_grid="tn0.25v1" >
-  <ROF2OCN_FMAPNAME>cpl/cpl6/map_r05_TO_tn0.25v1_aave.150423.nc</ROF2OCN_FMAPNAME>
-</gridmap>
 <XROF_FLOOD_MODE lnd_grid="1.9x2.5" rof_grid="r05" ocn_grid="gx1v6" >ACTIVE</XROF_FLOOD_MODE>
 
 <gridmap rof_grid="rx1" ocn_grid="gx3v7" >
@@ -1526,18 +1238,6 @@ use the T62_g16 resolution instead:
 <gridmap rof_grid="rx1" ocn_grid="tx0.1v2" >
   <ROF2OCN_RMAPNAME >cpl/cpl6/map_rx1_to_tx0.1v2_e1000r200_090624.nc</ROF2OCN_RMAPNAME>
 </gridmap>
-<gridmap rof_grid="rx1" ocn_grid="tn2v1" >
-  <ROF2OCN_RMAPNAME >cpl/cpl6/map_rx1_to_tn2v1_e1000r300_131031.nc</ROF2OCN_RMAPNAME>
-</gridmap>
-<gridmap rof_grid="rx1" ocn_grid="tn1v1" >
-  <ROF2OCN_RMAPNAME >cpl/cpl6/map_rx1_to_tn1v1_e1000r300_130426.nc</ROF2OCN_RMAPNAME>
-</gridmap>
-<gridmap rof_grid="rx1" ocn_grid="tn0.5v1" >
-  <ROF2OCN_RMAPNAME >cpl/cpl6/map_rx1_to_tn0.5v1_e1000r300_140318.nc</ROF2OCN_RMAPNAME>
-</gridmap>
-<gridmap rof_grid="rx1" ocn_grid="tn0.25v1" >
-  <ROF2OCN_RMAPNAME >cpl/cpl6/map_rx1_to_tn0.25v1_e1000r300_140424.nc</ROF2OCN_RMAPNAME>
-</gridmap>
 
 <gridmap rof_grid="r05" ocn_grid="gx3v7" >
   <ROF2OCN_RMAPNAME >cpl/cpl6/map_r05_to_gx3v7_e1000r500_090903.nc</ROF2OCN_RMAPNAME>
@@ -1551,21 +1251,268 @@ use the T62_g16 resolution instead:
 <gridmap rof_grid="r05" ocn_grid="tx0.1v2" > 
   <ROF2OCN_RMAPNAME>cpl/cpl6/map_r05_to_tx0.1v2_r500e1000_080620.nc</ROF2OCN_RMAPNAME>
 </gridmap>
-<gridmap rof_grid="r05" ocn_grid="tn2v1" >
-  <ROF2OCN_RMAPNAME >cpl/cpl6/map_r05_to_tn2v1_e1000r300_131031.nc</ROF2OCN_RMAPNAME>
+
+<gridmap rof_grid="r01" ocn_grid="gx1v6" >
+  <ROF2OCN_RMAPNAME >cpl/cpl6/map_r01_to_gx1v6_120711.nc</ROF2OCN_RMAPNAME>
 </gridmap>
+
+<!-- ======================================================== -->
+<!-- NEMO GRIDS                                               -->
+<!-- ======================================================== -->
+<!-- NEMO grids size does not take into account the global domain halo -->
+
+<!-- ORCA1 , tn1v1 -->
+
+<gridhorz name="tn1v1">
+  <nx>360</nx> <ny>291</ny>
+  <desc>tn1v1 is NEMO ORCA1 tripole grid at 1 deg:</desc>
+</gridhorz>
+
+<griddom grid="tn1v1" mask="tn1v1">
+  <ICE_DOMAIN_FILE>domain.ocn.tn1v1.130426.nc </ICE_DOMAIN_FILE>
+  <OCN_DOMAIN_FILE>domain.ocn.tn1v1.130426.nc </OCN_DOMAIN_FILE>
+</griddom>
+
+<GRID sname="0.23x0.31_tn1v1"    alias="f02_n11"   >a%0.23x0.31_l%0.23x0.31_oi%tn1v1_r%r05_m%tn1v1_g%null_w%null</GRID>
+<GRID sname="0.47x0.63_tn1v1"    alias="f05_n11"   >a%0.47x0.63_l%0.47x0.63_oi%t1v1_r%r05_m%t1v1_g%null_w%null</GRID>
+<GRID sname="0.9x1.25_tn1v1"     alias="f09_n11"   >a%0.9x1.25_l%0.9x1.25_oi%tn1v1_r%r05_m%tn1v1_g%null_w%null</GRID>
+<GRID sname="1.9x2.5_tn1v1"      alias="f19_n11"   >a%1.9x2.5_l%1.9x2.5_oi%tn1v1_r%r05_m%tn1v1_g%null_w%null</GRID>
+<GRID sname="ne30np4_tn1v1"      alias="ne30_n11"  >a%ne30np4_l%ne30np4_oi%tn1v1_r%r05_m%tn1v1_g%null_w%null</GRID>
+<GRID sname="ne120np4_tn1v1"     alias="ne120_n11" >a%ne120np4_l%ne120np4_oi%tn1v1_r%r05_m%tn1v1_g%null_w%null</GRID>
+<GRID sname="T62_tn1v1"          alias="T62_n11"   compset="(DATM|XATM|SATM)">a%T62_l%T62_oi%tn1v1_r%rx1_m%tn1v1_g%null_w%null</GRID>
+
+<griddom grid="0.23x0.31" mask="tn1v1">
+  <ATM_DOMAIN_FILE>domain.lnd.fv0.23x0.31_tn1v1.130426.nc</ATM_DOMAIN_FILE>
+  <LND_DOMAIN_FILE>domain.lnd.fv0.23x0.31_tn1v1.130426.nc</LND_DOMAIN_FILE>
+  <ICE_DOMAIN_FILE>domain.ocn.fv0.23x0.31_tn1v1.130426.nc</ICE_DOMAIN_FILE>
+  <OCN_DOMAIN_FILE>domain.ocn.fv0.23x0.31_tn1v1.130426.nc</OCN_DOMAIN_FILE>
+</griddom>
+
+<gridmap atm_grid="0.23x0.31" ocn_grid="tn1v1">
+  <ATM2OCN_FMAPNAME>cpl/cpl6/map_fv0.23x0.31_TO_tn1v1_aave.130426.nc</ATM2OCN_FMAPNAME>
+  <ATM2OCN_SMAPNAME>cpl/cpl6/map_fv0.23x0.31_TO_tn1v1_blin.130426.nc</ATM2OCN_SMAPNAME>
+  <ATM2OCN_VMAPNAME>cpl/cpl6/map_fv0.23x0.31_TO_tn1v1_blin.130426.nc</ATM2OCN_VMAPNAME>
+  <OCN2ATM_FMAPNAME>cpl/cpl6/map_tn1v1_TO_fv0.23x0.31_aave.130426.nc</OCN2ATM_FMAPNAME>
+  <OCN2ATM_SMAPNAME>cpl/cpl6/map_tn1v1_TO_fv0.23x0.31_aave.130426.nc</OCN2ATM_SMAPNAME>
+</gridmap>
+
+<griddom grid="0.47x0.63" mask="tn1v1">
+  <ATM_DOMAIN_FILE>domain.lnd.fv0.47x0.63_tn1v1.130426.nc</ATM_DOMAIN_FILE>
+  <LND_DOMAIN_FILE>domain.lnd.fv0.47x0.63_tn1v1.130426.nc</LND_DOMAIN_FILE>
+  <ICE_DOMAIN_FILE>domain.ocn.fv0.47x0.63_tn1v1.130426.nc</ICE_DOMAIN_FILE>
+  <OCN_DOMAIN_FILE>domain.ocn.fv0.47x0.63_tn1v1.130426.nc</OCN_DOMAIN_FILE>
+</griddom>
+
+<gridmap atm_grid="0.47x0.63" ocn_grid="tn1v1">
+  <ATM2OCN_FMAPNAME>cpl/cpl6/map_fv0.47x0.63_TO_tn1v1_aave.130426.nc</ATM2OCN_FMAPNAME>
+  <ATM2OCN_SMAPNAME>cpl/cpl6/map_fv0.47x0.63_TO_tn1v1_patc.130426.nc</ATM2OCN_SMAPNAME>
+  <ATM2OCN_VMAPNAME>cpl/cpl6/map_fv0.47x0.63_TO_tn1v1_patc.130426.nc</ATM2OCN_VMAPNAME>
+  <OCN2ATM_FMAPNAME>cpl/cpl6/map_tn1v1_TO_fv0.47x0.63_aave.130426.nc</OCN2ATM_FMAPNAME>
+  <OCN2ATM_SMAPNAME>cpl/cpl6/map_tn1v1_TO_fv0.47x0.63_aave.130426.nc</OCN2ATM_SMAPNAME>
+</gridmap>
+
+<griddom grid="0.9x1.25" mask="tn1v1">
+  <ATM_DOMAIN_FILE>domain.lnd.fv0.9x1.25_tn1v1.130426.nc</ATM_DOMAIN_FILE>
+  <LND_DOMAIN_FILE>domain.lnd.fv0.9x1.25_tn1v1.130426.nc</LND_DOMAIN_FILE>
+  <ICE_DOMAIN_FILE>domain.ocn.fv0.9x1.25_tn1v1.130426.nc</ICE_DOMAIN_FILE>
+  <OCN_DOMAIN_FILE>domain.ocn.fv0.9x1.25_tn1v1.130426.nc</OCN_DOMAIN_FILE>
+</griddom>
+
+<gridmap atm_grid="0.9x1.25" ocn_grid="tn1v1">
+  <ATM2OCN_FMAPNAME>cpl/cpl6/map_fv0.9x1.25_TO_tn1v1_aave.130426.nc</ATM2OCN_FMAPNAME>
+  <ATM2OCN_SMAPNAME>cpl/cpl6/map_fv0.9x1.25_TO_tn1v1_blin.130426.nc</ATM2OCN_SMAPNAME>
+  <ATM2OCN_VMAPNAME>cpl/cpl6/map_fv0.9x1.25_TO_tn1v1_patc.130426.nc</ATM2OCN_VMAPNAME>
+  <OCN2ATM_FMAPNAME>cpl/cpl6/map_tn1v1_TO_fv0.9x1.25_aave.130426.nc</OCN2ATM_FMAPNAME>
+  <OCN2ATM_SMAPNAME>cpl/cpl6/map_tn1v1_TO_fv0.9x1.25_aave.130426.nc</OCN2ATM_SMAPNAME>
+</gridmap>
+
+<griddom grid="1.9x2.5" mask="tn1v1">
+  <ATM_DOMAIN_FILE>domain.lnd.fv1.9x2.5_tn1v1.130426.nc</ATM_DOMAIN_FILE>
+  <LND_DOMAIN_FILE>domain.lnd.fv1.9x2.5_tn1v1.130426.nc</LND_DOMAIN_FILE>
+  <ICE_DOMAIN_FILE>domain.ocn.fv1.9x2.5_tn1v1.130426.nc</ICE_DOMAIN_FILE>
+  <OCN_DOMAIN_FILE>domain.ocn.fv1.9x2.5_tn1v1.130426.nc</OCN_DOMAIN_FILE>
+</griddom>
+
+<gridmap atm_grid="1.9x2.5" ocn_grid="tn1v1">
+  <ATM2OCN_FMAPNAME>cpl/cpl6/map_fv1.9x2.5_TO_tn1v1_aave.130426.nc</ATM2OCN_FMAPNAME>
+  <ATM2OCN_SMAPNAME>cpl/cpl6/map_fv1.9x2.5_TO_tn1v1_blin.130426.nc</ATM2OCN_SMAPNAME>
+  <ATM2OCN_VMAPNAME>cpl/cpl6/map_fv1.9x2.5_TO_tn1v1_patc.130426.nc</ATM2OCN_VMAPNAME>
+  <OCN2ATM_FMAPNAME>cpl/cpl6/map_tn1v1_TO_fv1.9x2.5_aave.130426.nc</OCN2ATM_FMAPNAME>
+  <OCN2ATM_SMAPNAME>cpl/cpl6/map_tn1v1_TO_fv1.9x2.5_aave.130426.nc</OCN2ATM_SMAPNAME>
+</gridmap>
+
+<griddom grid="ne30np4" mask="tn1v1">
+  <ATM_DOMAIN_FILE>domain.lnd.ne30np4_tn1v1.130426.nc</ATM_DOMAIN_FILE>
+  <LND_DOMAIN_FILE>domain.lnd.ne30np4_tn1v1.130426.nc</LND_DOMAIN_FILE>
+  <ICE_DOMAIN_FILE>domain.ocn.ne30np4_tn1v1.130426.nc</ICE_DOMAIN_FILE>
+  <OCN_DOMAIN_FILE>domain.ocn.ne30np4_tn1v1.130426.nc</OCN_DOMAIN_FILE>
+</griddom>
+
+<gridmap atm_grid="ne30np4" ocn_grid="tn1v1">
+  <ATM2OCN_FMAPNAME>cpl/cpl6/map_ne30np4_TO_tn1v1_aave.130426.nc</ATM2OCN_FMAPNAME>
+  <ATM2OCN_SMAPNAME>cpl/cpl6/map_ne30np4_TO_tn1v1_native.130426.nc</ATM2OCN_SMAPNAME>
+  <ATM2OCN_VMAPNAME>cpl/cpl6/map_ne30np4_TO_tn1v1_native.130426.nc</ATM2OCN_VMAPNAME>
+  <OCN2ATM_FMAPNAME>cpl/cpl6/map_tn1v1_TO_ne30np4_aave.130426.nc</OCN2ATM_FMAPNAME>
+  <OCN2ATM_SMAPNAME>cpl/cpl6/map_tn1v1_TO_ne30np4_aave.130426.nc</OCN2ATM_SMAPNAME>
+</gridmap>
+
+<griddom grid="ne120np4" mask="tn1v1">
+  <ATM_DOMAIN_FILE>domain.lnd.ne120_tn1v1.130426.nc</ATM_DOMAIN_FILE>
+  <LND_DOMAIN_FILE>domain.lnd.ne120_tn1v1.130426.nc</LND_DOMAIN_FILE>
+  <ICE_DOMAIN_FILE>domain.ocn.ne120_tn1v1.130426.nc</ICE_DOMAIN_FILE>
+  <OCN_DOMAIN_FILE>domain.ocn.ne120_tn1v1.130426.nc</OCN_DOMAIN_FILE>
+</griddom>
+
+<gridmap atm_grid="ne120np4" ocn_grid="tn1v1">
+  <ATM2OCN_FMAPNAME>cpl/cpl6/map_ne120_TO_tn1v1_aave.130426.nc</ATM2OCN_FMAPNAME>
+  <ATM2OCN_SMAPNAME>cpl/cpl6/map_ne120_TO_tn1v1_blin.130426.nc</ATM2OCN_SMAPNAME>
+  <ATM2OCN_VMAPNAME>cpl/cpl6/map_ne120_TO_tn1v1_blin.130426.nc</ATM2OCN_VMAPNAME>
+  <OCN2ATM_FMAPNAME>cpl/cpl6/map_tn1v1_TO_ne120_aave.130426.nc</OCN2ATM_FMAPNAME>
+  <OCN2ATM_SMAPNAME>cpl/cpl6/map_tn1v1_TO_ne120_aave.130426.nc</OCN2ATM_SMAPNAME>
+</gridmap>
+
+<griddom grid="T62" mask="tn1v1"> <!--- datm/slnd/drof only -->
+  <ATM_DOMAIN_FILE>domain.lnd.T62_tn1v1.130426.nc</ATM_DOMAIN_FILE>
+  <LND_DOMAIN_FILE>domain.lnd.T62_tn1v1.130426.nc</LND_DOMAIN_FILE>
+</griddom>
+
+<gridmap atm_grid="T62" ocn_grid="tn1v1">
+  <ATM2OCN_FMAPNAME>cpl/cpl6/map_T62_TO_tn1v1_aave.130426.nc</ATM2OCN_FMAPNAME>
+  <ATM2OCN_SMAPNAME>cpl/cpl6/map_T62_TO_tn1v1_blin.130426.nc</ATM2OCN_SMAPNAME>
+  <ATM2OCN_VMAPNAME>cpl/cpl6/map_T62_TO_tn1v1_patc.130426.nc</ATM2OCN_VMAPNAME>
+  <OCN2ATM_FMAPNAME>cpl/cpl6/map_tn1v1_TO_T62_aave.130426.nc</OCN2ATM_FMAPNAME>
+  <OCN2ATM_SMAPNAME>cpl/cpl6/map_tn1v1_TO_T62_aave.130426.nc</OCN2ATM_SMAPNAME>
+</gridmap>
+
+<gridmap rof_grid="r05" ocn_grid="tn1v1" >
+  <ROF2OCN_FMAPNAME>cpl/cpl6/map_r05_TO_tn1v1_aave.150423.nc</ROF2OCN_FMAPNAME>
+</gridmap>
+
 <gridmap rof_grid="r05" ocn_grid="tn1v1" >
   <ROF2OCN_RMAPNAME >cpl/cpl6/map_r05_to_tn1v1_e1000r300_130426.nc</ROF2OCN_RMAPNAME>
 </gridmap>
-<gridmap rof_grid="r05" ocn_grid="tn0.5v1" >
-  <ROF2OCN_RMAPNAME >cpl/cpl6/map_r05_to_tn0.5v1_e1000r300_140318.nc</ROF2OCN_RMAPNAME>
+
+<gridmap rof_grid="rx1" ocn_grid="tn1v1" >
+  <ROF2OCN_RMAPNAME >cpl/cpl6/map_rx1_to_tn1v1_e1000r300_130426.nc</ROF2OCN_RMAPNAME>
 </gridmap>
+
+<!-- ORCA025 , tn0.25v1 -->
+
+<gridhorz name="tn0.25v1">
+  <nx>1440</nx> <ny>1020</ny>
+  <desc>tn0.25v1 is NEMO ORCA025 tripole grid at 1/4 deg:</desc>
+</gridhorz>
+
+<griddom grid="tn0.25v1" mask="tn0.25v1">
+  <ICE_DOMAIN_FILE>domain.ocn.tn0.25v1.140424.nc </ICE_DOMAIN_FILE>
+  <OCN_DOMAIN_FILE>domain.ocn.tn0.25v1.140424.nc </OCN_DOMAIN_FILE>
+</griddom>
+
+<GRID sname="0.23x0.31_tn0.25v1" alias="f02_n0251"   >a%0.23x0.31_l%0.23x0.31_oi%tn0.25v1_r%r05_m%tn0.25v1_g%null_w%null</GRID>
+<GRID sname="0.47x0.63_tn0.25v1" alias="f05_n0251"   >a%0.47x0.63_l%0.47x0.63_oi%t0.25v1_r%r05_m%t0.25v1_g%null_w%null</GRID>
+<GRID sname="0.9x1.25_tn0.25v1"  alias="f09_n0251"   >a%0.9x1.25_l%0.9x1.25_oi%tn0.25v1_r%r05_m%tn0.25v1_g%null_w%null</GRID>
+<GRID sname="ne30np4_tn0.25v1"   alias="ne30_n0251"  >a%ne30np4_l%ne30np4_oi%tn0.25v1_r%r05_m%tn0.25v1_g%null_w%null</GRID>
+<GRID sname="ne120np4_tn0.25v1"  alias="ne120_n0251" >a%ne120np4_l%ne120np4_oi%tn0.25v1_r%r05_m%tn0.25v1_g%null_w%null</GRID>
+<GRID sname="T62_tn0.25v1"       alias="T62_n0251"   compset="(DATM|XATM|SATM)">a%T62_l%T62_oi%tn0.25v1_r%rx1_m%tn0.25v1_g%null_w%null</GRID>
+
+<griddom grid="0.23x0.31" mask="tn0.25v1">
+  <ATM_DOMAIN_FILE>domain.lnd.fv0.23x0.31_tn0.25v1.140424.nc</ATM_DOMAIN_FILE>
+  <LND_DOMAIN_FILE>domain.lnd.fv0.23x0.31_tn0.25v1.140424.nc</LND_DOMAIN_FILE>
+  <ICE_DOMAIN_FILE>domain.ocn.fv0.23x0.31_tn0.25v1.140424.nc</ICE_DOMAIN_FILE>
+  <OCN_DOMAIN_FILE>domain.ocn.fv0.23x0.31_tn0.25v1.140424.nc</OCN_DOMAIN_FILE>
+</griddom>
+
+<gridmap atm_grid="0.23x0.31" ocn_grid="tn0.25v1">
+  <ATM2OCN_FMAPNAME>cpl/cpl6/map_fv0.23x0.31_TO_tn0.25v1_aave.140424.nc</ATM2OCN_FMAPNAME>
+  <ATM2OCN_SMAPNAME>cpl/cpl6/map_fv0.23x0.31_TO_tn0.25v1_blin.140424.nc</ATM2OCN_SMAPNAME>
+  <ATM2OCN_VMAPNAME>cpl/cpl6/map_fv0.23x0.31_TO_tn0.25v1_blin.140424.nc</ATM2OCN_VMAPNAME>
+  <OCN2ATM_FMAPNAME>cpl/cpl6/map_tn0.25v1_TO_fv0.23x0.31_aave.140424.nc</OCN2ATM_FMAPNAME>
+  <OCN2ATM_SMAPNAME>cpl/cpl6/map_tn0.25v1_TO_fv0.23x0.31_aave.140424.nc</OCN2ATM_SMAPNAME>
+</gridmap>
+
+<griddom grid="0.47x0.63" mask="tn0.25v1">
+  <ATM_DOMAIN_FILE>domain.lnd.fv0.47x0.63_tn0.25v1.140424.nc</ATM_DOMAIN_FILE>
+  <LND_DOMAIN_FILE>domain.lnd.fv0.47x0.63_tn0.25v1.140424.nc</LND_DOMAIN_FILE>
+  <ICE_DOMAIN_FILE>domain.ocn.fv0.47x0.63_tn0.25v1.140424.nc</ICE_DOMAIN_FILE>
+  <OCN_DOMAIN_FILE>domain.ocn.fv0.47x0.63_tn0.25v1.140424.nc</OCN_DOMAIN_FILE>
+</griddom>
+
+<gridmap atm_grid="0.47x0.63" ocn_grid="tn0.25v1">
+  <ATM2OCN_FMAPNAME>cpl/cpl6/map_fv0.47x0.63_TO_tn0.25v1_aave.140424.nc</ATM2OCN_FMAPNAME>
+  <ATM2OCN_SMAPNAME>cpl/cpl6/map_fv0.47x0.63_TO_tn0.25v1_blin.140424.nc</ATM2OCN_SMAPNAME>
+  <ATM2OCN_VMAPNAME>cpl/cpl6/map_fv0.47x0.63_TO_tn0.25v1_blin.140424.nc</ATM2OCN_VMAPNAME>
+  <OCN2ATM_FMAPNAME>cpl/cpl6/map_tn0.25v1_TO_fv0.47x0.63_aave.140424.nc</OCN2ATM_FMAPNAME>
+  <OCN2ATM_SMAPNAME>cpl/cpl6/map_tn0.25v1_TO_fv0.47x0.63_aave.140424.nc</OCN2ATM_SMAPNAME>
+</gridmap>
+
+<griddom grid="0.9x1.25" mask="tn0.25v1">
+  <ATM_DOMAIN_FILE>domain.lnd.fv0.9x1.25_tn0.25v1.140424.nc</ATM_DOMAIN_FILE>
+  <LND_DOMAIN_FILE>domain.lnd.fv0.9x1.25_tn0.25v1.140424.nc</LND_DOMAIN_FILE>
+  <ICE_DOMAIN_FILE>domain.ocn.fv0.9x1.25_tn0.25v1.140424.nc</ICE_DOMAIN_FILE>
+  <OCN_DOMAIN_FILE>domain.ocn.fv0.9x1.25_tn0.25v1.140424.nc</OCN_DOMAIN_FILE>
+</griddom>
+
+<gridmap atm_grid="0.9x1.25" ocn_grid="tn0.25v1">
+  <ATM2OCN_FMAPNAME>cpl/cpl6/map_fv0.9x1.25_TO_tn0.25v1_aave.140424.nc</ATM2OCN_FMAPNAME>
+  <ATM2OCN_SMAPNAME>cpl/cpl6/map_fv0.9x1.25_TO_tn0.25v1_blin.140424.nc</ATM2OCN_SMAPNAME>
+  <ATM2OCN_VMAPNAME>cpl/cpl6/map_fv0.9x1.25_TO_tn0.25v1_blin.140424.nc</ATM2OCN_VMAPNAME>
+  <OCN2ATM_FMAPNAME>cpl/cpl6/map_tn0.25v1_TO_fv0.9x1.25_aave.140424.nc</OCN2ATM_FMAPNAME>
+  <OCN2ATM_SMAPNAME>cpl/cpl6/map_tn0.25v1_TO_fv0.9x1.25_aave.140424.nc</OCN2ATM_SMAPNAME>
+</gridmap>
+
+<griddom grid="ne30np4" mask="tn0.25v1">
+  <ATM_DOMAIN_FILE>domain.lnd.ne30np4_tn0.25v1.140424.nc</ATM_DOMAIN_FILE>
+  <LND_DOMAIN_FILE>domain.lnd.ne30np4_tn0.25v1.140424.nc</LND_DOMAIN_FILE>
+  <ICE_DOMAIN_FILE>domain.ocn.ne30np4_tn0.25v1.140424.nc</ICE_DOMAIN_FILE>
+  <OCN_DOMAIN_FILE>domain.ocn.ne30np4_tn0.25v1.140424.nc</OCN_DOMAIN_FILE>
+</griddom>
+
+<gridmap atm_grid="ne30np4" ocn_grid="tn0.25v1">
+  <ATM2OCN_FMAPNAME>cpl/cpl6/map_ne30np4_TO_tn0.25v1_aave.140423.nc</ATM2OCN_FMAPNAME>
+  <ATM2OCN_SMAPNAME>cpl/cpl6/map_ne30np4_TO_tn0.25v1_blin.140423.nc</ATM2OCN_SMAPNAME>
+  <ATM2OCN_VMAPNAME>cpl/cpl6/map_ne30np4_TO_tn0.25v1_blin.140423.nc</ATM2OCN_VMAPNAME>
+  <OCN2ATM_FMAPNAME>cpl/cpl6/map_tn0.25v1_TO_ne30np4_aave.140423.nc</OCN2ATM_FMAPNAME>
+  <OCN2ATM_SMAPNAME>cpl/cpl6/map_tn0.25v1_TO_ne30np4_aave.140423.nc</OCN2ATM_SMAPNAME>
+</gridmap>
+
+<griddom grid="ne120np4" mask="tn0.25v1">
+  <ATM_DOMAIN_FILE>domain.lnd.ne120np4_tn0.25v1.140424.nc</ATM_DOMAIN_FILE>
+  <LND_DOMAIN_FILE>domain.lnd.ne120np4_tn0.25v1.140424.nc</LND_DOMAIN_FILE>
+  <ICE_DOMAIN_FILE>domain.ocn.ne120np4_tn0.25v1.140424.nc</ICE_DOMAIN_FILE>
+  <OCN_DOMAIN_FILE>domain.ocn.ne120np4_tn0.25v1.140424.nc</OCN_DOMAIN_FILE>
+</griddom>
+
+<gridmap atm_grid="ne120np4" ocn_grid="tn0.25v1">
+  <ATM2OCN_FMAPNAME>cpl/cpl6/map_ne120np4_TO_tn0.25v1_aave.140423.nc</ATM2OCN_FMAPNAME>
+  <ATM2OCN_SMAPNAME>cpl/cpl6/map_ne120np4_TO_tn0.25v1_blin.140423.nc</ATM2OCN_SMAPNAME>
+  <ATM2OCN_VMAPNAME>cpl/cpl6/map_ne120np4_TO_tn0.25v1_blin.140423.nc</ATM2OCN_VMAPNAME>
+  <OCN2ATM_FMAPNAME>cpl/cpl6/map_tn0.25v1_TO_ne120np4_aave.140423.nc</OCN2ATM_FMAPNAME>
+  <OCN2ATM_SMAPNAME>cpl/cpl6/map_tn0.25v1_TO_ne120np4_aave.140423.nc</OCN2ATM_SMAPNAME>
+</gridmap>
+
+<griddom grid="T62" mask="tn0.25v1"> <!--- datm/slnd/drof only -->
+  <ATM_DOMAIN_FILE>domain.lnd.T62_tn0.25v1.140424.nc</ATM_DOMAIN_FILE>
+  <LND_DOMAIN_FILE>domain.lnd.T62_tn0.25v1.140424.nc</LND_DOMAIN_FILE>
+</griddom>
+
+<gridmap atm_grid="T62" ocn_grid="tn0.25v1">
+  <ATM2OCN_FMAPNAME>cpl/cpl6/map_T62_TO_tn0.25v1_aave.140424.nc</ATM2OCN_FMAPNAME>
+  <ATM2OCN_SMAPNAME>cpl/cpl6/map_T62_TO_tn0.25v1_blin.140424.nc</ATM2OCN_SMAPNAME>
+  <ATM2OCN_VMAPNAME>cpl/cpl6/map_T62_TO_tn0.25v1_blin.140424.nc</ATM2OCN_VMAPNAME>
+  <OCN2ATM_FMAPNAME>cpl/cpl6/map_tn0.25v1_TO_T62_aave.140424.nc</OCN2ATM_FMAPNAME>
+  <OCN2ATM_SMAPNAME>cpl/cpl6/map_tn0.25v1_TO_T62_aave.140424.nc</OCN2ATM_SMAPNAME>
+</gridmap>
+
+<gridmap rof_grid="r05" ocn_grid="tn0.25v1" >
+  <ROF2OCN_FMAPNAME>cpl/cpl6/map_r05_TO_tn0.25v1_aave.150423.nc</ROF2OCN_FMAPNAME>
+</gridmap>
+
 <gridmap rof_grid="r05" ocn_grid="tn0.25v1" >
   <ROF2OCN_RMAPNAME >cpl/cpl6/map_r05_to_tn0.25v1_e1000r300_140423.nc</ROF2OCN_RMAPNAME>
 </gridmap>
 
-<gridmap rof_grid="r01" ocn_grid="gx1v6" >
-  <ROF2OCN_RMAPNAME >cpl/cpl6/map_r01_to_gx1v6_120711.nc</ROF2OCN_RMAPNAME>
+<gridmap rof_grid="rx1" ocn_grid="tn0.25v1" >
+  <ROF2OCN_RMAPNAME >cpl/cpl6/map_rx1_to_tn0.25v1_e1000r300_140424.nc</ROF2OCN_RMAPNAME>
 </gridmap>
 
 </config_compset >
