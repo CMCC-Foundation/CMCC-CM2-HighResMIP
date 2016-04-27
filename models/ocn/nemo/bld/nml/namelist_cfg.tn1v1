@@ -62,6 +62,7 @@
    ppacr       =       9.0             !
    ppdzmin     =       6.0             !  Minimum vertical spacing
    pphmax      =    5750.0             !  Maximum depth
+   ldbletanh   =   .FALSE.             !  Use/do not use double tanf function for vertical coordinates
    ppa2        =  999999.0             !  Double tanh function parameters
    ppkth2      =  999999.0             !
    ppacr2      =  999999.0             !
@@ -246,7 +247,7 @@
 !-----------------------------------------------------------------------
 &nambbc        !   bottom temperature boundary condition
 !-----------------------------------------------------------------------
-   sn_qgh      ='Goutorbe_ghflux.nc',  -12.  , 'gh_flux'    ,   .false.     , .true. , 'yearly'  , 'weights_Goutorbe1_2_eorca1_bilinear.nc'       , ''       , ''
+   sn_qgh      ='geothermal_heating.nc',  -12.  , 'gh_flux'    ,   .false.     , .true. , 'yearly'  , ''       , ''       , ''
    !
    cn_dir      = './'      !  root directory for the location of the runoff files
    ln_trabbc   = .false.    !  Apply a geothermal heating at the ocean bottom
