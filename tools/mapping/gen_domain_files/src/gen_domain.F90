@@ -82,7 +82,7 @@ program fmain
        ! set pole on this grid [0,1,2]
        call getarg (n, arg)
        n = n + 1
-       set_fv_pole_yc = ichar(trim(arg))
+       set_fv_pole_yc = ichar(trim(arg))-48
        write(6,*)'set_fv_pole_yc is ',set_fv_pole_yc
     case ('-c')
        ! user comment
