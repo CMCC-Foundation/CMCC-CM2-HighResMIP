@@ -287,7 +287,7 @@ if ("${CONTINUE_RUN}" == "TRUE" || "${RUN_TYPE}" != "startup") then
   # Looks for restart files and set the variable for the namelist substitution
   set flist = `ls -1rt ${EXPID}_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_restart_[0-9][0-9][0-9][0-9].nc | tail -1`
   if (${?flist} == 1 && "x${flist}" != "x" ) then
-    set ocerstinp = `echo ${flist} | sed -e "s;${CASE}_;;" | cut -d "_" -f 1-2 | sed -e "s;^;${CASE}_;"`
+    set ocerstinp = `echo ${flist} | sed -e "s;${EXPID}_;;" | cut -d "_" -f 1-2 | sed -e "s;^;${EXPID}_;"`
     set rest_file = "${ocerstinp}_0000.nc"
   else
     # Looks for restart file (single restart file case)
