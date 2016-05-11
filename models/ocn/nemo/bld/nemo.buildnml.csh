@@ -260,7 +260,7 @@ set lastkt = 0
 set ndastp = `echo ${RUN_STARTDATE} | sed -e "s/[^0-9]//g"`
 #
 set hyb_rest = 1   # 1 => hybrid run, starts from restart file
-if ("${CONTINUE_RUN}" == "TRUE") then
+if ("${CONTINUE_RUN}" == "TRUE" || "${RUN_TYPE}" != "startup") then
   set rstart = ".true."
   set rstctl = 2
   set msh = 0        # msh>0 => write out a mesh mask file
