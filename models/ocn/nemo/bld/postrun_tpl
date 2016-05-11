@@ -100,7 +100,7 @@ y1="YYYYMMDD1"
 y2="YYYYMMDD2"
 
 nproc=0
-flist=`ls ${EXPID}_*_${y1}_${y2}_*0000.nc 2> /dev/null | wc -w`
+flist=`ls ${EXPID}_*_${y1}_${y2}_*grid*0000.nc 2> /dev/null | wc -w`
 
 if [ ${flist} -gt 0 ] ; then
 
