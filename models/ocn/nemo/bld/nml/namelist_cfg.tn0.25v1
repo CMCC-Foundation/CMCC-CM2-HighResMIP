@@ -137,7 +137,9 @@
 !-----------------------------------------------------------------------
 &namtra_qsr    !   penetrative solar radiation
 !-----------------------------------------------------------------------
-   sn_chl      ='chlorophyll',  -1  , 'CHLA' , .true. , .true. , 'yearly' , '' , '' , ''
+!              !  file name  ! frequency (hours) ! variable  ! time interp. !  clim  ! 'yearly'/ ! weights  ! rotation ! land/sea mask !
+!              !             !  (if <0  months)  !   name    !   (logical)  !  (T/F) ! 'monthly' ! filename ! pairing  ! filename      !
+   sn_chl      ='chlorophyll',        -1         , 'chla'    ,   .true.     , .true. , 'yearly'  , ''       , ''       , ''
 /
 !-----------------------------------------------------------------------
 &namsbc_rnf    !   runoffs namelist surface boundary condition
@@ -330,7 +332,7 @@ ln_useCT    = .false.  ! use of Conservative Temp. ==> surface CT converted in P
 !-----------------------------------------------------------------------
    ln_hpg_zps  = .true.    !  z-coordinate - partial steps (interpolation)
    ln_hpg_sco  = .false.   !  s-coordinate (standard jacobian formulation)
-   ln_dynhpg_imp = .true.  !  time stepping: semi-implicit time scheme  (T)
+   ln_dynhpg_imp = .false.  !  time stepping: semi-implicit time scheme  (T)
                            !           centered      time scheme  (F)
 /
 !-----------------------------------------------------------------------
