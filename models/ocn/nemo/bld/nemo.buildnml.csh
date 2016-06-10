@@ -165,15 +165,9 @@ case "tn1v1":
   set MASK_ITF      = "grid/mask_itf_ORCA1_new"
 #  set DISTCOAST     = ""
   set CHLOROPHYLL   = "forcing/chlorophyll-ORCA1_1m"
-# Levitus 2001
-#  set POTEMPERATURE = "ic/potemp_1m_z46_nomask"
-#  set SALINITY      = "ic/salin_1m_z46_nomask"
-# WOA 2009
-#  set POTEMPERATURE = "ic/WOA2009_ORCA1_L46_1m_potential_temperature_nomask"
-#  set SALINITY      = "ic/WOA2009_ORCA1_L46_1m_salinity_nomask"
-# WOA 2009/PHC3.0
-  set POTEMPERATURE = "ic/WOA2009_PHC3.0_ORCA1_L46_1m_potential_temperature_nomask"
-  set SALINITY      = "ic/WOA2009_PHC3.0_ORCA1_L46_1m_salinity_nomask"
+# WOA 2013 - 1995-2004 climatology
+  set POTEMPERATURE = "ic/WOA13-95A4_ORCA1_L46_1m_potential_temperature_nomask"
+  set SALINITY      = "ic/WOA13-95A4_ORCA1_L46_1m_salinity_nomask"
   set BATHYMETRY    = "grid/bathy_meter_121126_CMCC"
 #  set SSSR          = "forcing/ORCA1_PHC2_1m_sss_nomask_patched"
 #  set SSSR          = "forcing/ORCA1_PHC2_1m_sss_nomask"
