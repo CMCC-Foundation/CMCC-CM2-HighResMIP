@@ -3385,6 +3385,8 @@ attributes from the config_cache.xml file (with keys converted to upper-case).
 <!--    USER settings     -->
 
 <scripgriddata hgrid="tn1v1"      lmask="tn1v1"     >share/scripgrids/tn1v1_130405.nc</scripgriddata>
+<scripgriddata hgrid="tn1v3"      lmask="tn1v3"     >share/scripgrids/tn1v3_160414.nc</scripgriddata>
 <scripgriddata hgrid="tn0.25v1"   lmask="tn0.25v1"  >share/scripgrids/tn0.25v1_140422.nc</scripgriddata>
+<scripgriddata hgrid="tn0.25v3"   lmask="tn0.25v3"  >share/scripgrids/tn0.25v3_160721.nc</scripgriddata>
 
 </namelist_defaults>

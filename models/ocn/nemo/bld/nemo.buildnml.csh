@@ -172,11 +172,27 @@ case "tn1v1":
 #  set SSSR          = "forcing/ORCA1_PHC2_1m_sss_nomask_patched"
 #  set SSSR          = "forcing/ORCA1_PHC2_1m_sss_nomask"
   breaksw
+case "tn1v3":
+  set COORDINATES   = "grid/ORCA1_coordinates_v1.0"
+  set BATHYMETRY    = "grid/ORCA1_bathy_meter_tn1v3"
+  set MASK_ITF      = "grid/ORCA1_maskITF_v1.0"
+  set SUBBASINS     = "grid/ORCA1_subbasins"
+  set GEOTHERMAL    = "forcing/ORCA1_Goutorbe_gh_flux_bicubic"
+  set K1ROWDRG      = "forcing/ORCA1_K1_v1.0"
+  set M2ROWDRG      = "forcing/ORCA1_M2_v1.0"
+  set CHLOROPHYLL   = "forcing/ORCA1_ESACCI_CHLA_bicubic"
+  set AHMCOEF       = "forcing/ORCA1_ahmcoef_v1.0"
+#  set DISTCOAST     = ""
+# WOA 2013
+  set POTEMPERATURE = "ic/WOA13-95A4_ORCA1_L50_1m_potential_temperature_nomask"
+  set SALINITY      = "ic/WOA13-95A4_ORCA1_L50_1m_salinity_nomask"
+#  set SSSR          = "forcing/WOA13-95A4_ORCA1_1m_sss_nomask"
+  breaksw
 case "tn0.5v?":
   echo "Error: Resolution ${OCN_GRID} not implemented yet!"
   exit 1
   breaksw
-case "tn0.25v?":
+case "tn0.25v1":
 #  set AHMCOEF       = "forcing/"
   set COORDINATES   = "grid/orca025_coordinates_280809"
 #  set SUBBASINS     = "grid/"
@@ -191,6 +207,20 @@ case "tn0.25v?":
   set SALINITY      = "ic/data_1m_salinity_nomask"
   set BATHYMETRY    = "grid/bathy_meter"
 #  set SSSR          = ""
+case "tn0.25v3":
+  set COORDINATES   = "grid/ORCA025_coordinates_v1.0"
+  set BATHYMETRY    = "grid/ORCA025_bathy_meter_tn0.25v3"
+  set MASK_ITF      = "grid/ORCA025_maskITF_v1.0"
+  set SUBBASINS     = "grid/ORCA025_subbasins"
+  set GEOTHERMAL    = "forcing/ORCA025_Goutorbe_gh_flux_bicubic"
+  set K1ROWDRG      = "forcing/ORCA025_K1_v1.0"
+  set M2ROWDRG      = "forcing/ORCA025_M2_v1.0"
+  set CHLOROPHYLL   = "forcing/ORCA025_ESACCI_CHLA_bicubic"
+#  set DISTCOAST     = ""
+# WOA 2013
+  set POTEMPERATURE = "ic/WOA13-95A4_ORCA025_L50_1m_potential_temperature_nomask"
+  set SALINITY      = "ic/WOA13-95A4_ORCA025_L50_1m_salinity_nomask"
+#  set SSSR          = "forcing/WOA13-95A4_ORCA025_1m_sss_nomask"
   breaksw
 default:
   echo "Error: Resolution not supported: ${OCN_GRID}!"
@@ -312,12 +342,12 @@ if ("${CONTINUE_RUN}" == "TRUE" || "${RUN_TYPE}" != "startup") then
   # Restart files for TOP module
   if ( "${NEMO_TOP_MODULES}" != "" ) then
     # Looks for restart files (1 file per PE case)
-    set flist = `ls -1rt ${EXPID}_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_restart_trc_[0-9][0-9][0-9][0-9].nc | tail -1`
+    set flist = `ls -1rt ${EXPID}_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_restart_bfm_[0-9][0-9][0-9][0-9].nc | tail -1`
     if (${?flist} == 1 && "x${flist}" != "x") then
-      set trcrstinp = `echo ${flist} | cut -d "_" -f 1-4`
+      set trcrstinp = `echo ${flist} | sed -e "s;${CASE}_;;" | cut -d "_" -f 1-3 | sed -e "s;^;${CASE}_;"`
     else
       # Looks for restart file (single restart file case)
-      set flist = `ls -1rt ${EXPID}_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_restart_trc.nc | tail -1`
+      set flist = `ls -1rt ${EXPID}_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_restart_bfm.nc | tail -1`
       if (${?flist} == 1 && "x${flist}" != "x") then
         set trcrstinp = `echo ${flist} | cut -d "." -f 1`
       else
@@ -462,7 +492,7 @@ case "*day*":
     @ nnfsbc = ${ts_per_day}
     breaksw
   case "4":
-    if ("${OCN_GRID}" != "tn2v1" && "${OCN_GRID}" != "tn1v1") then
+    if ("${OCN_GRID}" != "tn2v1" && "${OCN_GRID}" != "tn1v1"  && "${OCN_GRID}" != "tn1v3") then
       echo "Error: wrong OCN_NCPL value (${OCN_NCPL}) for grid ${OCN_GRID} with time step ${DTSEC}!"
       exit 1
     endif
@@ -470,7 +500,7 @@ case "*day*":
     @ nnfsbc = ${ts_per_day} / ${OCN_NCPL}
     breaksw
   case "6":
-    if ("${OCN_GRID}" != "tn2v1" && "${OCN_GRID}" != "tn1v1") then
+    if ("${OCN_GRID}" != "tn2v1" && "${OCN_GRID}" != "tn1v1"  && "${OCN_GRID}" != "tn1v3" ) then
       echo "Error: wrong OCN_NCPL value (${OCN_NCPL}) for grid ${OCN_GRID} with time step ${DTSEC}!"
       exit 1
     endif
@@ -478,7 +508,7 @@ case "*day*":
     @ nnfsbc = ${ts_per_day} / ${OCN_NCPL}
     breaksw
   case "8":
-    if ("${OCN_GRID}" != "tn2v1" && "${OCN_GRID}" != "tn1v1" && "${OCN_GRID}" != "tn0.25v1") then
+    if ("${OCN_GRID}" != "tn2v1" && "${OCN_GRID}" != "tn1v1"  && "${OCN_GRID}" != "tn1v3" && "${OCN_GRID}" != "tn0.25v1" && "${OCN_GRID}" != "tn0.25v3") then
       echo "Error: wrong OCN_NCPL value (${OCN_NCPL}) for grid ${OCN_GRID} with time step ${DTSEC}!"
       exit 1
     endif
@@ -486,7 +516,7 @@ case "*day*":
     @ nnfsbc = ${ts_per_day} / ${OCN_NCPL}
     breaksw
   case "12":
-    if ("${OCN_GRID}" != "tn1v1") then
+    if ("${OCN_GRID}" != "tn1v1"  && "${OCN_GRID}" != "tn1v3" ) then
       echo "Error: wrong OCN_NCPL value (${OCN_NCPL}) for grid ${OCN_GRID} with time step ${DTSEC}!"
       exit 1
     endif
@@ -494,7 +524,7 @@ case "*day*":
     @ nnfsbc = ${ts_per_day} / ${OCN_NCPL}
     breaksw
   case "16":
-    if ("${OCN_GRID}" != "tn0.25v1") then
+    if ("${OCN_GRID}" != "tn0.25v1" && "${OCN_GRID}" != "tn0.25v3") then
       echo "Error: wrong OCN_NCPL value (${OCN_NCPL}) for grid ${OCN_GRID} with time step ${DTSEC}!"
       exit 1
     endif
@@ -502,7 +532,7 @@ case "*day*":
     @ nnfsbc = ${ts_per_day} / ${OCN_NCPL}
     breaksw
   case "24":
-    if ("${OCN_GRID}" != "tn1v1") then
+    if ("${OCN_GRID}" != "tn1v1"  && "${OCN_GRID}" != "tn1v3" ) then
       echo "Error: wrong OCN_NCPL value (${OCN_NCPL}) for grid ${OCN_GRID} with time step ${DTSEC}!"
       exit 1
     endif

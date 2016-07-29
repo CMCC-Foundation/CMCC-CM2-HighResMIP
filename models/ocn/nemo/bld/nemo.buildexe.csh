@@ -28,7 +28,7 @@ case "tn0.5v?":
   exit 2
   breaksw
 case "tn0.25v?":
-  set res_cpp = "-Dkey_dynldf_c2d"
+  set res_cpp = "-Dkey_dynldf_c2d -Dkey_zdftmx"
   breaksw
 default
   echo "Unknown resolution ${OCN_GRID}"

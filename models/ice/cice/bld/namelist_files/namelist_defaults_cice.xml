@@ -365,11 +365,25 @@
 <kmt_file         hgrid="tn1v1" >'ice/cice/global_tn1v1_kmt_20121127.nc' </kmt_file>
 <ns_boundary_type hgrid="tn1v1" >'tripole'  </ns_boundary_type>
 
+<!-- ORCA1 , tn1v3 ------->
+<grid_type        hgrid="tn1v3" >'tripole'  </grid_type>
+<grid_format      hgrid="tn1v3" >'nc'       </grid_format>
+<grid_file        hgrid="tn1v3" >'ice/cice/global_tn1v3_grid_20160414.nc'</grid_file>
+<kmt_file         hgrid="tn1v3" >'ice/cice/global_tn1v3_kmt_20160414.nc' </kmt_file>
+<ns_boundary_type hgrid="tn1v3" >'tripole'  </ns_boundary_type>
+
 <!-- ORCA025 , tn0.25v1 ------->
 <grid_type        hgrid="tn0.25v1" >'tripole'  </grid_type>
 <grid_format      hgrid="tn0.25v1" >'nc'       </grid_format>
 <grid_file        hgrid="tn0.25v1" >'ice/cice/global_tn0.25v1_grid_20130622.nc'</grid_file>
 <kmt_file         hgrid="tn0.25v1" >'ice/cice/global_tn0.25v1_kmt_20140422.nc' </kmt_file>
 <ns_boundary_type hgrid="tn0.25v1" >'tripoleT' </ns_boundary_type>
+
+<!-- ORCA025 , tn0.25v3 ------->
+<grid_type        hgrid="tn0.25v3" >'tripole'  </grid_type>
+<grid_format      hgrid="tn0.25v3" >'nc'       </grid_format>
+<grid_file        hgrid="tn0.25v3" >'ice/cice/global_tn0.25v3_grid_20160721.nc'</grid_file>
+<kmt_file         hgrid="tn0.25v3" >'ice/cice/global_tn0.25v3_kmt_20160721.nc' </kmt_file>
+<ns_boundary_type hgrid="tn0.25v3" >'tripoleT' </ns_boundary_type>
 
 </namelist_defaults>
