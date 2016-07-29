@@ -173,9 +173,6 @@ CONTAINS
             !
             ii0 = 283           ;   ii1 = 283
             ij0 = 241 - isrow   ;   ij1 = 241 - isrow
-#if defined CCSMCOUPLED
-            ij0 = 200   ;   ij1 = 200
-#endif
             !                                        ! =======================
          CASE DEFAULT                                !    ORCA R05 or R025
             !                                        ! =======================
@@ -228,9 +225,6 @@ CONTAINS
             isrow = 332 - jpjglo
             ii0 = 282           ;   ii1 = 282
             ij0 = 240 - isrow   ;   ij1 = 240 - isrow
-#if defined CCSMCOUPLED
-            ij0 = 200   ;   ij1 = 200
-#endif
             !                                        ! =======================
          CASE DEFAULT                                !    ORCA R05 or R025
             !                                        ! =======================
@@ -283,9 +277,6 @@ CONTAINS
             isrow = 332 - jpjglo
             ii0 = 331           ;   ii1 = 331
             ij0 = 215 - isrow   ;   ij1 = 215 - isrow
-#if defined CCSMCOUPLED
-            ij0 = 176   ;   ij1 = 176
-#endif
             !                                        ! =======================
          CASE DEFAULT                                !    ORCA R05 or R025
             !                                        ! =======================
@@ -338,9 +329,6 @@ CONTAINS
             isrow = 332 - jpjglo
             ii0 = 297           ;   ii1 = 297
             ij0 = 269 - isrow   ;   ij1 = 269 - isrow
-#if defined CCSMCOUPLED
-            ij0 = 230   ;   ij1 = 230
-#endif
             !                                        ! =======================
          CASE DEFAULT                                !    ORCA R05 or R025
             !                                        ! =======================

@@ -156,6 +156,16 @@ CONTAINS
             END DO
          END DO
       ENDIF
+
+      ! ORCA R1: Take the minimum between aeiw  and aeiv0
+      IF( cp_cfg == "orca" .AND. jp_cfg == 1 ) THEN
+         DO jj = 2, jpjm1
+            DO ji = fs_2, fs_jpim1   ! vector opt.
+               aeiw(ji,jj) = MIN( aeiw(ji,jj), aeiv0 )
+            END DO
+         END DO
+      ENDIF
+
       CALL lbc_lnk( aeiw, 'W', 1. )      ! lateral boundary condition on aeiw 
 
 

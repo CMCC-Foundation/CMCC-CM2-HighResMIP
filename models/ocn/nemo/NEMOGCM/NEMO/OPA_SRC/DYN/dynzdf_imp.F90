@@ -322,11 +322,11 @@ CONTAINS
 #if defined key_dynspg_ts            
             ze3va =  ( 1._wp - r_vvl ) * fse3v_n(ji,jj,1) + r_vvl   * fse3v_a(ji,jj,1) 
             va(ji,jj,1) = va(ji,jj,1) + p2dt * 0.5_wp * ( vtau_b(ji,jj) + vtau(ji,jj) )   &
-               &                                      / ( ze3va * rau0 ) 
+               &                                      / ( ze3va * rau0 ) * vmask(ji,jj,1)
 #else
             va(ji,jj,1) = vb(ji,jj,1) &
                &                   + p2dt *(va(ji,jj,1) +  0.5_wp * ( vtau_b(ji,jj) + vtau(ji,jj) )   &
-               &                                                       / ( fse3v(ji,jj,1) * rau0     )  )
+               &                                      / ( fse3v(ji,jj,1) * rau0     ) * vmask(ji,jj,1) )
 #endif
          END DO
       END DO

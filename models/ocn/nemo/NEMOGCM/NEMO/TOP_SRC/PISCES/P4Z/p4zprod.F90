@@ -135,7 +135,7 @@ CONTAINS
                IF( etot_ndcy(ji,jj,jk) > 1.E-3 ) THEN
                   zval = MAX( 1., zstrn(ji,jj) )
                   zval = 1.5 * zval / ( 12. + zval )
-                  zprbio(ji,jj,jk) = prmax(ji,jj,jk) * zval
+                  zprbio(ji,jj,jk) = prmax(ji,jj,jk) * zval * ( 1. - fr_i(ji,jj) )
                   zprdia(ji,jj,jk) = zprbio(ji,jj,jk)
                ENDIF
             END DO

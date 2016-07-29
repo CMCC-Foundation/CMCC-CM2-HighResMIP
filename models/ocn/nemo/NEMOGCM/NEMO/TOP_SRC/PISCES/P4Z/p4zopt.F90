@@ -75,14 +75,16 @@ CONTAINS
       INTEGER  ::   irgb
       REAL(wp) ::   zchl
       REAL(wp) ::   zc0 , zc1 , zc2, zc3, z1_dep
-      REAL(wp), POINTER, DIMENSION(:,:  ) :: zdepmoy, zetmp1, zetmp2, zetmp3, zetmp4, zqsr100
+      REAL(wp), POINTER, DIMENSION(:,:  ) :: zdepmoy, zetmp1, zetmp2, zetmp3, zetmp4
+      REAL(wp), POINTER, DIMENSION(:,:  ) :: zqsr100, zqsr_corr
       REAL(wp), POINTER, DIMENSION(:,:,:) :: zpar, ze0, ze1, ze2, ze3
       !!---------------------------------------------------------------------
       !
       IF( nn_timing == 1 )  CALL timing_start('p4z_opt')
       !
       ! Allocate temporary workspace
-      CALL wrk_alloc( jpi, jpj,      zqsr100, zdepmoy, zetmp1, zetmp2, zetmp3, zetmp4 )
+      CALL wrk_alloc( jpi, jpj,      zdepmoy, zetmp1, zetmp2, zetmp3, zetmp4 )
+      CALL wrk_alloc( jpi, jpj,      zqsr100, zqsr_corr )
       CALL wrk_alloc( jpi, jpj, jpk, zpar, ze0, ze1, ze2, ze3 )
 
       IF( knt == 1 .AND. ln_varpar ) CALL p4z_opt_sbc( kt )
@@ -111,10 +113,12 @@ CONTAINS
       !                                        !* Photosynthetically Available Radiation (PAR)
       !                                        !  --------------------------------------
       IF( l_trcdm2dc ) THEN                     !  diurnal cycle
-         ! 1% of qsr to compute euphotic layer
+         !                                       ! 1% of qsr to compute euphotic layer
          zqsr100(:,:) = 0.01 * qsr_mean(:,:)     !  daily mean qsr
          !
-         CALL p4z_opt_par( kt, qsr_mean, ze1, ze2, ze3 ) 
+         zqsr_corr(:,:) = qsr_mean(:,:) / ( 1. - fr_i(:,:) + rtrn )
+         !
+         CALL p4z_opt_par( kt, zqsr_corr, ze1, ze2, ze3 ) 
          !
          DO jk = 1, nksrp      
             etot_ndcy(:,:,jk) =        ze1(:,:,jk) +        ze2(:,:,jk) +       ze3(:,:,jk)
@@ -122,7 +126,9 @@ CONTAINS
             ediat    (:,:,jk) =  1.6 * ze1(:,:,jk) + 0.69 * ze2(:,:,jk) + 0.7 * ze3(:,:,jk)
          END DO
          !
-         CALL p4z_opt_par( kt, qsr, ze1, ze2, ze3 ) 
+         zqsr_corr(:,:) = qsr(:,:) / ( 1. - fr_i(:,:) + rtrn )
+         !
+         CALL p4z_opt_par( kt, zqsr_corr, ze1, ze2, ze3 ) 
          !
          DO jk = 1, nksrp      
             etot(:,:,jk) =  ze1(:,:,jk) + ze2(:,:,jk) + ze3(:,:,jk)
@@ -132,7 +138,9 @@ CONTAINS
          ! 1% of qsr to compute euphotic layer
          zqsr100(:,:) = 0.01 * qsr(:,:)
          !
-         CALL p4z_opt_par( kt, qsr, ze1, ze2, ze3 ) 
+         zqsr_corr(:,:) = qsr(:,:) / ( 1. - fr_i(:,:) + rtrn )
+         !
+         CALL p4z_opt_par( kt, zqsr_corr, ze1, ze2, ze3 ) 
          !
          DO jk = 1, nksrp      
             etot (:,:,jk) =        ze1(:,:,jk) +        ze2(:,:,jk) +       ze3(:,:,jk)
@@ -225,7 +233,8 @@ CONTAINS
          ENDIF
       ENDIF
       !
-      CALL wrk_dealloc( jpi, jpj,      zqsr100, zdepmoy, zetmp1, zetmp2, zetmp3, zetmp4 )
+      CALL wrk_dealloc( jpi, jpj,      zdepmoy, zetmp1, zetmp2, zetmp3, zetmp4 )
+      CALL wrk_dealloc( jpi, jpj,      zqsr100, zqsr_corr )
       CALL wrk_dealloc( jpi, jpj, jpk, zpar,  ze0, ze1, ze2, ze3 )
       !
       IF( nn_timing == 1 )  CALL timing_stop('p4z_opt')

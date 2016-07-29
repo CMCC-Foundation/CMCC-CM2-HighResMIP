@@ -119,7 +119,7 @@ CONTAINS
       ! work out interior of processor from exchange array
       ! first entry with narea for this processor is left hand interior index
       ! last  entry                               is right hand interior index
-      jj = jpj/2
+      jj = nlcj/2
       nicbdi = -1
       nicbei = -1
       DO ji = 1, jpi
@@ -135,7 +135,7 @@ CONTAINS
       END DO
       !
       ! repeat for j direction
-      ji = jpi/2
+      ji = nlci/2
       nicbdj = -1
       nicbej = -1
       DO jj = 1, jpj
@@ -152,11 +152,11 @@ CONTAINS
       !   
       ! special for east-west boundary exchange we save the destination index
       i1 = MAX( nicbdi-1, 1)
-      i3 = INT( src_calving(i1,jpj/2) )
+      i3 = INT( src_calving(i1,nlcj/2) )
       jj = INT( i3/nicbpack )
       ricb_left = REAL( i3 - nicbpack*jj, wp )
       i1 = MIN( nicbei+1, jpi )
-      i3 = INT( src_calving(i1,jpj/2) )
+      i3 = INT( src_calving(i1,nlcj/2) )
       jj = INT( i3/nicbpack )
       ricb_right = REAL( i3 - nicbpack*jj, wp )
       
@@ -195,13 +195,13 @@ CONTAINS
          WRITE(numicb,*) 'berg j interior ', nicbdj, nicbej
          WRITE(numicb,*) 'berg left       ', ricb_left
          WRITE(numicb,*) 'berg right      ', ricb_right
-         jj = jpj/2
+         jj = nlcj/2
          WRITE(numicb,*) "central j line:"
          WRITE(numicb,*) "i processor"
          WRITE(numicb,*) (INT(src_calving_hflx(ji,jj)), ji=1,jpi)
          WRITE(numicb,*) "i point"
          WRITE(numicb,*) (INT(src_calving(ji,jj)), ji=1,jpi)
-         ji = jpi/2
+         ji = nlci/2
          WRITE(numicb,*) "central i line:"
          WRITE(numicb,*) "j processor"
          WRITE(numicb,*) (INT(src_calving_hflx(ji,jj)), jj=1,jpj)

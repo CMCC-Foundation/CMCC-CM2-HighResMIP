@@ -215,29 +215,12 @@ CONTAINS
       INTEGER  ::   ji, jj, jk  ! dummy loop indices
       REAL(wp) ::   zztmp  
       REAL(wp), POINTER, DIMENSION(:,:,:,:) ::   zsaldta   ! Jan/Dec levitus salinity
-      ! reading initial file
-      LOGICAL  ::   ln_tsd_init      !: T & S data flag
-      LOGICAL  ::   ln_tsd_tradmp    !: internal damping toward input data flag
-      CHARACTER(len=100)            ::   cn_dir
-      TYPE(FLD_N)                   ::  sn_tem,sn_sal
-      INTEGER  ::   ios=0
-
-      NAMELIST/namtsd/ ln_tsd_init,ln_tsd_tradmp,cn_dir,sn_tem,sn_sal
-      !
-
-      REWIND( numnam_ref )              ! Namelist namtsd in reference namelist :
-      READ  ( numnam_ref, namtsd, IOSTAT = ios, ERR = 901)
-901   IF( ios /= 0 ) CALL ctl_nam ( ios , ' namtsd in reference namelist for dia_ar5', lwp )
-      REWIND( numnam_cfg )              ! Namelist namtsd in configuration namelist : Parameters of the run
-      READ  ( numnam_cfg, namtsd, IOSTAT = ios, ERR = 902 )
-902   IF( ios /= 0 ) CALL ctl_nam ( ios , ' namtsd in configuration namelist for dia_ar5', lwp )
-      IF(lwm) WRITE ( numond, namtsd )
       !
       !!----------------------------------------------------------------------
       !
       IF( nn_timing == 1 )   CALL timing_start('dia_ar5_init')
       !
-      CALL wrk_alloc( jpi , jpj , jpk, jpts, zsaldta )
+      CALL wrk_alloc( jpi, jpj, jpk, 2, zsaldta )
       !                                      ! allocate dia_ar5 arrays
       IF( dia_ar5_alloc() /= 0 )   CALL ctl_stop( 'STOP', 'dia_ar5_init : unable to allocate arrays' )
 
@@ -253,10 +236,11 @@ CONTAINS
       END DO
       IF( lk_mpp )   CALL mpp_sum( vol0 )
 
-      CALL iom_open ( TRIM( cn_dir )//TRIM(sn_sal%clname), inum )
-      CALL iom_get  ( inum, jpdom_data, TRIM(sn_sal%clvar), zsaldta(:,:,:,1), 1  )
-      CALL iom_get  ( inum, jpdom_data, TRIM(sn_sal%clvar), zsaldta(:,:,:,2), 12 )
+      CALL iom_open ( 'sali_ref_clim_monthly', inum )
+      CALL iom_get  ( inum, jpdom_data, 'vosaline' , zsaldta(:,:,:,1), 1  )
+      CALL iom_get  ( inum, jpdom_data, 'vosaline' , zsaldta(:,:,:,2), 12 )
       CALL iom_close( inum )
+
       sn0(:,:,:) = 0.5_wp * ( zsaldta(:,:,:,1) + zsaldta(:,:,:,2) )        
       sn0(:,:,:) = sn0(:,:,:) * tmask(:,:,:)
       IF( ln_zps ) THEN               ! z-coord. partial steps
@@ -271,7 +255,7 @@ CONTAINS
          END DO
       ENDIF
       !
-      CALL wrk_dealloc( jpi , jpj , jpk, jpts, zsaldta )
+      CALL wrk_dealloc( jpi, jpj, jpk, 2, zsaldta )
       !
       IF( nn_timing == 1 )   CALL timing_stop('dia_ar5_init')
       !

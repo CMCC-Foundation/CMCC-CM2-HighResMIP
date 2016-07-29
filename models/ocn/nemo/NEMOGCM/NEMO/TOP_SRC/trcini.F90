@@ -122,9 +122,8 @@ CONTAINS
             DO jn = 1, jptra
                IF( ln_trc_ini(jn) ) THEN      ! update passive tracers arrays with input data read from file
                   jl = n_trc_index(jn) 
-                  CALL trc_dta( nit000, sf_trcdta(jl) )   ! read tracer data at nit000
-                  trn(:,:,:,jn) = sf_trcdta(jl)%fnow(:,:,:) * tmask(:,:,:) * rf_trfac(jl)
-                  !
+                  CALL trc_dta( nit000, sf_trcdta(jl), rf_trfac(jl) )   ! read tracer data at nit000
+                  trn(:,:,:,jn) = sf_trcdta(jl)%fnow(:,:,:) 
                   IF( .NOT.ln_trcdmp .AND. .NOT.ln_trcdmp_clo ) THEN      !== deallocate data structure   ==!
                      !                                                    (data used only for initialisation)
                      IF(lwp) WRITE(numout,*) 'trc_dta: deallocate data arrays as they are only used to initialize the run'

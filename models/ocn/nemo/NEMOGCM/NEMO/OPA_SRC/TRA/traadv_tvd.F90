@@ -172,14 +172,13 @@ CONTAINS
             z2dtt = p2dt(jk)
             DO jj = 2, jpjm1
                DO ji = fs_2, fs_jpim1   ! vector opt.
-                  zbtr = 1. / ( e1t(ji,jj) * e2t(ji,jj) * fse3t(ji,jj,jk) )
                   ! total intermediate advective trends
-                  ztra = - zbtr * (  zwx(ji,jj,jk) - zwx(ji-1,jj  ,jk  )   &
-                     &             + zwy(ji,jj,jk) - zwy(ji  ,jj-1,jk  )   &
-                     &             + zwz(ji,jj,jk) - zwz(ji  ,jj  ,jk+1) )
+                  ztra = - (  zwx(ji,jj,jk) - zwx(ji-1,jj  ,jk  )   &
+                     &      + zwy(ji,jj,jk) - zwy(ji  ,jj-1,jk  )   &
+                     &      + zwz(ji,jj,jk) - zwz(ji  ,jj  ,jk+1) ) / e1e2t(ji,jj)
                   ! update and guess with monotonic sheme
-                  pta(ji,jj,jk,jn) =   pta(ji,jj,jk,jn)         + ztra   * tmask(ji,jj,jk)
-                  zwi(ji,jj,jk)    = ( ptb(ji,jj,jk,jn) + z2dtt * ztra ) * tmask(ji,jj,jk)
+                  pta(ji,jj,jk,jn) =                       pta(ji,jj,jk,jn) +         ztra   / fse3t_n(ji,jj,jk) * tmask(ji,jj,jk)
+                  zwi(ji,jj,jk)    = ( fse3t_b(ji,jj,jk) * ptb(ji,jj,jk,jn) + z2dtt * ztra ) / fse3t_a(ji,jj,jk) * tmask(ji,jj,jk)
                END DO
             END DO
          END DO
@@ -409,14 +408,13 @@ CONTAINS
             z2dtt = p2dt(jk)
             DO jj = 2, jpjm1
                DO ji = fs_2, fs_jpim1   ! vector opt.
-                  zbtr = 1._wp / ( e1t(ji,jj) * e2t(ji,jj) * fse3t(ji,jj,jk) )
                   ! total intermediate advective trends
-                  ztra = - zbtr * (  zwx(ji,jj,jk) - zwx(ji-1,jj  ,jk  )   &
-                     &             + zwy(ji,jj,jk) - zwy(ji  ,jj-1,jk  )   &
-                     &             + zwz(ji,jj,jk) - zwz(ji  ,jj  ,jk+1) )
+                  ztra = - (  zwx(ji,jj,jk) - zwx(ji-1,jj  ,jk  )   &
+                     &      + zwy(ji,jj,jk) - zwy(ji  ,jj-1,jk  )   &
+                     &      + zwz(ji,jj,jk) - zwz(ji  ,jj  ,jk+1) ) / e1e2t(ji,jj)
                   ! update and guess with monotonic sheme
-                  pta(ji,jj,jk,jn) =   pta(ji,jj,jk,jn)         + ztra
-                  zwi(ji,jj,jk)    = ( ptb(ji,jj,jk,jn) + z2dtt * ztra ) * tmask(ji,jj,jk)
+                  pta(ji,jj,jk,jn) =                       pta(ji,jj,jk,jn) +         ztra   / fse3t_n(ji,jj,jk) * tmask(ji,jj,jk)
+                  zwi(ji,jj,jk)    = ( fse3t_b(ji,jj,jk) * ptb(ji,jj,jk,jn) + z2dtt * ztra ) / fse3t_a(ji,jj,jk) * tmask(ji,jj,jk)
                END DO
             END DO
          END DO
@@ -437,10 +435,9 @@ CONTAINS
          ! 3. antidiffusive flux : high order minus low order
          ! --------------------------------------------------
          ! antidiffusive flux on i and j
-
-
+         !
          DO jk = 1, jpkm1
-
+            !
             DO jj = 1, jpjm1
                DO ji = 1, fs_jpim1   ! vector opt.
                   zwx_sav(ji,jj) = zwx(ji,jj,jk)
@@ -471,6 +468,8 @@ CONTAINS
          zwz_sav(:,:,:) = zwz(:,:,:)
          !
          ztrs(:,:,:,1) = ptb(:,:,:,jn)
+         ztrs(:,:,1,2) = ptb(:,:,1,jn)
+         ztrs(:,:,1,3) = ptb(:,:,1,jn)
          zwzts(:,:,:) = 0._wp
 
          DO jl = 1, jnzts                   ! Start of sub timestepping loop
@@ -570,6 +569,7 @@ CONTAINS
       IF( nn_timing == 1 )  CALL timing_stop('tra_adv_tvd_zts')
       !
    END SUBROUTINE tra_adv_tvd_zts
+
 
    SUBROUTINE nonosc( pbef, paa, pbb, pcc, paft, p2dt )
       !!---------------------------------------------------------------------

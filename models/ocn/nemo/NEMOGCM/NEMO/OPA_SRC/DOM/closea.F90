@@ -100,11 +100,6 @@ CONTAINS
             ncsnr(1)   = 1    ; ncstt(1)   = 0           ! Caspian Sea
             ncsi1(1)   = 332  ; ncsj1(1)   = 243 - isrow
             ncsi2(1)   = 344  ; ncsj2(1)   = 275 - isrow
-#if defined CCSMCOUPLED
-            ! this is for consistence with old ORCA1 grid
-            ncsi1(1)   = 332  ; ncsj1(1)   = 203
-            ncsi2(1)   = 344  ; ncsj2(1)   = 235
-#endif
             ncsir(1,1) = 1    ; ncsjr(1,1) = 1
             !                                        
             !                                        ! =======================
@@ -168,18 +163,16 @@ CONTAINS
             !                                        ! =======================
          CASE ( 025 )                                ! ORCA_R025 configuration
             !                                        ! =======================
+            isrow = 1207 - jpjglo                    !  eORCA025 R025 - Using full isf­extended
+                                                     !  domain for reference. - Adjust j­indices
             ncsnr(1)   = 1    ; ncstt(1)   = 0               ! Caspian + Aral sea
-            ncsi1(1)   = 1330 ; ncsj1(1)   = 645
-#if defined CCSMCOUPLED
-            ncsi2(1)   = 1370 ; ncsj2(1)   = 795             ! Caspian sea
-#else
-            ncsi2(1)   = 1400 ; ncsj2(1)   = 795
-#endif
+            ncsi1(1)   = 1330 ; ncsj1(1)   = 831 - isrow
+            ncsi2(1)   = 1400 ; ncsj2(1)   = 981 - isrow
             ncsir(1,1) = 1    ; ncsjr(1,1) = 1
-            !                                        
-            ncsnr(2)   = 1    ; ncstt(2)   = 0               ! Azov Sea 
-            ncsi1(2)   = 1284 ; ncsj1(2)   = 722
-            ncsi2(2)   = 1304 ; ncsj2(2)   = 747
+            !
+            ncsnr(2)   = 1    ; ncstt(2)   = 0               ! Azov Sea
+            ncsi1(2)   = 1284 ; ncsj1(2)   = 908 - isrow
+            ncsi2(2)   = 1304 ; ncsj2(2)   = 933 - isrow
             ncsir(2,1) = 1    ; ncsjr(2,1) = 1
             !
          END SELECT

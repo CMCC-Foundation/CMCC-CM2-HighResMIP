@@ -1334,41 +1334,50 @@ CONTAINS
       !!----------------------------------------------------------------------
       !!             ***  ROUTINE sbc_cpl_ice_flx  ***
       !!
-      !! ** Purpose :   provide the heat and freshwater fluxes of the 
-      !!              ocean-ice system.
+      !! ** Purpose :   provide the heat and freshwater fluxes of the ocean-ice system
       !!
       !! ** Method  :   transform the fields received from the atmosphere into
       !!             surface heat and fresh water boundary condition for the 
       !!             ice-ocean system. The following fields are provided:
-      !!              * total non solar, solar and freshwater fluxes (qns_tot, 
+      !!               * total non solar, solar and freshwater fluxes (qns_tot, 
       !!             qsr_tot and emp_tot) (total means weighted ice-ocean flux)
       !!             NB: emp_tot include runoffs and calving.
-      !!              * fluxes over ice (qns_ice, qsr_ice, emp_ice) where
+      !!               * fluxes over ice (qns_ice, qsr_ice, emp_ice) where
       !!             emp_ice = sublimation - solid precipitation as liquid
       !!             precipitation are re-routed directly to the ocean and 
-      !!             runoffs and calving directly enter the ocean.
-      !!              * solid precipitation (sprecip), used to add to qns_tot 
+      !!             calving directly enter the ocean (runoffs are read but included in trasbc.F90)
+      !!               * solid precipitation (sprecip), used to add to qns_tot 
       !!             the heat lost associated to melting solid precipitation
       !!             over the ocean fraction.
-      !!       ===>> CAUTION here this changes the net heat flux received from
-      !!             the atmosphere
+      !!               * heat content of rain, snow and evap can also be provided,
+      !!             otherwise heat flux associated with these mass flux are
+      !!             guessed (qemp_oce, qemp_ice)
       !!
-      !!                  - the fluxes have been separated from the stress as
-      !!                 (a) they are updated at each ice time step compare to
-      !!                 an update at each coupled time step for the stress, and
-      !!                 (b) the conservative computation of the fluxes over the
-      !!                 sea-ice area requires the knowledge of the ice fraction
-      !!                 after the ice advection and before the ice thermodynamics,
-      !!                 so that the stress is updated before the ice dynamics
-      !!                 while the fluxes are updated after it.
+      !!             - the fluxes have been separated from the stress as
+      !!               (a) they are updated at each ice time step compare to
+      !!               an update at each coupled time step for the stress, and
+      !!               (b) the conservative computation of the fluxes over the
+      !!               sea-ice area requires the knowledge of the ice fraction
+      !!               after the ice advection and before the ice thermodynamics,
+      !!               so that the stress is updated before the ice dynamics
+      !!               while the fluxes are updated after it.
+      !!
+      !! ** Details
+      !!             qns_tot = pfrld * qns_oce + ( 1 - pfrld ) * qns_ice   => provided
+      !!                     + qemp_oce + qemp_ice                         => recalculated and added up to qns
+      !!
+      !!             qsr_tot = pfrld * qsr_oce + ( 1 - pfrld ) * qsr_ice   => provided
+      !!
+      !!             emp_tot = emp_oce + emp_ice                           => calving is provided and added to emp_tot (and emp_oce)
+      !!                                                                      river runoff (rnf) is provided but not included here
       !!
       !! ** Action  :   update at each nf_ice time step:
       !!                   qns_tot, qsr_tot  non-solar and solar total heat fluxes
       !!                   qns_ice, qsr_ice  non-solar and solar heat fluxes over the ice
-      !!                   emp_tot            total evaporation - precipitation(liquid and solid) (-runoff)(-calving)
-      !!                   emp_ice            ice sublimation - solid precipitation over the ice
-      !!                   dqns_ice           d(non-solar heat flux)/d(Temperature) over the ice
-      !!                   sprecip             solid precipitation over the ocean  
+      !!                   emp_tot           total evaporation - precipitation(liquid and solid) (-calving)
+      !!                   emp_ice           ice sublimation - solid precipitation over the ice
+      !!                   dqns_ice          d(non-solar heat flux)/d(Temperature) over the ice
+      !!                   sprecip           solid precipitation over the ocean  
       !!----------------------------------------------------------------------
       REAL(wp), INTENT(in   ), DIMENSION(:,:)   ::   p_frld     ! lead fraction                [0 to 1]
       ! optional arguments, used only in 'mixed oce-ice' case
@@ -1378,7 +1387,7 @@ CONTAINS
       !
       INTEGER ::   jl         ! dummy loop index
       REAL(wp), POINTER, DIMENSION(:,:  ) ::   zcptn, ztmp, zicefr, zmsk, zsnw
-      REAL(wp), POINTER, DIMENSION(:,:  ) ::   zemp_tot, zemp_ice, zemp_oce, ztprecip, zsprecip, zevap, zevap_ice, zdevap_ice
+      REAL(wp), POINTER, DIMENSION(:,:  ) ::   zemp_tot, zemp_ice, zemp_oce, ztprecip, zsprecip, zevap_oce, zevap_ice, zdevap_ice
       REAL(wp), POINTER, DIMENSION(:,:  ) ::   zqns_tot, zqns_oce, zqsr_tot, zqsr_oce, zqprec_ice, zqemp_oce, zqemp_ice
       REAL(wp), POINTER, DIMENSION(:,:,:) ::   zqns_ice, zqsr_ice, zdqns_ice, zqevap_ice
       !!----------------------------------------------------------------------
@@ -1386,7 +1395,7 @@ CONTAINS
       IF( nn_timing == 1 )  CALL timing_start('sbc_cpl_ice_flx')
       !
       CALL wrk_alloc( jpi,jpj,     zcptn, ztmp, zicefr, zmsk, zsnw )
-      CALL wrk_alloc( jpi,jpj,     zemp_tot, zemp_ice, zemp_oce, ztprecip, zsprecip, zevap, zevap_ice, zdevap_ice )
+      CALL wrk_alloc( jpi,jpj,     zemp_tot, zemp_ice, zemp_oce, ztprecip, zsprecip, zevap_oce, zevap_ice, zdevap_ice )
       CALL wrk_alloc( jpi,jpj,     zqns_tot, zqns_oce, zqsr_tot, zqsr_oce, zqprec_ice, zqemp_oce, zqemp_ice )
       CALL wrk_alloc( jpi,jpj,jpl, zqns_ice, zqsr_ice, zdqns_ice, zqevap_ice )
 
@@ -1395,56 +1404,57 @@ CONTAINS
       zcptn(:,:) = rcp * sst_m(:,:)
       !
       !                                                      ! ========================= !
-      !                                                      !    freshwater budget      !   (emp)
+      !                                                      !    freshwater budget      !   (emp_tot)
       !                                                      ! ========================= !
       !
-      !                                                           ! total Precipitation - total Evaporation (emp_tot)
-      !                                                           ! solid precipitation - sublimation       (emp_ice)
-      !                                                           ! solid Precipitation                     (sprecip)
-      !                                                           ! liquid + solid Precipitation            (tprecip)
+      !                                                           ! solid Precipitation                                (sprecip)
+      !                                                           ! liquid + solid Precipitation                       (tprecip)
+      !                                                           ! total Evaporation - total Precipitation            (emp_tot)
+      !                                                           ! sublimation - solid precipitation (cell average)   (emp_ice)
       SELECT CASE( TRIM( sn_rcv_emp%cldes ) )
-      CASE( 'conservative'  )   ! received fields: jpr_rain, jpr_snow, jpr_ievp, jpr_tevp
-         zsprecip(:,:) = frcv(jpr_snow)%z3(:,:,1)                  ! May need to ensure positive here
-         ztprecip(:,:) = frcv(jpr_rain)%z3(:,:,1) + zsprecip(:,:)  ! May need to ensure positive here
-         zemp_tot(:,:) = frcv(jpr_tevp)%z3(:,:,1) - ztprecip(:,:)
-         zemp_ice(:,:) = frcv(jpr_ievp)%z3(:,:,1) - frcv(jpr_snow)%z3(:,:,1)
-            CALL iom_put( 'rain'         , frcv(jpr_rain)%z3(:,:,1)              )   ! liquid precipitation 
+      CASE( 'conservative' )   ! received fields: jpr_rain, jpr_snow, jpr_ievp, jpr_tevp
+         zsprecip(:,:) =   frcv(jpr_snow)%z3(:,:,1)                  ! May need to ensure positive here
+         ztprecip(:,:) =   frcv(jpr_rain)%z3(:,:,1) + zsprecip(:,:)  ! May need to ensure positive here
+         zemp_tot(:,:) =   frcv(jpr_tevp)%z3(:,:,1) - ztprecip(:,:)
+         zemp_ice(:,:) = ( frcv(jpr_ievp)%z3(:,:,1) - frcv(jpr_snow)%z3(:,:,1) ) * zicefr(:,:)
+               CALL iom_put( 'rain'         ,   frcv(jpr_rain)%z3(:,:,1)                                                         )  ! liquid precipitation 
          IF( iom_use('hflx_rain_cea') )   &
-            CALL iom_put( 'hflx_rain_cea', frcv(jpr_rain)%z3(:,:,1) * zcptn(:,:) )   ! heat flux from liq. precip. 
-         IF( iom_use('evap_ao_cea') .OR. iom_use('hflx_evap_cea') )   &
-            ztmp(:,:) = frcv(jpr_tevp)%z3(:,:,1) - frcv(jpr_ievp)%z3(:,:,1) * zicefr(:,:)
+            &  CALL iom_put( 'hflx_rain_cea',   frcv(jpr_rain)%z3(:,:,1) * zcptn(:,:)                                            )  ! heat flux from liq. precip. 
          IF( iom_use('evap_ao_cea'  ) )   &
-            CALL iom_put( 'evap_ao_cea'  , ztmp                   )   ! ice-free oce evap (cell average)
+            &  CALL iom_put( 'evap_ao_cea'  ,   frcv(jpr_tevp)%z3(:,:,1) - frcv(jpr_ievp)%z3(:,:,1) * zicefr(:,:)                )  ! ice-free oce evap (cell average)
          IF( iom_use('hflx_evap_cea') )   &
-            CALL iom_put( 'hflx_evap_cea', ztmp(:,:) * zcptn(:,:) )   ! heat flux from from evap (cell average)
-      CASE( 'oce and ice'   )   ! received fields: jpr_sbpr, jpr_semp, jpr_oemp, jpr_ievp
+            &  CALL iom_put( 'hflx_evap_cea', ( frcv(jpr_tevp)%z3(:,:,1) - frcv(jpr_ievp)%z3(:,:,1) * zicefr(:,:) ) * zcptn(:,:) )  ! heat flux from from evap (cell average)
+      CASE( 'oce and ice' )   ! received fields: jpr_sbpr, jpr_semp, jpr_oemp, jpr_ievp
          zemp_tot(:,:) = p_frld(:,:) * frcv(jpr_oemp)%z3(:,:,1) + zicefr(:,:) * frcv(jpr_sbpr)%z3(:,:,1)
-         zemp_ice(:,:) = frcv(jpr_semp)%z3(:,:,1)
+         zemp_ice(:,:) = frcv(jpr_semp)%z3(:,:,1) * zicefr(:,:)
          zsprecip(:,:) = frcv(jpr_ievp)%z3(:,:,1) - frcv(jpr_semp)%z3(:,:,1)
          ztprecip(:,:) = frcv(jpr_semp)%z3(:,:,1) - frcv(jpr_sbpr)%z3(:,:,1) + zsprecip(:,:)
       END SELECT
 
 #if defined key_lim3
-      ! zsnw = snow percentage over ice after wind blowing
-      zsnw(:,:) = 0._wp
-      CALL lim_thd_snwblow( p_frld, zsnw )
+      ! zsnw = snow fraction over ice after wind blowing
+      zsnw(:,:) = 0._wp  ;  CALL lim_thd_snwblow( p_frld, zsnw )
       
-      ! --- evaporation (kg/m2/s) --- !
+      ! --- evaporation minus precipitation corrected (because of wind blowing on snow) --- !
+      zemp_ice(:,:) = zemp_ice(:,:) + zsprecip(:,:) * ( zicefr(:,:) - zsnw(:,:) )  ! emp_ice = A * sublimation - zsnw * sprecip
+      zemp_oce(:,:) = zemp_tot(:,:) - zemp_ice(:,:)                                ! emp_oce = emp_tot - emp_ice
+
+      ! --- evaporation over ocean (used later for qemp) --- !
+      zevap_oce(:,:) = frcv(jpr_tevp)%z3(:,:,1) - frcv(jpr_ievp)%z3(:,:,1) * zicefr(:,:)
+
+      ! --- evaporation over ice (kg/m2/s) --- !
       zevap_ice(:,:) = frcv(jpr_ievp)%z3(:,:,1)
       ! since the sensitivity of evap to temperature (devap/dT) is not prescribed by the atmosphere, we set it to 0
       ! therefore, sublimation is not redistributed over the ice categories in case no subgrid scale fluxes are provided by atm.
       zdevap_ice(:,:) = 0._wp
       
-      ! --- evaporation minus precipitation corrected for the effect of wind blowing on snow --- !
-      zemp_oce(:,:) = zemp_tot(:,:) - zemp_ice(:,:) - zsprecip * (1._wp - zsnw)
-      zemp_ice(:,:) = zemp_ice(:,:) + zsprecip * (1._wp - zsnw)          
-
-      ! Sublimation over sea-ice (cell average)
-      IF( iom_use('subl_ai_cea') )  CALL iom_put( 'subl_ai_cea', zevap_ice(:,:) * zicefr(:,:) )
-      ! runoffs and calving (put in emp_tot)
+      ! --- runoffs (included in emp later on) --- !
       IF( srcv(jpr_rnf)%laction )   rnf(:,:) = frcv(jpr_rnf)%z3(:,:,1)
+
+      ! --- calving (put in emp_tot and emp_oce) --- !
       IF( srcv(jpr_cal)%laction ) THEN 
          zemp_tot(:,:) = zemp_tot(:,:) - frcv(jpr_cal)%z3(:,:,1)
+         zemp_oce(:,:) = zemp_oce(:,:) - frcv(jpr_cal)%z3(:,:,1)
          CALL iom_put( 'calving_cea', frcv(jpr_cal)%z3(:,:,1) )
       ENDIF
 
@@ -1470,12 +1480,11 @@ CONTAINS
          ENDDO
       ENDIF
 
-                                     CALL iom_put( 'snowpre'    , sprecip                         )  ! Snow
-      IF( iom_use('snow_ao_cea') )   CALL iom_put( 'snow_ao_cea', sprecip(:,:) * ( 1._wp - zsnw ) )  ! Snow over ice-free ocean  (cell average)
-      IF( iom_use('snow_ai_cea') )   CALL iom_put( 'snow_ai_cea', sprecip(:,:) *           zsnw   )  ! Snow over sea-ice         (cell average)    
+      IF( iom_use('subl_ai_cea') )   CALL iom_put( 'subl_ai_cea', zevap_ice(:,:) * zicefr(:,:)         )  ! Sublimation over sea-ice (cell average)
+                                     CALL iom_put( 'snowpre'    , sprecip(:,:)                         )  ! Snow
+      IF( iom_use('snow_ao_cea') )   CALL iom_put( 'snow_ao_cea', sprecip(:,:) * ( 1._wp - zsnw(:,:) ) )  ! Snow over ice-free ocean  (cell average)
+      IF( iom_use('snow_ai_cea') )   CALL iom_put( 'snow_ai_cea', sprecip(:,:) *           zsnw(:,:)   )  ! Snow over sea-ice         (cell average)
 #else
-      ! Sublimation over sea-ice (cell average)
-      IF( iom_use('subl_ai_cea') )  CALL iom_put( 'subl_ai_cea', frcv(jpr_ievp)%z3(:,:,1) * zicefr(:,:) )
       ! runoffs and calving (put in emp_tot)
       IF( srcv(jpr_rnf)%laction )   rnf(:,:) = frcv(jpr_rnf)%z3(:,:,1)
       IF( srcv(jpr_cal)%laction ) THEN 
@@ -1495,48 +1504,46 @@ CONTAINS
          tprecip(:,:) =                                  ztprecip(:,:)
       ENDIF
 
-         CALL iom_put( 'snowpre'    , sprecip                                )   ! Snow
-      IF( iom_use('snow_ao_cea') )   &
-         CALL iom_put( 'snow_ao_cea', sprecip(:,:) * p_frld(:,:)             )   ! Snow        over ice-free ocean  (cell average)
-      IF( iom_use('snow_ai_cea') )   &
-         CALL iom_put( 'snow_ai_cea', sprecip(:,:) * zicefr(:,:)             )   ! Snow        over sea-ice         (cell average)
+      IF( iom_use('subl_ai_cea') )  CALL iom_put( 'subl_ai_cea', frcv(jpr_ievp)%z3(:,:,1) * zicefr(:,:) )  ! Sublimation over sea-ice (cell average)
+                                    CALL iom_put( 'snowpre'    , sprecip(:,:)               )   ! Snow
+      IF( iom_use('snow_ao_cea') )  CALL iom_put( 'snow_ao_cea', sprecip(:,:) * p_frld(:,:) )   ! Snow over ice-free ocean  (cell average)
+      IF( iom_use('snow_ai_cea') )  CALL iom_put( 'snow_ai_cea', sprecip(:,:) * zicefr(:,:) )   ! Snow over sea-ice         (cell average)
 #endif
 
       !                                                      ! ========================= !
       SELECT CASE( TRIM( sn_rcv_qns%cldes ) )                !   non solar heat fluxes   !   (qns)
       !                                                      ! ========================= !
-      CASE( 'oce only' )                                     ! the required field is directly provided
-         zqns_tot(:,:  ) = frcv(jpr_qnsoce)%z3(:,:,1)
-      CASE( 'conservative' )                                      ! the required fields are directly provided
-         zqns_tot(:,:  ) = frcv(jpr_qnsmix)%z3(:,:,1)
+      CASE( 'oce only' )         ! the required field is directly provided
+         zqns_tot(:,:) = frcv(jpr_qnsoce)%z3(:,:,1)
+      CASE( 'conservative' )     ! the required fields are directly provided
+         zqns_tot(:,:) = frcv(jpr_qnsmix)%z3(:,:,1)
          IF ( TRIM(sn_rcv_qns%clcat) == 'yes' ) THEN
             zqns_ice(:,:,1:jpl) = frcv(jpr_qnsice)%z3(:,:,1:jpl)
          ELSE
-            ! Set all category values equal for the moment
             DO jl=1,jpl
-               zqns_ice(:,:,jl) = frcv(jpr_qnsice)%z3(:,:,1)
+               zqns_ice(:,:,jl) = frcv(jpr_qnsice)%z3(:,:,1) ! Set all category values equal
             ENDDO
          ENDIF
-      CASE( 'oce and ice' )       ! the total flux is computed from ocean and ice fluxes
-         zqns_tot(:,:  ) =  p_frld(:,:) * frcv(jpr_qnsoce)%z3(:,:,1)
+      CASE( 'oce and ice' )      ! the total flux is computed from ocean and ice fluxes
+         zqns_tot(:,:) =  p_frld(:,:) * frcv(jpr_qnsoce)%z3(:,:,1)
          IF ( TRIM(sn_rcv_qns%clcat) == 'yes' ) THEN
             DO jl=1,jpl
                zqns_tot(:,:   ) = zqns_tot(:,:) + a_i(:,:,jl) * frcv(jpr_qnsice)%z3(:,:,jl)   
                zqns_ice(:,:,jl) = frcv(jpr_qnsice)%z3(:,:,jl)
             ENDDO
          ELSE
-            qns_tot(:,:   ) = qns_tot(:,:) + zicefr(:,:) * frcv(jpr_qnsice)%z3(:,:,1)
+            qns_tot(:,:) = qns_tot(:,:) + zicefr(:,:) * frcv(jpr_qnsice)%z3(:,:,1)
             DO jl=1,jpl
                zqns_tot(:,:   ) = zqns_tot(:,:) + zicefr(:,:) * frcv(jpr_qnsice)%z3(:,:,1)
                zqns_ice(:,:,jl) = frcv(jpr_qnsice)%z3(:,:,1)
             ENDDO
          ENDIF
-      CASE( 'mixed oce-ice' )     ! the ice flux is cumputed from the total flux, the SST and ice informations
+      CASE( 'mixed oce-ice' )    ! the ice flux is cumputed from the total flux, the SST and ice informations
 ! ** NEED TO SORT OUT HOW THIS SHOULD WORK IN THE MULTI-CATEGORY CASE - CURRENTLY NOT ALLOWED WHEN INTERFACE INITIALISED **
          zqns_tot(:,:  ) = frcv(jpr_qnsmix)%z3(:,:,1)
          zqns_ice(:,:,1) = frcv(jpr_qnsmix)%z3(:,:,1)    &
             &            + frcv(jpr_dqnsdt)%z3(:,:,1) * ( pist(:,:,1) - ( (rt0 + psst(:,:  ) ) * p_frld(:,:)   &
-            &                                                   +          pist(:,:,1)   * zicefr(:,:) ) )
+            &                                           + pist(:,:,1) * zicefr(:,:) ) )
       END SELECT
 !!gm
 !!    currently it is taken into account in leads budget but not in the zqns_tot, and thus not in 
@@ -1546,40 +1553,33 @@ CONTAINS
 !!
 !! similar job should be done for snow and precipitation temperature
       !                                     
-      IF( srcv(jpr_cal)%laction ) THEN                            ! Iceberg melting 
-         ztmp(:,:) = frcv(jpr_cal)%z3(:,:,1) * lfus               ! add the latent heat of iceberg melting 
-         zqns_tot(:,:) = zqns_tot(:,:) - ztmp(:,:)
-         IF( iom_use('hflx_cal_cea') )   &
-            CALL iom_put( 'hflx_cal_cea', ztmp + frcv(jpr_cal)%z3(:,:,1) * zcptn(:,:) )   ! heat flux from calving
+      IF( srcv(jpr_cal)%laction ) THEN   ! Iceberg melting 
+         zqns_tot(:,:) = zqns_tot(:,:) - frcv(jpr_cal)%z3(:,:,1) * lfus  ! add the latent heat of iceberg melting
+                                                                         ! we suppose it melts at 0deg, though it should be temp. of surrounding ocean
+         IF( iom_use('hflx_cal_cea') )   CALL iom_put( 'hflx_cal_cea', - frcv(jpr_cal)%z3(:,:,1) * lfus )   ! heat flux from calving
       ENDIF
 
-      ztmp(:,:) = p_frld(:,:) * zsprecip(:,:) * lfus
-      IF( iom_use('hflx_snow_cea') )    CALL iom_put( 'hflx_snow_cea', ztmp + sprecip(:,:) * zcptn(:,:) )   ! heat flux from snow (cell average)
-
 #if defined key_lim3      
-      ! --- evaporation --- !
-      zevap(:,:) = zemp_tot(:,:) + ztprecip(:,:) ! evaporation over ocean
-
       ! --- non solar flux over ocean --- !
       !         note: p_frld cannot be = 0 since we limit the ice concentration to amax
       zqns_oce = 0._wp
       WHERE( p_frld /= 0._wp )  zqns_oce(:,:) = ( zqns_tot(:,:) - SUM( a_i * zqns_ice, dim=3 ) ) / p_frld(:,:)
 
       ! --- heat flux associated with emp (W/m2) --- !
-      zqemp_oce(:,:) = -      zevap(:,:)                   * p_frld(:,:)      *   zcptn(:,:)   &      ! evap
-         &             + ( ztprecip(:,:) - zsprecip(:,:) )                    *   zcptn(:,:)   &      ! liquid precip
-         &             +   zsprecip(:,:)                   * ( 1._wp - zsnw ) * ( zcptn(:,:) - lfus ) ! solid precip over ocean
+      zqemp_oce(:,:) = -  zevap_oce(:,:)                                      *   zcptn(:,:)   &       ! evap
+         &             + ( ztprecip(:,:) - zsprecip(:,:) )                    *   zcptn(:,:)   &       ! liquid precip
+         &             +   zsprecip(:,:)                   * ( 1._wp - zsnw ) * ( zcptn(:,:) - lfus )  ! solid precip over ocean + snow melting
 !      zqemp_ice(:,:) = -   frcv(jpr_ievp)%z3(:,:,1)        * zicefr(:,:)      *   zcptn(:,:)   &      ! ice evap
 !         &             +   zsprecip(:,:)                   * zsnw             * ( zcptn(:,:) - lfus ) ! solid precip over ice
       zqemp_ice(:,:) =      zsprecip(:,:)                   * zsnw             * ( zcptn(:,:) - lfus ) ! solid precip over ice (only)
-                                                                                                       ! qevap_ice=0 since we consider Tice=0°C
+                                                                                                       ! qevap_ice=0 since we consider Tice=0degC
       
-      ! --- heat content of precip over ice in J/m3 (to be used in 1D-thermo) --- !
+      ! --- enthalpy of snow precip over ice in J/m3 (to be used in 1D-thermo) --- !
       zqprec_ice(:,:) = rhosn * ( zcptn(:,:) - lfus )
 
       ! --- heat content of evap over ice in W/m2 (to be used in 1D-thermo) --- !
       DO jl = 1, jpl
-         zqevap_ice(:,:,jl) = 0._wp ! should be -evap * ( ( Tice - rt0 ) * cpic ) but we do not have Tice, so we consider Tice=0°C
+         zqevap_ice(:,:,jl) = 0._wp ! should be -evap * ( ( Tice - rt0 ) * cpic ) but we do not have Tice, so we consider Tice=0degC
       END DO
 
       ! --- total non solar flux (including evap/precip) --- !
@@ -1605,12 +1605,20 @@ CONTAINS
          qemp_oce (:,:  ) = zqemp_oce (:,:  )
          qemp_ice (:,:  ) = zqemp_ice (:,:  )
       ENDIF
+
+      !! clem: we should output qemp_oce and qemp_ice (at least)
+      IF( iom_use('hflx_snow_cea') )   CALL iom_put( 'hflx_snow_cea', sprecip(:,:) * ( zcptn(:,:) - Lfus ) )   ! heat flux from snow (cell average)
+      !! these diags are not outputed yet
+!!      IF( iom_use('hflx_rain_cea') )   CALL iom_put( 'hflx_rain_cea', ( tprecip(:,:) - sprecip(:,:) ) * zcptn(:,:) )   ! heat flux from rain (cell average)
+!!      IF( iom_use('hflx_snow_ao_cea') ) CALL iom_put( 'hflx_snow_ao_cea', sprecip(:,:) * ( zcptn(:,:) - Lfus ) * (1._wp - zsnw(:,:)) ) ! heat flux from snow (cell average)
+!!      IF( iom_use('hflx_snow_ai_cea') ) CALL iom_put( 'hflx_snow_ai_cea', sprecip(:,:) * ( zcptn(:,:) - Lfus ) * zsnw(:,:) ) ! heat flux from snow (cell average)
+
 #else
       ! clem: this formulation is certainly wrong... but better than it was...
       zqns_tot(:,:) = zqns_tot(:,:)                       &            ! zqns_tot update over free ocean with:
          &          - ztmp(:,:)                           &            ! remove the latent heat flux of solid precip. melting
          &          - (  zemp_tot(:,:)                    &            ! remove the heat content of mass flux (assumed to be at SST)
-         &             - zemp_ice(:,:) * zicefr(:,:)  ) * zcptn(:,:) 
+         &             - zemp_ice(:,:) ) * zcptn(:,:) 
 
      IF( ln_mixcpl ) THEN
          qns_tot(:,:) = qns(:,:) * p_frld(:,:) + SUM( qns_ice(:,:,:) * a_i(:,:,:), dim=3 )   ! total flux from blk
@@ -1730,7 +1738,7 @@ CONTAINS
       fr2_i0(:,:) = ( 0.82 * ( 1.0 - cldf_ice ) + 0.65 * cldf_ice )
 
       CALL wrk_dealloc( jpi,jpj,     zcptn, ztmp, zicefr, zmsk, zsnw )
-      CALL wrk_dealloc( jpi,jpj,     zemp_tot, zemp_ice, zemp_oce, ztprecip, zsprecip, zevap, zevap_ice, zdevap_ice )
+      CALL wrk_dealloc( jpi,jpj,     zemp_tot, zemp_ice, zemp_oce, ztprecip, zsprecip, zevap_oce, zevap_ice, zdevap_ice )
       CALL wrk_dealloc( jpi,jpj,     zqns_tot, zqns_oce, zqsr_tot, zqsr_oce, zqprec_ice, zqemp_oce, zqemp_ice )
       CALL wrk_dealloc( jpi,jpj,jpl, zqns_ice, zqsr_ice, zdqns_ice, zqevap_ice )
       !

@@ -158,6 +158,7 @@ CONTAINS
             CALL iom_get( numror, jpdom_autoglo, 'sbc_sc_b', sbc_tsc_b(:,:,jp_sal) )   ! before salt content sbc trend
          ELSE                                         ! No restart or restart not found: Euler forward time stepping
             zfact = 1._wp
+            sbc_tsc(:,:,:) = 0._wp
             sbc_tsc_b(:,:,:) = 0._wp
          ENDIF
       ELSE                                         ! Swap of forcing fields

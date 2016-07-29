@@ -205,7 +205,9 @@ CONTAINS
 #if defined key_cice
       IF( MOD( kt - 1, nn_fsbc ) == 0 )   THEN
          qlw_ice(:,:,1)   = sf(jp_qlw)%fnow(:,:,1) 
-         qsr_ice(:,:,1)   = sf(jp_qsr)%fnow(:,:,1)
+         IF( ln_dm2dc ) THEN ; qsr_ice(:,:,1) = sbc_dcy( sf(jp_qsr)%fnow(:,:,1) )
+         ELSE                ; qsr_ice(:,:,1) =          sf(jp_qsr)%fnow(:,:,1)
+         ENDIF
          tatm_ice(:,:)    = sf(jp_tair)%fnow(:,:,1)         
          qatm_ice(:,:)    = sf(jp_humi)%fnow(:,:,1)
          tprecip(:,:)     = sf(jp_prec)%fnow(:,:,1) * rn_pfac

@@ -408,43 +408,6 @@ CONTAINS
          !
          isrow = 332 - jpjglo
          !
-#if defined CCSMCOUPLED
-         ! This is for the old ORCA1 bathymetry
-         IF(lwp) WRITE(numout,*)
-         IF(lwp) WRITE(numout,*) '   orca_r1: increase friction near the following straits : '
-         IF(lwp) WRITE(numout,*) '      Gibraltar '
-         ii0 = 283   ;   ii1 = 284        ! Gibraltar Strait 
-         ij0 = 200   ;   ij1 = 200   ;   fmask( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1), 1:jpk ) =  2._wp  
-
-         IF(lwp) WRITE(numout,*) '      Bhosporus '
-         ii0 = 314   ;   ii1 = 315        ! Bhosporus Strait 
-         ij0 = 208   ;   ij1 = 208   ;   fmask( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1), 1:jpk ) =  2._wp  
-
-         IF(lwp) WRITE(numout,*) '      Makassar (Top) '
-         ii0 =  48   ;   ii1 =  48        ! Makassar Strait (Top) 
-         ij0 = 149   ;   ij1 = 150   ;   fmask( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1), 1:jpk ) =  3._wp  
-
-         IF(lwp) WRITE(numout,*) '      Lombok '
-         ii0 =  44   ;   ii1 =  44        ! Lombok Strait 
-         ij0 = 124   ;   ij1 = 125   ;   fmask( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1), 1:jpk ) =  2._wp  
-
-         IF(lwp) WRITE(numout,*) '      Ombai '
-         ii0 =  53   ;   ii1 =  53        ! Ombai Strait 
-         ij0 = 124   ;   ij1 = 125   ;   fmask( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1), 1:jpk ) = 2._wp  
-
-         IF(lwp) WRITE(numout,*) '      Timor Passage '
-         ii0 =  56   ;   ii1 =  56        ! Timor Passage 
-         ij0 = 124   ;   ij1 = 125   ;   fmask( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1), 1:jpk ) = 2._wp  
-
-         IF(lwp) WRITE(numout,*) '      West Halmahera '
-         ii0 =  58   ;   ii1 =  58        ! West Halmahera Strait 
-         ij0 = 141   ;   ij1 = 142   ;   fmask( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1), 1:jpk ) = 3._wp  
-
-         IF(lwp) WRITE(numout,*) '      East Halmahera '
-         ii0 =  55   ;   ii1 =  55        ! East Halmahera Strait 
-         ij0 = 141   ;   ij1 = 142   ;   fmask( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1), 1:jpk ) = 3._wp  
-         !
-#else
          IF(lwp) WRITE(numout,*)
          IF(lwp) WRITE(numout,*) '   orca_r1: increase friction near the following straits : '
          IF(lwp) WRITE(numout,*) '      Gibraltar '
@@ -479,7 +442,6 @@ CONTAINS
          ii0 =  55           ;   ii1 =  55        ! East Halmahera Strait
          ij0 = 181 - isrow   ;   ij1 = 182 - isrow   ;   fmask( mi0(ii0):mi1(ii1),mj0(ij0):mj1(ij1),1:jpk ) = 3._wp
          !
-#endif
       ENDIF
       !
       CALL lbc_lnk( fmask, 'F', 1._wp )      ! Lateral boundary conditions on fmask

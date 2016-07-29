@@ -167,48 +167,6 @@ CONTAINS
             ! 
             isrow = 332 - jpjglo
             !
-#if defined CCSMCOUPLED
-         ! This is for the old ORCA1 bathymetry
-            ii0 = 281   ;   ii1 = 282        ! Gibraltar Strait (e2u = 20 km)
-            ij0 = 200   ;   ij1 = 200   ;   e2u( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1) ) =  20.e3
-            IF(lwp) WRITE(numout,*)
-            IF(lwp) WRITE(numout,*) '             orca_r1: Gibraltar : e2u reduced to 20 km'
-
-            ii0 = 314   ;   ii1 = 315        ! Bhosporus Strait (e2u = 10 km)
-            ij0 = 208   ;   ij1 = 208   ;   e2u( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1) ) =  10.e3
-            IF(lwp) WRITE(numout,*)
-            IF(lwp) WRITE(numout,*) '             orca_r1: Bhosporus : e2u reduced to 10 km'
-
-            ii0 =  44   ;   ii1 =  44        ! Lombok Strait (e1v = 13 km)
-            ij0 = 124   ;   ij1 = 125   ;   e1v( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1) ) =  13.e3
-            IF(lwp) WRITE(numout,*)
-            IF(lwp) WRITE(numout,*) '             orca_r1: Lombok : e1v reduced to 10 km'
-
-            ii0 =  48   ;   ii1 =  48        ! Sumba Strait (e1v = 8 km) [closed from bathy_11 on]
-            ij0 = 124   ;   ij1 = 125   ;   e1v( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1) ) =  8.e3
-            IF(lwp) WRITE(numout,*)
-            IF(lwp) WRITE(numout,*) '             orca_r1: Sumba : e1v reduced to 8 km'
-
-            ii0 =  53   ;   ii1 =  53        ! Ombai Strait (e1v = 13 km)
-            ij0 = 124   ;   ij1 = 125   ;   e1v( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1) ) = 13.e3
-            IF(lwp) WRITE(numout,*)
-            IF(lwp) WRITE(numout,*) '             orca_r1: Ombai : e1v reduced to 13 km'
-
-            ii0 =  56   ;   ii1 =  56        ! Timor Passage (e1v = 20 km)
-            ij0 = 124   ;   ij1 = 125   ;   e1v( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1) ) = 20.e3
-            IF(lwp) WRITE(numout,*)
-            IF(lwp) WRITE(numout,*) '             orca_r1: Timor Passage : e1v reduced to 20 km'
-
-            ii0 =  55   ;   ii1 =  55        ! West Halmahera Strait (e1v = 30 km)
-            ij0 = 141   ;   ij1 = 142   ;   e1v( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1) ) = 30.e3
-            IF(lwp) WRITE(numout,*)
-            IF(lwp) WRITE(numout,*) '             orca_r1: W Halmahera : e1v reduced to 30 km'
-
-            ii0 =  58   ;   ii1 =  58        ! East Halmahera Strait (e1v = 50 km)
-            ij0 = 141   ;   ij1 = 142   ;   e1v( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1) ) = 50.e3
-            IF(lwp) WRITE(numout,*)
-            IF(lwp) WRITE(numout,*) '             orca_r1: E Halmahera : e1v reduced to 50 km'
-#else
             ii0 = 282           ;   ii1 = 283        ! Gibraltar Strait (e2u = 20 km)
             ij0 = 241 - isrow   ;   ij1 = 241 - isrow   ;   e2u( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1) ) =  20.e3
             IF(lwp) WRITE(numout,*)
@@ -248,7 +206,6 @@ CONTAINS
             ij0 = 181 - isrow   ;   ij1 = 182 - isrow   ;   e1v( mi0(ii0):mi1(ii1) , mj0(ij0):mj1(ij1) ) = 50.e3
             IF(lwp) WRITE(numout,*)
             IF(lwp) WRITE(numout,*) '             orca_r1: E Halmahera : e1v reduced to 50 km'
-#endif
             !
             !
          ENDIF
