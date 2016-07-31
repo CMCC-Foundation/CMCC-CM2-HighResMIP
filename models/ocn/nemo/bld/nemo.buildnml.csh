@@ -239,6 +239,7 @@ if (-e data_1m_potential_temperature_nomask.nc == 0 && ${?POTEMPERATURE} == 1 &&
 endif
 if (-e data_1m_salinity_nomask.nc == 0 && ${?SALINITY} == 1 ) then
   ln -s ${NEMO_IN}/${SALINITY}.nc    data_1m_salinity_nomask.nc
+  ln -s ${NEMO_IN}/${SALINITY}.nc    sali_ref_clim_monthly.nc
 endif
 if (-e chlorophyll.nc == 0 && ${?CHLOROPHYLL} == 1 ) then
   ln -s ${NEMO_IN}/${CHLOROPHYLL}.nc chlorophyll.nc
