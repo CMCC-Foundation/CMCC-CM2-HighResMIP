@@ -74,7 +74,7 @@ fi
 #######################################################################
 
 OUTDIR="DOUT_S_ROOT"
-AUXDIR=`echo ${OUTDIR} | sed -e "s/\/archive\//\/postproc\//" -e "s/\/hist//"`
+AUXDIR=`echo ${OUTDIR} | sed -e "s;\/hist;\/grid;"`
 EXPID="CASE"
 CONF="ORCA1"   # redefined later
 restart="RESTART"
@@ -133,11 +133,6 @@ if [ ${flist} -gt 0 ] ; then
            ${REBUILD} ${thisfile} ${npes} && \
          rm -f ${thisfile}_[0-9][0-9][0-9][0-9].nc || exit 1 &
        fi
-   done
-   #
-   # move merged file to EXPID short term archive only when it is locked!
-   while [ -f ../${EXPID}.st_archive.lock ]; do
-     sleep 10
    done
 
    if [ ! -d ${OUTDIR} ] ; then  mkdir -p ${OUTDIR} ; fi ;
@@ -270,7 +265,7 @@ for v in t u v ; do
 done
 
 # 
-# Store metrics in postprocessing folder ${AUXDIR}
+# Store metrics in archive ocean grid folder ${AUXDIR}
 #
 
 if [ ! -d ${AUXDIR} ]; then

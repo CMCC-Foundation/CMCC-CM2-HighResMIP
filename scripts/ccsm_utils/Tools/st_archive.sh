@@ -57,21 +57,15 @@ if [ -z "$DOUT_S_ROOT" ]; then
     exit 1
 fi
 
-sta=${DOUT_S_ROOT}/.sta-$$-`date +%Y%m%d%H%M%S%N`
-mkdir -p ${sta} 2> /dev/null
+sta=${DOUT_S_ROOT}
+#sta=${DOUT_S_ROOT}/.sta-$$-`date +%Y%m%d%H%M%S%N`
+#mkdir -p ${sta} 2> /dev/null
 
 if [ "${COMP_OCN}" == "nemo" -a "${NEMO_REBUILD}" == "TRUE" ]; then
-    BACK=${PWD}
-    cd ${DOUT_S_ROOT}/../
-    DOUT_NEMO_REBUILD=${PWD}/nemo_rebuild/${CASE}
+    DOUT_NEMO_REBUILD=${DOUT_S_ROOT}/ocn/rebuild
     if [ ! -d ${DOUT_NEMO_REBUILD} ] ; then
         mkdir -p ${DOUT_NEMO_REBUILD}
     fi
-    if [ -f ${DOUT_NEMO_REBUILD}/../${CASE}.st_archive.lock ] ; then
-        rm -f  ${DOUT_NEMO_REBUILD}/../${CASE}.st_archive.lock
-    fi
-    touch  ${DOUT_NEMO_REBUILD}/../${CASE}.st_archive.lock
-    cd ${BACK}
 else
     DOUT_NEMO_REBUILD=${sta}/ocn/hist
 fi
@@ -81,7 +75,7 @@ if [ $? -ne 0 ]; then
     echo "st_archive.sh: exiting"
     exit 1
 fi
-mv ${DOUT_S_ROOT}/* ${sta}
+#mv ${DOUT_S_ROOT}/* ${sta}
 
 if [ -z "$DOUT_S_SAVE_INT_REST_FILES" ]; then
     echo "st_archive.sh: warning, environment variable DOUT_S_SAVE_INT_REST_FILES is not "
@@ -377,14 +371,14 @@ done
 #copy back the required files for next restart
 cp ${sta}/rest/${dname}/* .
 
-if mv ${sta}/* ${DOUT_S_ROOT}; then
-    rm -fr ${sta}
-else
-    echo "st_archive.sh: error, final move command unsuccessful"
-    echo "               some short-term archive data may be in ${sta}"
-    echo "st_archive.sh: exiting"
-    exit 1
-fi
+#if mv ${sta}/* ${DOUT_S_ROOT}; then
+#    rm -fr ${sta}
+#else
+#    echo "st_archive.sh: error, final move command unsuccessful"
+#    echo "               some short-term archive data may be in ${sta}"
+#    echo "st_archive.sh: exiting"
+#    exit 1
+#fi
 
 # Rebuild NEMO output
 if [ "${COMP_OCN}" == "nemo" -a "${NEMO_REBUILD}" == "TRUE" ]; then
@@ -415,5 +409,4 @@ if [ "${COMP_OCN}" == "nemo" -a "${NEMO_REBUILD}" == "TRUE" ]; then
 fi
 
 echo "st_archive.sh: short-term archiving completed successfully"
-rm -f  ${DOUT_NEMO_REBUILD}/../${CASE}.st_archive.lock
 exit 0
