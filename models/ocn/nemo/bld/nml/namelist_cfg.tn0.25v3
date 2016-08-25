@@ -66,7 +66,7 @@
    ppa2        =  999999.0             !  Double tanh function parameters
    ppkth2      =  999999.0             !
    ppacr2      =  999999.0             !
-   rn_rdt      =    1080.              !  time step for the dynamics (and tracer if nn_acc=0)
+   rn_rdt      =    1200.              !  time step for the dynamics (and tracer if nn_acc=0)
    rn_hmin     =   -3. 
    nn_msh      =   0 
    nn_bathy    =    1      !  compute (=0) or read (=1) the bathymetry file
@@ -98,14 +98,14 @@
 !-----------------------------------------------------------------------
 !          !  file name                            ! frequency (hours) ! variable  ! time interp. !  clim  ! 'yearly'/ ! weights  ! rotation ! land/sea mask !
 !          !                                       !  (if <0  months)  !   name    !   (logical)  !  (T/F) ! 'monthly' ! filename ! pairing  ! filename      !
-   sn_tem  = 'data_1m_potential_temperature_nomask',         -1        ,'votemper' ,    .true.    , .true. , 'yearly'  ,    ''    ,    ''    ,    ''
+   sn_tem  = 'data_1m_temperature_nomask'          ,         -1        ,'votemper' ,    .true.    , .true. , 'yearly'  ,    ''    ,    ''    ,    ''
    sn_sal  = 'data_1m_salinity_nomask'             ,         -1        ,'vosaline' ,    .true.    , .true. , 'yearly'  ,    ''    ,    ''    ,    ''
    ln_tsd_tradmp = .false.  !  damping of ocean T & S toward T &S input data (T) or not (F)
 /
 !-----------------------------------------------------------------------
 &namsbc        !   Surface Boundary Condition (surface module)
 !-----------------------------------------------------------------------
-   nn_fsbc     = 5         !  frequency of surface boundary condition computation
+   nn_fsbc     = 3         !  frequency of surface boundary condition computation
    ln_cpl      = .true.    !  atmosphere coupled   formulation          ( requires key_oasis3 )
    ln_blk_core = .false.   !  CORE bulk formulation                     (T => fill namsbc_core)
    nn_ice      = 0         !  =0 no ice boundary condition   ,
@@ -260,7 +260,7 @@
    sn_qgh      ='geothermal_heating.nc',  -12.  , 'gh_flux'    ,   .false.     , .true. , 'yearly'  , ''       , ''       , ''
    !
    cn_dir      = './'      !  root directory for the location of the runoff files
-   ln_trabbc   = .true.   !  Apply a geothermal heating at the ocean bottom
+   ln_trabbc   = .true.    !  Apply a geothermal heating at the ocean bottom
    nn_geoflx   =   2       !  geothermal heat flux: = 0 no flux
 /
 !-----------------------------------------------------------------------
@@ -270,8 +270,11 @@
 !-----------------------------------------------------------------------
 &nameos        !   ocean physical parameters
 !-----------------------------------------------------------------------
-nn_eos      =  0     !  type of equation of state and Brunt-Vaisala frequenc
-ln_useCT    = .false.  ! use of Conservative Temp. ==> surface CT converted in Pot. Temp. in sbcssm
+nn_eos      =  -1     !  type of equation of state and Brunt-Vaisala frequency
+                                 !  =-1, TEOS-10
+                                 !  = 0, EOS-80
+                                 !  = 1, S-EOS   (simplified eos)
+ln_useCT    = .true.  ! use of Conservative Temp. ==> surface CT converted in Pot. Temp. in sbcssm
 /
 !-----------------------------------------------------------------------
 &namtra_adv    !   advection scheme for tracer
@@ -332,7 +335,7 @@ ln_useCT    = .false.  ! use of Conservative Temp. ==> surface CT converted in P
 !-----------------------------------------------------------------------
    ln_hpg_zps  = .true.    !  z-coordinate - partial steps (interpolation)
    ln_hpg_sco  = .false.   !  s-coordinate (standard jacobian formulation)
-   ln_dynhpg_imp = .false.  !  time stepping: semi-implicit time scheme  (T)
+   ln_dynhpg_imp = .false. !  time stepping: semi-implicit time scheme  (T)
                            !           centered      time scheme  (F)
 /
 !-----------------------------------------------------------------------

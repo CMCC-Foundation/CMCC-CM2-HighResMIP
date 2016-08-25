@@ -332,6 +332,10 @@ do
     if [ ! -f ${sta}/ocn/logs/layout.dat -a -f layout.dat ]; then
         mv layout.dat  ${sta}/ocn/logs/
     fi
+          # clean up nemo temporary files
+    if [ -f time.step ] ; then
+       rm time.step solver.stat output.namelist* layout.dat
+    fi
           ;;
     esac
     IDX=`expr $IDX + 1`

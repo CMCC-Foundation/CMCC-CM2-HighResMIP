@@ -28,6 +28,7 @@ module ocn_comp_mct
    use nemogcm,    ONLY: cform_aaa, nemo_init, nemo_closefile
    use lib_fortran
    use iom
+   use eosbn2,     ONLY: ln_useCT, eos_pt_from_ct
 
    use qflxice
 
@@ -1847,6 +1848,9 @@ nitrst_old = 0
 !     implicitly use zero flux if fco2 field not registered yet
 !  ice formation flux is handled separately in ice routine
 !
+!  Temperature is passed as potential one to cesm components
+!  Add control on SST for NEMO EOS formulation (TEOS10 or EOS80)
+!
 !-----------------------------------------------------------------------
 
    SBUFF_SUM(:,:,index_o2x_So_u) =    &
@@ -1855,8 +1859,15 @@ nitrst_old = 0
    SBUFF_SUM(:,:,index_o2x_So_v) =    &
       SBUFF_SUM(:,:,index_o2x_So_v) +  delt*vn(:,:,1)
 
+   WORK(:,:) = c0
+   if ( ln_useCT ) then
+       WORK(:,:) = eos_pt_from_ct(tsn(:,:,1,jp_tem),tsn(:,:,1,jp_sal))
+   else
+       WORK(:,:) = tsn(:,:,1,jp_tem)
+   endif
+
    SBUFF_SUM(:,:,index_o2x_So_t) =    &
-      SBUFF_SUM(:,:,index_o2x_So_t) + delt*tsn(:,:,1,jp_tem)
+      SBUFF_SUM(:,:,index_o2x_So_t) + delt*WORK(:,:)
 
    SBUFF_SUM(:,:,index_o2x_So_s) =    &
       SBUFF_SUM(:,:,index_o2x_So_s) + delt*tsn(:,:,1,jp_sal)

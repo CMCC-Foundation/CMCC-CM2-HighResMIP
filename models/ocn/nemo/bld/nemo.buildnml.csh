@@ -150,8 +150,8 @@ case "tn2v?":
 #  set DISTCOAST     = "dist.coast"
   set CHLOROPHYLL   = "forcing/chlorophyll"
 # WOA 2009/PHC3.0
-  set POTEMPERATURE = "ic/data_1m_potential_temperature_nomask"
-  set SALINITY      = "ic/data_1m_salinity_nomask"
+  set TEMPERATURE   = "ic/data_1m_potential_temperature_nomask"
+  set SALINITY      = "ic/data_1m_practical_salinity_nomask"
   set BATHYMETRY    = "grid/bathy_meter_closea_no_NAGL"
 #  set SSSR          = ""
   breaksw
@@ -166,8 +166,8 @@ case "tn1v1":
 #  set DISTCOAST     = ""
   set CHLOROPHYLL   = "forcing/chlorophyll-ORCA1_1m"
 # WOA 2013 - 1995-2004 climatology
-  set POTEMPERATURE = "ic/WOA13-95A4_ORCA1_L46_1m_potential_temperature_nomask"
-  set SALINITY      = "ic/WOA13-95A4_ORCA1_L46_1m_salinity_nomask"
+  set TEMPERATURE   = "ic/WOA13-95A4_ORCA1_L46_1m_potential_temperature_nomask"
+  set SALINITY      = "ic/WOA13-95A4_ORCA1_L46_1m_practical_salinity_nomask"
   set BATHYMETRY    = "grid/bathy_meter_121126_CMCC"
 #  set SSSR          = "forcing/ORCA1_PHC2_1m_sss_nomask_patched"
 #  set SSSR          = "forcing/ORCA1_PHC2_1m_sss_nomask"
@@ -184,8 +184,10 @@ case "tn1v3":
   set AHMCOEF       = "forcing/ORCA1_ahmcoef_v1.0"
 #  set DISTCOAST     = ""
 # WOA 2013
-  set POTEMPERATURE = "ic/WOA13-95A4_ORCA1_L50_1m_potential_temperature_nomask"
-  set SALINITY      = "ic/WOA13-95A4_ORCA1_L50_1m_salinity_nomask"
+#  set TEMPERATURE   = "ic/WOA13-95A4_ORCA1_L50_1m_potential_temperature_nomask"
+#  set SALINITY      = "ic/WOA13-95A4_ORCA1_L50_1m_practical_salinity_nomask"
+  set TEMPERATURE   = "ic/WOA13-95A4_ORCA1_L50_1m_conservative_temperature_nomask"
+  set SALINITY      = "ic/WOA13-95A4_ORCA1_L50_1m_absolute_salinity_nomask"
 #  set SSSR          = "forcing/WOA13-95A4_ORCA1_1m_sss_nomask"
   breaksw
 case "tn0.5v?":
@@ -203,8 +205,8 @@ case "tn0.25v1":
 #  set DISTCOAST     = "dist.coast"
   set CHLOROPHYLL   = "forcing/chlorophyll"
 # Levitus 98/PHC2.1
-  set POTEMPERATURE = "ic/data_1m_potential_temperature_nomask"
-  set SALINITY      = "ic/data_1m_salinity_nomask"
+  set TEMPERATURE   = "ic/data_1m_potential_temperature_nomask"
+  set SALINITY      = "ic/data_1m_practical_salinity_nomask"
   set BATHYMETRY    = "grid/bathy_meter"
 #  set SSSR          = ""
 case "tn0.25v3":
@@ -218,8 +220,10 @@ case "tn0.25v3":
   set CHLOROPHYLL   = "forcing/ORCA025_ESACCI_CHLA_bicubic"
 #  set DISTCOAST     = ""
 # WOA 2013
-  set POTEMPERATURE = "ic/WOA13-95A4_ORCA025_L50_1m_potential_temperature_nomask"
-  set SALINITY      = "ic/WOA13-95A4_ORCA025_L50_1m_salinity_nomask"
+#  set TEMPERATURE   = "ic/WOA13-95A4_ORCA025_L50_1m_potential_temperature_nomask"
+#  set SALINITY      = "ic/WOA13-95A4_ORCA025_L50_1m_practical_salinity_nomask"
+  set TEMPERATURE   = "ic/WOA13-95A4_ORCA025_L50_1m_conservative_temperature_nomask"
+  set SALINITY      = "ic/WOA13-95A4_ORCA025_L50_1m_absolute_salinity_nomask"
 #  set SSSR          = "forcing/WOA13-95A4_ORCA025_1m_sss_nomask"
   breaksw
 default:
@@ -234,8 +238,8 @@ if ( ${NEMO_TOP_CFC} == 1 ) then
 endif
 #
 # Copy/link files
-if (-e data_1m_potential_temperature_nomask.nc == 0 && ${?POTEMPERATURE} == 1 && "${CONTINUE_RUN}" == "FALSE" ) then
-  ln -s ${NEMO_IN}/${POTEMPERATURE}.nc    data_1m_potential_temperature_nomask.nc
+if (-e data_1m_temperature_nomask.nc == 0 && ${?TEMPERATURE} == 1 && "${CONTINUE_RUN}" == "FALSE" ) then
+  ln -s ${NEMO_IN}/${TEMPERATURE}.nc    data_1m_temperature_nomask.nc
 endif
 if (-e data_1m_salinity_nomask.nc == 0 && ${?SALINITY} == 1 ) then
   ln -s ${NEMO_IN}/${SALINITY}.nc    data_1m_salinity_nomask.nc
@@ -466,7 +470,7 @@ case "tn0.5v?":
   exit 1
   breaksw
 case "tn0.25v?":
-  @ DTSEC = 1080
+  @ DTSEC = 1200
 #  echo "Error: Resolution ${OCN_GRID} not implemented yet!"
 #  exit 1
   breaksw
@@ -517,7 +521,7 @@ case "*day*":
     @ nnfsbc = ${ts_per_day} / ${OCN_NCPL}
     breaksw
   case "12":
-    if ("${OCN_GRID}" != "tn1v1"  && "${OCN_GRID}" != "tn1v3" ) then
+    if ("${OCN_GRID}" != "tn1v1"  && "${OCN_GRID}" != "tn1v3" && "${OCN_GRID}" != "tn0.25v3") then
       echo "Error: wrong OCN_NCPL value (${OCN_NCPL}) for grid ${OCN_GRID} with time step ${DTSEC}!"
       exit 1
     endif
@@ -533,7 +537,7 @@ case "*day*":
     @ nnfsbc = ${ts_per_day} / ${OCN_NCPL}
     breaksw
   case "24":
-    if ("${OCN_GRID}" != "tn1v1"  && "${OCN_GRID}" != "tn1v3" ) then
+    if ("${OCN_GRID}" != "tn1v1"  && "${OCN_GRID}" != "tn1v3" && "${OCN_GRID}" != "tn0.25v3") then
       echo "Error: wrong OCN_NCPL value (${OCN_NCPL}) for grid ${OCN_GRID} with time step ${DTSEC}!"
       exit 1
     endif
