@@ -372,8 +372,9 @@ do
     IDX=`expr $IDX + 1`
 done
 
-#copy back the required files for next restart
-cp ${sta}/rest/${dname}/* .
+#copy back CESM pointers and link the required NetCDF files for next restart
+cp ${sta}/rest/${dname}/rpointer.* .
+ln -s ${sta}/rest/${dname}/${CASE}*.nc -t .
 
 #if mv ${sta}/* ${DOUT_S_ROOT}; then
 #    rm -fr ${sta}
