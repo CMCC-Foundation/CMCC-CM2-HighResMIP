@@ -184,10 +184,10 @@ case "tn1v3":
   set AHMCOEF       = "forcing/ORCA1_ahmcoef_v1.0"
 #  set DISTCOAST     = ""
 # WOA 2013
-#  set TEMPERATURE   = "ic/WOA13-95A4_ORCA1_L50_1m_potential_temperature_nomask"
-#  set SALINITY      = "ic/WOA13-95A4_ORCA1_L50_1m_practical_salinity_nomask"
-  set TEMPERATURE   = "ic/WOA13-95A4_ORCA1_L50_1m_conservative_temperature_nomask"
-  set SALINITY      = "ic/WOA13-95A4_ORCA1_L50_1m_absolute_salinity_nomask"
+  set TEMPERATURE   = "ic/WOA13-95A4_ORCA1_L50_1m_potential_temperature_nomask"
+  set SALINITY      = "ic/WOA13-95A4_ORCA1_L50_1m_practical_salinity_nomask"
+#  set TEMPERATURE   = "ic/WOA13-95A4_ORCA1_L50_1m_conservative_temperature_nomask"
+#  set SALINITY      = "ic/WOA13-95A4_ORCA1_L50_1m_absolute_salinity_nomask"
 #  set SSSR          = "forcing/WOA13-95A4_ORCA1_1m_sss_nomask"
   breaksw
 case "tn0.5v?":
@@ -220,10 +220,10 @@ case "tn0.25v3":
   set CHLOROPHYLL   = "forcing/ORCA025_ESACCI_CHLA_bicubic"
 #  set DISTCOAST     = ""
 # WOA 2013
-#  set TEMPERATURE   = "ic/WOA13-95A4_ORCA025_L50_1m_potential_temperature_nomask"
-#  set SALINITY      = "ic/WOA13-95A4_ORCA025_L50_1m_practical_salinity_nomask"
-  set TEMPERATURE   = "ic/WOA13-95A4_ORCA025_L50_1m_conservative_temperature_nomask"
-  set SALINITY      = "ic/WOA13-95A4_ORCA025_L50_1m_absolute_salinity_nomask"
+  set TEMPERATURE   = "ic/WOA13-95A4_ORCA025_L50_1m_potential_temperature_nomask"
+  set SALINITY      = "ic/WOA13-95A4_ORCA025_L50_1m_practical_salinity_nomask"
+#  set TEMPERATURE   = "ic/WOA13-95A4_ORCA025_L50_1m_conservative_temperature_nomask"
+#  set SALINITY      = "ic/WOA13-95A4_ORCA025_L50_1m_absolute_salinity_nomask"
 #  set SSSR          = "forcing/WOA13-95A4_ORCA025_1m_sss_nomask"
   breaksw
 default:
