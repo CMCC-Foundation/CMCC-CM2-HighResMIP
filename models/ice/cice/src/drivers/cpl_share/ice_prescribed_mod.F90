@@ -234,6 +234,9 @@ contains
       write(nu_diag,*) '  stream_domFileName = ',trim(stream_domFileName)
       write(nu_diag,*) '  stream_mapread     = ',trim(stream_mapread)
       write(nu_diag,*) '  stream_fillalgo    = ',trim(fillalgo)
+#ifdef NEMO_IN_CCSM
+      write(nu_diag,*) '  stream_mapalgo     = none (NEMO)'
+#endif
       write(nu_diag,*) ' '
    endif
 
@@ -259,6 +262,9 @@ contains
         pio_subsystem=shr_pio_getiosys(inst_name), &
         pio_iotype=shr_pio_getiotype(inst_name),   &
         fillalgo=trim(fillalgo),       &
+#ifdef NEMO_IN_CCSM
+        mapalgo=trim('none'),          &
+#endif
         calendar=trim(calendar_type),  &
         mapread=trim(stream_mapread))
 

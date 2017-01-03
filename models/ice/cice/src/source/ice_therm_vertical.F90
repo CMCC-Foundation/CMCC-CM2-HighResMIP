@@ -1171,12 +1171,30 @@
       !-----------------------------------------------------------------
       ! Check for Tin > Tmax and Tin < Tmin
       !-----------------------------------------------------------------
+#ifdef NEMO_IN_CCSM
+            if ( prescribed_ice ) then
+               if ( (Tin(ij,k) > Tmax)  .and. &
+                       ( abs(Tin(ij,k) - Tmax) > 1e-4_dbl_kind )) then
+                  tice_high = .true.
+               elseif ( (Tin(ij,k) < Tmin)  .and. &
+                       ( abs(Tin(ij,k) - Tmin) > 1e-4_dbl_kind )) then
+                  tice_low  = .true.
+               endif
+            else
+               if (Tin(ij,k) > Tmax) then
+                  tice_high = .true.
+               elseif (Tin(ij,k) < Tmin) then
+                  tice_low  = .true.
+               endif
+            endif
+#else
             if (Tin(ij,k) > Tmax) then
                tice_high = .true.
             elseif (Tin(ij,k) < Tmin) then
                tice_low  = .true.
             endif
 
+#endif
          enddo                  ! ij
 
       !-----------------------------------------------------------------
