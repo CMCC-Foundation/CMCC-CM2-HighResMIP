@@ -228,7 +228,7 @@ CONTAINS
          !
          CALL lim_sbc_flx( kt )                     ! Update surface ocean mass, heat and salt fluxes
          !
-         IF(ln_limdiaout) CALL lim_diahsb           ! Diagnostics and outputs 
+         IF(ln_limdiaout) CALL lim_diahsb( kt )     ! Diagnostics and outputs 
          !
          CALL lim_wri( 1 )                          ! Ice outputs 
          !
@@ -309,10 +309,12 @@ CONTAINS
          CALL lim_rst_read
          numit = nit000 - 1
       ENDIF
-      CALL lim_var_agg(1)
+      CALL lim_var_agg(2)
       CALL lim_var_glo2eqv
       !
       CALL lim_sbc_init                 ! ice surface boundary condition   
+      !
+      IF( ln_limdiaout) CALL lim_diahsb_init  ! initialization for diags
       !
       fr_i(:,:)     = at_i(:,:)         ! initialisation of sea-ice fraction
       tn_ice(:,:,:) = t_su(:,:,:)       ! initialisation of surface temp for coupled simu

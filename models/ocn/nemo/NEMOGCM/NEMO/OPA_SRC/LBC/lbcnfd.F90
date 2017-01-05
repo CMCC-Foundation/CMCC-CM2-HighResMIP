@@ -803,7 +803,7 @@ CONTAINS
                startloop = 1
             ELSE
                startloop = 3
-               pt2dl(2,ijpj) = psgn * pt2dr(3,ijpjm1)
+               pt2dl(2,ijpj) = psgn * pt2dl(3,ijpjm1)
             ENDIF
             DO ji = startloop, nlci
                iju = jpiglo - ji - nimpp - nfiimpp(isendto(1),jpnj) + 5
@@ -815,7 +815,7 @@ CONTAINS
                startloop = 1
             ELSE
                startloop = 3
-               pt2dl(2,ijpj) = psgn * pt2dr(3,ijpjm1)
+               pt2dl(2,ijpj) = psgn * pt2dl(3,ijpjm1)
             ENDIF
             DO ji = startloop, nlci
                iju = jpiglo - ji - nimpp - nfiimpp(isendto(1),jpnj) + 5
@@ -909,7 +909,7 @@ CONTAINS
                ENDIF
                DO ji = startloop , endloop
                   ijt = jpiglo - ji - nimpp - nfiimpp(isendto(1),jpnj) + 4
-                  pt2dl(ji,ijpj)= 0.5 * (pt2dr(ji,ijpjm1) + psgn * pt2dr(ijt,ijpjm1))
+                  pt2dl(ji,ijpj)= 0.5 * (pt2dl(ji,ijpjm1) + psgn * pt2dr(ijt,ijpjm1))
                END DO
 
          CASE ( 'J' )                                  ! first ice U-V point
@@ -925,7 +925,7 @@ CONTAINS
                ENDIF
                DO ji = startloop , endloop
                   ijt = jpiglo - ji - nimpp - nfiimpp(isendto(1),jpnj) + 4
-                  pt2dl(ji,ijpj) = pt2dr(ji,ijpjm1)
+                  pt2dl(ji,ijpj) = pt2dl(ji,ijpjm1)
                END DO
 
          CASE ( 'K' )                                  ! second ice U-V point

@@ -303,7 +303,7 @@ CONTAINS
          zdrift = ( ( ztraf - trai(jn) ) / ( trai(jn) + 1.e-12 )  ) * 100._wp
          IF(lwp) WRITE(numout,9000) jn, TRIM( ctrcnm(jn) ), zmean, zmin, zmax, zdrift
       END DO
-      WRITE(numout,*) 
+      IF(lwp) WRITE(numout,*) 
 9000  FORMAT(' tracer nb :',i2,'    name :',a10,'    mean :',e18.10,'    min :',e18.10, &
       &      '    max :',e18.10,'    drift :',e18.10, ' %')
       !

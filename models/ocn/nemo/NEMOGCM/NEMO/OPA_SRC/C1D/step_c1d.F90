@@ -59,9 +59,9 @@ CONTAINS
       !! ---------------------------------------------------------------------
 
                              indic = 0                ! reset to no error condition
-      IF( kstp == nit000 )   CALL iom_init( "nemo")   ! iom_put initialization (must be done after nemo_init for AGRIF+XIOS+OASIS)
+      IF( kstp == nit000 )   CALL iom_init( cxios_context )   ! iom_put initialization (must be done after nemo_init for AGRIF+XIOS+OASIS)
       IF( kstp /= nit000 )   CALL day( kstp )         ! Calendar (day was already called at nit000 in day_init)
-                             CALL iom_setkt( kstp - nit000 + 1, "nemo" )   ! say to iom that we are at time step kstp
+                             CALL iom_setkt( kstp - nit000 + 1, cxios_context )   ! say to iom that we are at time step kstp
 
       !>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
       ! Update data, open boundaries, surface boundary condition (including sea-ice)

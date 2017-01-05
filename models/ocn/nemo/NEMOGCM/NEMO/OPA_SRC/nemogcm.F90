@@ -462,7 +462,6 @@ CONTAINS
 #endif
       !                                     ! Diagnostics
       IF( lk_floats     )   CALL     flo_init   ! drifting Floats
-      IF( lk_diaar5     )   CALL dia_ar5_init   ! ar5 diag
                             CALL dia_ptr_init   ! Poleward TRansports initialization
       IF( lk_diadct     )   CALL dia_dct_init   ! Sections tranports
                             CALL dia_hsb_init   ! heat content, salt content and volume budgets

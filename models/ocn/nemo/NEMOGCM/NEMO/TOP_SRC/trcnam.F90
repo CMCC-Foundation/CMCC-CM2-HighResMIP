@@ -23,6 +23,7 @@ MODULE trcnam
    USE trcnam_pisces     ! PISCES namelist
    USE trcnam_cfc        ! CFC SMS namelist
    USE trcnam_c14b       ! C14 SMS namelist
+   USE trcnam_age        ! AGE SMS namelist
    USE trcnam_my_trc     ! MY_TRC SMS namelist
    USE trd_oce       
    USE trdtrc_oce
@@ -60,13 +61,13 @@ CONTAINS
       IF( .NOT. lk_offline ) CALL trc_nam_run
       
       !                                        !  passive tracer informations
-      CALL trc_nam_trc
+                             CALL trc_nam_trc
       
       !                                        !   Parameters of additional diagnostics
-      CALL trc_nam_dia
+      IF( .NOT. lk_iomput)   CALL trc_nam_dia
 
       !                                        !   namelist of transport
-      CALL trc_nam_trp
+                             CALL trc_nam_trp
 
 
       IF( ln_rsttr )                      ln_trcdta = .FALSE.   ! restart : no need of clim data
@@ -160,12 +161,16 @@ CONTAINS
       ELSE                    ;   IF(lwp) WRITE(numout,*) '          CFC not used'
       ENDIF
 
-      IF( lk_c14b     ) THEN   ;   CALL trc_nam_c14b         ! C14 bomb     tracers
-      ELSE                    ;   IF(lwp) WRITE(numout,*) '          C14 not used'
+      IF( lk_c14b    ) THEN  ;   CALL trc_nam_c14b         ! C14 bomb     tracers
+      ELSE                   ;   IF(lwp) WRITE(numout,*) '          C14 not used'
       ENDIF
 
-      IF( lk_my_trc  ) THEN   ;   CALL trc_nam_my_trc      ! MY_TRC  tracers
-      ELSE                    ;   IF(lwp) WRITE(numout,*) '          MY_TRC not used'
+      IF( lk_age     ) THEN  ;   CALL trc_nam_age         ! AGE     tracer
+      ELSE                   ;   IF(lwp) WRITE(numout,*) '          AGE not used'
+      ENDIF
+
+      IF( lk_my_trc  ) THEN  ;   CALL trc_nam_my_trc      ! MY_TRC  tracers
+      ELSE                   ;   IF(lwp) WRITE(numout,*) '          MY_TRC not used'
       ENDIF
       !
    END SUBROUTINE trc_nam
@@ -358,7 +363,7 @@ CONTAINS
          WRITE(numout,*) ' '
       ENDIF
 
-      IF( ln_diatrc .AND. .NOT. lk_iomput ) THEN 
+      IF( ln_diatrc ) THEN 
          ALLOCATE( trc2d(jpi,jpj,jpdia2d), trc3d(jpi,jpj,jpk,jpdia3d),  &
            &       ctrc2d(jpdia2d), ctrc2l(jpdia2d), ctrc2u(jpdia2d) ,  & 
            &       ctrc3d(jpdia3d), ctrc3l(jpdia3d), ctrc3u(jpdia3d) ,  STAT = ierr ) 
@@ -369,7 +374,7 @@ CONTAINS
          !
       ENDIF
 
-      IF( ( ln_diabio .AND. .NOT. lk_iomput ) .OR. l_trdtrc ) THEN
+      IF( ln_diabio .OR. l_trdtrc ) THEN
          ALLOCATE( trbio (jpi,jpj,jpk,jpdiabio) , &
            &       ctrbio(jpdiabio), ctrbil(jpdiabio), ctrbiu(jpdiabio), STAT = ierr ) 
          IF( ierr > 0 )   CALL ctl_stop( 'STOP', 'trcnam: unable to allocate bio. diag. array' )

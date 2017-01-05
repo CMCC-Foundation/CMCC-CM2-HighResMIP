@@ -354,10 +354,7 @@ CONTAINS
          !                                 ! trend diagnostics (contribution of upstream fluxes)
          IF( l_trd )   CALL trd_tra( kt, cdtype, jn, jptra_yad, zwy, pvn, ptn(:,:,:,jn) )
          !                                 ! "Poleward" heat and salt transports (contribution of upstream fluxes)
-         IF( cdtype == 'TRA' .AND. ln_diaptr ) THEN  
-           IF( jn == jp_tem )  htr_adv(:) = ptr_sj( zwy(:,:,:) )
-           IF( jn == jp_sal )  str_adv(:) = ptr_sj( zwy(:,:,:) )
-         ENDIF
+         IF( cdtype == 'TRA' .AND. ln_diaptr )  CALL dia_ptr_ohst_components( jn, 'adv', zwy(:,:,:) )
          !
       END DO
       !

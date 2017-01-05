@@ -161,7 +161,10 @@ CONTAINS
                   &                            * (  avmu(ji,jj,jk) + avmu(ji-1,jj,jk)      &
                   &                               + avmv(ji,jj,jk) + avmv(ji,jj-1,jk)  )   &
                   &          + avtb(jk) * tmask(ji,jj,jk)
-               !                                            ! Add the background coefficient on eddy viscosity
+            END DO
+         END DO
+         DO jj = 2, jpjm1                                   ! Add the background coefficient on eddy viscosity
+            DO ji = 2, jpim1
                avmu(ji,jj,jk) = avmu(ji,jj,jk) + avmb(jk) * umask(ji,jj,jk)
                avmv(ji,jj,jk) = avmv(ji,jj,jk) + avmb(jk) * vmask(ji,jj,jk)
             END DO

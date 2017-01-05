@@ -246,11 +246,8 @@ CONTAINS
          END DO                                           !   End of slab
          !                                                ! ===============
          ! "Poleward" diffusive heat or salt transport
-         IF( cdtype == 'TRA' .AND. ln_diaptr .AND. ( kaht == 2 ) ) THEN
-            ! note sign is reversed to give down-gradient diffusive transports (#1043)
-            IF( jn == jp_tem)   htr_ldf(:) = ptr_sj( -zftv(:,:,:) )
-            IF( jn == jp_sal)   str_ldf(:) = ptr_sj( -zftv(:,:,:) )
-         ENDIF
+        ! note sign is reversed to give down-gradient diffusive transports (#1043)
+         IF( cdtype == 'TRA' .AND. ln_diaptr .AND. ( kaht == 2 ) ) CALL dia_ptr_ohst_components( jn, 'ldf', -zftv(:,:,:) )
 
          !                             ! ************ !   ! ===============
          DO jj = 2, jpjm1              !  Second step !   ! Horizontal slab

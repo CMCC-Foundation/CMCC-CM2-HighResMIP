@@ -22,6 +22,7 @@ MODULE domain
    USE oce             ! ocean variables
    USE dom_oce         ! domain: ocean
    USE sbc_oce         ! surface boundary condition: ocean
+   USE trc_oce         ! shared ocean-passive tracers variables
    USE phycst          ! physical constants
    USE closea          ! closed seas
    USE in_out_manager  ! I/O manager
@@ -96,22 +97,25 @@ CONTAINS
          hv_0(:,:) = hv_0(:,:) + e3v_0(:,:,jk) * vmask(:,:,jk)
       END DO
       !
-      IF( lk_vvl )           CALL dom_vvl_init ! Vertical variable mesh
+      IF( lk_c1d )           CALL cor_c1d      ! 1D configuration: Coriolis set at T-point
       !
-      IF( lk_c1d         )   CALL cor_c1d      ! 1D configuration: Coriolis set at T-point
-      !
-      !
-      hu(:,:) = 0._wp                          ! Ocean depth at U-points
-      hv(:,:) = 0._wp                          ! Ocean depth at V-points
-      ht(:,:) = 0._wp                          ! Ocean depth at T-points
-      DO jk = 1, jpkm1
-         hu(:,:) = hu(:,:) + fse3u_n(:,:,jk) * umask(:,:,jk)
-         hv(:,:) = hv(:,:) + fse3v_n(:,:,jk) * vmask(:,:,jk)
-         ht(:,:) = ht(:,:) + fse3t_n(:,:,jk) * tmask(:,:,jk)
-      END DO
-      !                                        ! Inverse of the local depth
-      hur(:,:) = 1._wp / ( hu(:,:) + 1._wp - umask_i(:,:) ) * umask_i(:,:)
-      hvr(:,:) = 1._wp / ( hv(:,:) + 1._wp - vmask_i(:,:) ) * vmask_i(:,:)
+      IF( .NOT.lk_offline ) THEN
+        !
+        IF( lk_vvl )         CALL dom_vvl_init ! Vertical variable mesh
+        !
+        hu(:,:) = 0._wp                          ! Ocean depth at U-points
+        hv(:,:) = 0._wp                          ! Ocean depth at V-points
+        ht(:,:) = 0._wp                          ! Ocean depth at T-points
+        DO jk = 1, jpkm1
+           hu(:,:) = hu(:,:) + fse3u_n(:,:,jk) * umask(:,:,jk)
+           hv(:,:) = hv(:,:) + fse3v_n(:,:,jk) * vmask(:,:,jk)
+           ht(:,:) = ht(:,:) + fse3t_n(:,:,jk) * tmask(:,:,jk)
+        END DO
+        !                                        ! Inverse of the local depth
+        hur(:,:) = 1._wp / ( hu(:,:) + 1._wp - umask_i(:,:) ) * umask_i(:,:)
+        hvr(:,:) = 1._wp / ( hv(:,:) + 1._wp - vmask_i(:,:) ) * vmask_i(:,:)
+        !
+      ENDIF
 
                              CALL dom_stp      ! time step
       IF( nmsh /= 0      )   CALL dom_wri      ! Create a domain file

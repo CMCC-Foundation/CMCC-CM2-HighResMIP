@@ -165,6 +165,9 @@ CONTAINS
             END DO
             !
          ENDIF
+        IF( l_trddyn )   THEN                      ! Put here so code doesn't crash when doing KE trend but needs to be done properly
+            CALL wrk_alloc( jpi, jpj, jpk, ztrdu, ztrdv )
+         ENDIF
          !
       ELSE                       ! fixed volume  (add the surface pressure gradient + unweighted time stepping)
          !

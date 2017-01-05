@@ -27,6 +27,9 @@ MODULE traadv_eiv
 # endif  
    USE wrk_nemo        ! Memory Allocation
    USE timing          ! Timing
+   USE diaptr         ! Heat/Salt transport diagnostics
+   USE trddyn
+   USE trd_oce
 
    IMPLICIT NONE
    PRIVATE
@@ -77,12 +80,14 @@ CONTAINS
       REAL(wp) ::   zztmp                      ! local scalar
 # endif  
       REAL(wp), POINTER, DIMENSION(:,:) :: zu_eiv, zv_eiv, zw_eiv, z2d
+      REAL(wp), POINTER, DIMENSION(:,:,:) :: z3d, z3d_T
       !!----------------------------------------------------------------------
       !
       IF( nn_timing == 1 )  CALL timing_start( 'tra_adv_eiv')
       !
 # if defined key_diaeiv 
       CALL wrk_alloc( jpi, jpj, zu_eiv, zv_eiv, zw_eiv, z2d )
+      CALL wrk_alloc( jpi, jpj, jpk, z3d, z3d_T )
 # else
       CALL wrk_alloc( jpi, jpj, zu_eiv, zv_eiv, zw_eiv )
 # endif
@@ -159,40 +164,186 @@ CONTAINS
          CALL iom_put( "uoce_eiv", u_eiv )    ! i-eiv current
          CALL iom_put( "voce_eiv", v_eiv )    ! j-eiv current
          CALL iom_put( "woce_eiv", w_eiv )    ! vert. eiv current
-         IF( iom_use('ueiv_heattr') ) THEN
-            zztmp = 0.5 * rau0 * rcp 
+         IF( iom_use('weiv_masstr') ) THEN   ! vertical mass transport & its square value
+           z2d(:,:) = rau0 * e12t(:,:)
+           DO jk = 1, jpk
+              z3d(:,:,jk) = w_eiv(:,:,jk) * z2d(:,:)
+           END DO
+           CALL iom_put( "weiv_masstr" , z3d )  
+         ENDIF
+         IF( iom_use("ueiv_masstr") .OR. iom_use("ueiv_heattr") .OR. iom_use('ueiv_heattr3d')        &
+                                    .OR. iom_use("ueiv_salttr") .OR. iom_use('ueiv_salttr3d') ) THEN
+            z3d(:,:,jpk) = 0.e0
+            z2d(:,:) = 0.e0
+            DO jk = 1, jpkm1
+               z3d(:,:,jk) = rau0 * u_eiv(:,:,jk) * e2u(:,:) * fse3u(:,:,jk) * umask(:,:,jk)
+               z2d(:,:) = z2d(:,:) + z3d(:,:,jk)
+            END DO
+            CALL iom_put( "ueiv_masstr", z3d )                  ! mass transport in i-direction
+         ENDIF
+
+         IF( iom_use('ueiv_heattr') .OR. iom_use('ueiv_heattr3d') ) THEN
+            zztmp = 0.5 * rcp 
             z2d(:,:) = 0.e0 
+            z3d_T(:,:,:) = 0.e0 
             DO jk = 1, jpkm1
                DO jj = 2, jpjm1
                   DO ji = fs_2, fs_jpim1   ! vector opt.
-                     z2d(ji,jj) = z2d(ji,jj) + u_eiv(ji,jj,jk) &
-                       &         * (tsn(ji,jj,jk,jp_tem)+tsn(ji+1,jj,jk,jp_tem)) * e2u(ji,jj) * fse3u(ji,jj,jk) 
+                     z3d_T(ji,jj,jk) = z3d(ji,jj,jk) * ( tsn(ji,jj,jk,jp_tem) + tsn(ji+1,jj,jk,jp_tem) )
+                     z2d(ji,jj) = z2d(ji,jj) + z3d_T(ji,jj,jk) 
                   END DO
                END DO
             END DO
-            CALL lbc_lnk( z2d, 'U', -1. )
-            CALL iom_put( "ueiv_heattr", zztmp * z2d )                  ! heat transport in i-direction
+            IF (iom_use('ueiv_heattr') ) THEN
+               CALL lbc_lnk( z2d, 'U', -1. )
+               CALL iom_put( "ueiv_heattr", zztmp * z2d )                  ! 2D heat transport in i-direction
+            ENDIF
+            IF (iom_use('ueiv_heattr3d') ) THEN
+               CALL lbc_lnk( z3d_T, 'U', -1. )
+               CALL iom_put( "ueiv_heattr3d", zztmp * z3d_T )              ! 3D heat transport in i-direction
+            ENDIF
+         ENDIF
+
+         IF( iom_use('ueiv_salttr') .OR. iom_use('ueiv_salttr3d') ) THEN
+            zztmp = 0.5 * 0.001
+            z2d(:,:) = 0.e0 
+            z3d_T(:,:,:) = 0.e0 
+            DO jk = 1, jpkm1
+               DO jj = 2, jpjm1
+                  DO ji = fs_2, fs_jpim1   ! vector opt.
+                     z3d_T(ji,jj,jk) = z3d(ji,jj,jk) * ( tsn(ji,jj,jk,jp_sal) + tsn(ji+1,jj,jk,jp_sal) )
+                     z2d(ji,jj) = z2d(ji,jj) + z3d_T(ji,jj,jk) 
+                  END DO
+               END DO
+            END DO
+            IF (iom_use('ueiv_salttr') ) THEN
+               CALL lbc_lnk( z2d, 'U', -1. )
+               CALL iom_put( "ueiv_salttr", zztmp * z2d )                  ! 2D salt transport in i-direction
+            ENDIF
+            IF (iom_use('ueiv_salttr3d') ) THEN
+               CALL lbc_lnk( z3d_T, 'U', -1. )
+               CALL iom_put( "ueiv_salttr3d", zztmp * z3d_T )              ! 3D salt transport in i-direction
+            ENDIF
+         ENDIF
+
+         IF( iom_use("veiv_masstr") .OR. iom_use("veiv_heattr") .OR. iom_use('veiv_heattr3d')       &
+                                    .OR. iom_use("veiv_salttr") .OR. iom_use('veiv_salttr3d') ) THEN
+            z3d(:,:,jpk) = 0.e0
+            DO jk = 1, jpkm1
+               z3d(:,:,jk) = rau0 * v_eiv(:,:,jk) * e1v(:,:) * fse3v(:,:,jk) * vmask(:,:,jk)
+            END DO
+            CALL iom_put( "veiv_masstr", z3d )                  ! mass transport in j-direction
          ENDIF
             
-         IF( iom_use('veiv_heattr') ) THEN
-            zztmp = 0.5 * rau0 * rcp 
+         IF( iom_use('veiv_heattr') .OR. iom_use('veiv_heattr3d') ) THEN
+            zztmp = 0.5 * rcp 
             z2d(:,:) = 0.e0 
+            z3d_T(:,:,:) = 0.e0 
             DO jk = 1, jpkm1
                DO jj = 2, jpjm1
                   DO ji = fs_2, fs_jpim1   ! vector opt.
-                     z2d(ji,jj) = z2d(ji,jj) + v_eiv(ji,jj,jk) &
-                     &           * (tsn(ji,jj,jk,jp_tem)+tsn(ji,jj+1,jk,jp_tem)) * e1v(ji,jj) * fse3v(ji,jj,jk) 
+                     z3d_T(ji,jj,jk) = z3d(ji,jj,jk) * ( tsn(ji,jj,jk,jp_tem) + tsn(ji,jj+1,jk,jp_tem) )
+                     z2d(ji,jj) = z2d(ji,jj) + z3d_T(ji,jj,jk) 
                   END DO
                END DO
             END DO
-            CALL lbc_lnk( z2d, 'V', -1. )
-            CALL iom_put( "veiv_heattr", zztmp * z2d )                  !  heat transport in i-direction
+            IF (iom_use('veiv_heattr') ) THEN
+               CALL lbc_lnk( z2d, 'V', -1. )
+               CALL iom_put( "veiv_heattr", zztmp * z2d )                  ! 2D heat transport in j-direction
+            ENDIF
+            IF (iom_use('veiv_heattr3d') ) THEN
+               CALL lbc_lnk( z3d_T, 'V', -1. )
+               CALL iom_put( "veiv_heattr3d", zztmp * z3d_T )              ! 3D heat transport in j-direction
+            ENDIF
          ENDIF
+
+         IF( iom_use('veiv_salttr') .OR. iom_use('veiv_salttr3d') ) THEN
+            zztmp = 0.5 * 0.001
+            z2d(:,:) = 0.e0 
+            z3d_T(:,:,:) = 0.e0 
+            DO jk = 1, jpkm1
+               DO jj = 2, jpjm1
+                  DO ji = fs_2, fs_jpim1   ! vector opt.
+                     z3d_T(ji,jj,jk) = z3d(ji,jj,jk) * ( tsn(ji,jj,jk,jp_sal) + tsn(ji,jj+1,jk,jp_sal) )
+                     z2d(ji,jj) = z2d(ji,jj) + z3d_T(ji,jj,jk)
+                  END DO
+               END DO
+            END DO
+            IF (iom_use('veiv_salttr') ) THEN
+               CALL lbc_lnk( z2d, 'V', -1. )
+               CALL iom_put( "veiv_salttr", zztmp * z2d )                  ! 2D salt transport in i-direction
+            ENDIF
+            IF (iom_use('veiv_salttr3d') ) THEN
+               CALL lbc_lnk( z3d_T, 'V', -1. )
+               CALL iom_put( "veiv_salttr3d", zztmp * z3d_T )              ! 3D salt transport in i-direction
+            ENDIF
+         ENDIF
+
+         IF( iom_use('weiv_masstr') .OR. iom_use('weiv_heattr3d') .OR. iom_use('weiv_salttr3d')) THEN   ! vertical mass transport & its square value
+           z2d(:,:) = rau0 * e12t(:,:)
+           DO jk = 1, jpk
+              z3d(:,:,jk) = w_eiv(:,:,jk) * z2d(:,:)
+           END DO
+           CALL iom_put( "weiv_masstr" , z3d )                  ! mass transport in k-direction
+         ENDIF
+
+         IF( iom_use('weiv_heattr3d') ) THEN
+            zztmp = 0.5 * rcp 
+            DO jk = 1, jpkm1
+               DO jj = 2, jpjm1
+                  DO ji = fs_2, fs_jpim1   ! vector opt.
+                     z3d_T(ji,jj,jk) = z3d(ji,jj,jk) * ( tsn(ji,jj,jk,jp_tem) + tsn(ji,jj,jk+1,jp_tem) )
+                  END DO
+               END DO
+            END DO
+            CALL lbc_lnk( z3d_T, 'T', 1. )
+            CALL iom_put( "weiv_heattr3d", zztmp * z3d_T )                 ! 3D heat transport in k-direction
+         ENDIF
+
+         IF( iom_use('weiv_salttr3d') ) THEN
+            zztmp = 0.5 * 0.001 
+            DO jk = 1, jpkm1
+               DO jj = 2, jpjm1
+                  DO ji = fs_2, fs_jpim1   ! vector opt.
+                     z3d_T(ji,jj,jk) = z3d(ji,jj,jk) * ( tsn(ji,jj,jk,jp_sal) + tsn(ji,jj,jk+1,jp_sal) )
+                  END DO
+               END DO
+            END DO
+            CALL lbc_lnk( z3d_T, 'T', 1. )
+            CALL iom_put( "weiv_salttr3d", zztmp * z3d_T )                 ! 3D salt transport in k-direction
+         ENDIF
+
     END IF
+!
+    IF( ln_diaptr .AND. cdtype == 'TRA' ) THEN
+       z3d(:,:,:) = 0._wp
+       DO jk = 1, jpkm1
+          DO jj = 2, jpjm1
+             DO ji = fs_2, fs_jpim1   ! vector opt.
+                z3d(ji,jj,jk) = v_eiv(ji,jj,jk) * 0.5 * (tsn(ji,jj,jk,jp_tem)+tsn(ji,jj+1,jk,jp_tem)) &
+                &             * e1v(ji,jj) * fse3v(ji,jj,jk)
+             END DO
+          END DO
+       END DO
+       CALL dia_ptr_ohst_components( jp_tem, 'eiv', z3d )
+       z3d(:,:,:) = 0._wp
+       DO jk = 1, jpkm1
+          DO jj = 2, jpjm1
+             DO ji = fs_2, fs_jpim1   ! vector opt.
+                z3d(ji,jj,jk) = v_eiv(ji,jj,jk) * 0.5 * (tsn(ji,jj,jk,jp_sal)+tsn(ji,jj+1,jk,jp_sal)) &
+                &             * e1v(ji,jj) * fse3v(ji,jj,jk)
+             END DO
+          END DO
+       END DO
+       CALL dia_ptr_ohst_components( jp_sal, 'eiv', z3d )
+    ENDIF
+
+    IF( ln_KE_trd ) CALL trd_dyn(u_eiv, v_eiv, jpdyn_eivke, kt )
 # endif  
-      ! 
+
 # if defined key_diaeiv 
       CALL wrk_dealloc( jpi, jpj, zu_eiv, zv_eiv, zw_eiv, z2d )
+      CALL wrk_dealloc( jpi, jpj, jpk, z3d, z3d_T )
 # else
       CALL wrk_dealloc( jpi, jpj, zu_eiv, zv_eiv, zw_eiv )
 # endif

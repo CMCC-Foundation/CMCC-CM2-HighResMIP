@@ -98,6 +98,7 @@ MODULE step_oce
    USE diafwb           ! freshwater budget                (dia_fwb routine)
    USE diahsb           ! heat, salt and volume budgets    (dia_hsb routine)
    USE diaharm
+   USE diaprod          ! ocean model: product diagnostics
    USE flo_oce          ! floats variables
    USE floats           ! floats computation               (flo_stp routine)
 

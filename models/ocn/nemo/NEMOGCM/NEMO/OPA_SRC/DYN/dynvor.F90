@@ -600,22 +600,26 @@ CONTAINS
          IF( ln_dynvor_een_old ) THEN ! original formulation
             DO jk = 1, jpk
                DO jj = 1, jpjm1
-                  DO ji = 1, jpim1
+                  DO ji = 1, fs_jpim1
                      ze3  = ( fse3t(ji,jj+1,jk)*tmask(ji,jj+1,jk) + fse3t(ji+1,jj+1,jk)*tmask(ji+1,jj+1,jk)   &
                         &   + fse3t(ji,jj  ,jk)*tmask(ji,jj  ,jk) + fse3t(ji+1,jj  ,jk)*tmask(ji+1,jj  ,jk) )
-                     IF( ze3 /= 0._wp )   ze3f(ji,jj,jk) = 4.0_wp / ze3
+                     IF   ( ze3 /= 0._wp ) THEN ;   ze3f(ji,jj,jk) = 4.0_wp / ze3
+                     ELSE                       ;   ze3f(ji,jj,jk) = 0.0_wp
+                     ENDIF
                   END DO
                END DO
             END DO
          ELSE ! new formulation from NEMO 3.6
             DO jk = 1, jpk
                DO jj = 1, jpjm1
-                  DO ji = 1, jpim1
+                  DO ji = 1, fs_jpim1
                      ze3  = ( fse3t(ji,jj+1,jk)*tmask(ji,jj+1,jk) + fse3t(ji+1,jj+1,jk)*tmask(ji+1,jj+1,jk)   &
                         &   + fse3t(ji,jj  ,jk)*tmask(ji,jj  ,jk) + fse3t(ji+1,jj  ,jk)*tmask(ji+1,jj  ,jk) )
                      zmsk = (                   tmask(ji,jj+1,jk) +                     tmask(ji+1,jj+1,jk)   &
                         &                     + tmask(ji,jj  ,jk) +                     tmask(ji+1,jj  ,jk) )
-                     IF( ze3 /= 0._wp )   ze3f(ji,jj,jk) = zmsk / ze3
+                     IF   ( ze3 /= 0._wp ) THEN ;   ze3f(ji,jj,jk) = zmsk / ze3
+                     ELSE                       ;   ze3f(ji,jj,jk) = 0.0_wp
+                     ENDIF
                   END DO
                END DO
             END DO

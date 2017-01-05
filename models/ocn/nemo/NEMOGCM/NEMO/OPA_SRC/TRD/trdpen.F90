@@ -149,7 +149,7 @@ CONTAINS
       !
       rab_pe(:,:,:,:) = 0._wp
       !
-      IF ( lk_vvl               )   CALL ctl_stop('trd_pen_init : PE trends not coded for variable volume')
+!      IF ( lk_vvl               )   CALL ctl_stop('trd_pen_init : PE trends not coded for variable volume')
       !
       nkstp     = nit000 - 1
       !

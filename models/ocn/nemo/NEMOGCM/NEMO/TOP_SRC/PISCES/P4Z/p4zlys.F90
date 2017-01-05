@@ -64,12 +64,12 @@ CONTAINS
       REAL(wp) ::   zdispot, zfact, zcalcon, zalka, zaldi
       REAL(wp) ::   zomegaca, zexcess, zexcess0
       CHARACTER (len=25) :: charout
-      REAL(wp), POINTER, DIMENSION(:,:,:) :: zco3, zcaldiss   
+      REAL(wp), POINTER, DIMENSION(:,:,:) :: zco3, zco3sat, zcaldiss   
       !!---------------------------------------------------------------------
       !
       IF( nn_timing == 1 )  CALL timing_start('p4z_lys')
       !
-      CALL wrk_alloc( jpi, jpj, jpk, zco3, zcaldiss )
+      CALL wrk_alloc( jpi, jpj, jpk, zco3, zco3sat, zcaldiss )
       !
       zco3    (:,:,:) = 0.
       zcaldiss(:,:,:) = 0.
@@ -119,7 +119,8 @@ CONTAINS
                ! Salinity dependance in zomegaca and divide by rhop/1000 to have good units
                zcalcon  = calcon * ( tsn(ji,jj,jk,jp_sal) / 35._wp )
                zfact    = rhop(ji,jj,jk) / 1000._wp
-               zomegaca = ( zcalcon * zco3(ji,jj,jk) * zfact ) / aksp(ji,jj,jk) 
+               zomegaca = ( zcalcon * zco3(ji,jj,jk) ) / ( aksp(ji,jj,jk) * zfact + rtrn )
+               zco3sat(ji,jj,jk) = aksp(ji,jj,jk) * zfact / ( zcalcon + rtrn )
 
                ! SET DEGREE OF UNDER-/SUPERSATURATION
                excess(ji,jj,jk) = 1._wp - zomegaca
@@ -148,14 +149,14 @@ CONTAINS
 
       IF( lk_iomput .AND. knt == nrdttrc ) THEN
          IF( iom_use( "PH"     ) ) CALL iom_put( "PH"    , -1. * LOG10( hi(:,:,:) )          * tmask(:,:,:) )
-         IF( iom_use( "CO3"    ) ) CALL iom_put( "CO3"   , zco3(:,:,:) * 1.e+3               * tmask(:,:,:) )
-         IF( iom_use( "CO3sat" ) ) CALL iom_put( "CO3sat", aksp(:,:,:) * 1.e+3 / calcon      * tmask(:,:,:) )
-         IF( iom_use( "DCAL"   ) ) CALL iom_put( "DCAL"  , zcaldiss(:,:,:) * 1.e+3 * rfact2r   * tmask(:,:,:) )
+         IF( iom_use( "CO3"    ) ) CALL iom_put( "CO3"   , zco3(:,:,:)    * 1.e+3            * tmask(:,:,:) )
+         IF( iom_use( "CO3sat" ) ) CALL iom_put( "CO3sat", zco3sat(:,:,:) * 1.e+3            * tmask(:,:,:) )
+         IF( iom_use( "DCAL"   ) ) CALL iom_put( "DCAL"  , zcaldiss(:,:,:) * 1.e+3 * rfact2r * tmask(:,:,:) )
       ELSE
          IF( ln_diatrc ) THEN
             trc3d(:,:,:,jp_pcs0_3d    ) = -1. * LOG10( hi(:,:,:) ) * tmask(:,:,:)
             trc3d(:,:,:,jp_pcs0_3d + 1) = zco3(:,:,:)              * tmask(:,:,:)
-            trc3d(:,:,:,jp_pcs0_3d + 2) = aksp(:,:,:) / calcon     * tmask(:,:,:)
+            trc3d(:,:,:,jp_pcs0_3d + 2) = zco3sat(:,:,:)           * tmask(:,:,:)
          ENDIF
       ENDIF
       !
@@ -165,7 +166,7 @@ CONTAINS
         CALL prt_ctl_trc(tab4d=tra, mask=tmask, clinfo=ctrcnm)
       ENDIF
       !
-      CALL wrk_dealloc( jpi, jpj, jpk, zco3, zcaldiss )
+      CALL wrk_dealloc( jpi, jpj, jpk, zco3, zco3sat, zcaldiss )
       !
       IF( nn_timing == 1 )  CALL timing_stop('p4z_lys')
       !

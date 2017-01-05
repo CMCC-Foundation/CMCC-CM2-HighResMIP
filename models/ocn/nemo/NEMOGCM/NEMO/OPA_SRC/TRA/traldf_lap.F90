@@ -153,10 +153,7 @@ CONTAINS
          END DO                                             !  End of slab  
          !
          ! "Poleward" diffusive heat or salt transports
-         IF( cdtype == 'TRA' .AND. ln_diaptr ) THEN
-            IF( jn  == jp_tem)   htr_ldf(:) = ptr_sj( ztv(:,:,:) )
-            IF( jn  == jp_sal)   str_ldf(:) = ptr_sj( ztv(:,:,:) )
-         ENDIF
+         IF( cdtype == 'TRA' .AND. ln_diaptr )    CALL dia_ptr_ohst_components( jn, 'ldf', ztv(:,:,:) )
          !                                                  ! ==================
       END DO                                                ! end of tracer loop
       !                                                     ! ==================

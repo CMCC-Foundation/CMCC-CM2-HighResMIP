@@ -158,6 +158,8 @@ CONTAINS
       CALL iom_put( "e3w" , fse3w_n(:,:,:) )
       IF( iom_use("e3tdef") )   &
          CALL iom_put( "e3tdef"  , ( ( fse3t_n(:,:,:) - e3t_0(:,:,:) ) / e3t_0(:,:,:) * 100 * tmask(:,:,:) ) ** 2 )
+      CALL iom_put("tpt_dep", fsdept_n(:,:,:) )
+
 
 
       CALL iom_put( "ssh" , sshn )                 ! sea surface height
@@ -320,12 +322,15 @@ CONTAINS
       !
       CALL iom_put( "hdiv", hdivn )                  ! Horizontal divergence
       !
-      IF( iom_use("u_masstr") .OR. iom_use("u_heattr") .OR. iom_use("u_salttr") ) THEN
+      IF( iom_use("u_masstr") .OR. iom_use("u_masstr_vint") .OR. iom_use("u_heattr") .OR. iom_use("u_salttr") ) THEN
          z3d(:,:,jpk) = 0.e0
+         z2d(:,:) = 0.e0
          DO jk = 1, jpkm1
             z3d(:,:,jk) = rau0 * un(:,:,jk) * e2u(:,:) * fse3u(:,:,jk) * umask(:,:,jk)
+            z2d(:,:) = z2d(:,:) + z3d(:,:,jk)
          END DO
          CALL iom_put( "u_masstr", z3d )                  ! mass transport in i-direction
+         CALL iom_put( "u_masstr_vint", z2d )             ! mass transport in i-direction vertical sum
       ENDIF
       
       IF( iom_use("u_heattr") ) THEN
@@ -388,6 +393,36 @@ CONTAINS
          CALL lbc_lnk( z2d, 'V', -1. )
          CALL iom_put( "v_salttr", 0.5 * z2d )            !  heat transport in j-direction
       ENDIF
+
+      ! Vertical integral of temperature
+      IF( iom_use("tosmint") ) THEN
+         z2d(:,:)=0._wp
+         DO jk = 1, jpkm1
+            DO jj = 2, jpjm1
+               DO ji = fs_2, fs_jpim1   ! vector opt.
+                  z2d(ji,jj) = z2d(ji,jj) + rau0 * fse3t(ji,jj,jk) *  tsn(ji,jj,jk,jp_tem)
+               END DO
+            END DO
+         END DO
+         CALL lbc_lnk( z2d, 'T', -1. )
+         CALL iom_put( "tosmint", z2d ) 
+      ENDIF
+
+      ! Vertical integral of salinity
+      IF( iom_use("somint") ) THEN
+         z2d(:,:)=0._wp
+         DO jk = 1, jpkm1
+            DO jj = 2, jpjm1
+               DO ji = fs_2, fs_jpim1   ! vector opt.
+                  z2d(ji,jj) = z2d(ji,jj) + rau0 * fse3t(ji,jj,jk) * tsn(ji,jj,jk,jp_sal)
+               END DO
+            END DO
+         END DO
+         CALL lbc_lnk( z2d, 'T', -1. )
+         CALL iom_put( "somint", z2d ) 
+      ENDIF
+
+      CALL iom_put( "bn2", rn2 )  !Brunt-Vaisala buoyancy frequency (N^2)
       !
       CALL wrk_dealloc( jpi , jpj      , z2d )
       CALL wrk_dealloc( jpi , jpj, jpk , z3d )

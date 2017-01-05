@@ -216,6 +216,8 @@ CONTAINS
 
       IF( trc_alloc /= 0 )   CALL ctl_warn('trc_alloc: failed to allocate arrays')
       !
+      trb = 0.0 ; trn = 0.0 ; tra = 0.0
+      !
    END FUNCTION trc_alloc
 
 #else

@@ -148,6 +148,25 @@
           <field field_ref="w_masstr2"    name="wmosq"    />
         </file>
 
+        <file id="file25" name_suffix="_grid_ptr" description="diaptr variables" enabled=".true." >
+          <field field_ref="zomsfglo"          name="zomsfglo"  grid_ref="grid_ptr_W_3D" />
+          <field field_ref="zomsfatl"          name="zomsfatl"  grid_ref="grid_ptr_W_3D" />
+          <field field_ref="zomsfipc"          name="zomsfipc"  grid_ref="grid_ptr_W_3D" />
+          <field field_ref="zotemglo"          name="zotemglo"  grid_ref="grid_ptr_T_3D" />
+          <field field_ref="zotematl"          name="zotematl"  grid_ref="grid_ptr_T_3D" />
+          <field field_ref="zotemipc"          name="zotemipc"  grid_ref="grid_ptr_T_3D" />
+          <field field_ref="zosalglo"          name="zosalglo"  grid_ref="grid_ptr_T_3D" />
+          <field field_ref="zosalatl"          name="zosalatl"  grid_ref="grid_ptr_T_3D" />
+          <field field_ref="zosalipc"          name="zosalipc"  grid_ref="grid_ptr_T_3D" />
+          <field field_ref="zosrfglo"          name="zosrfglo"  grid_ref="grid_ptr_T_3D" />
+          <field field_ref="zosrfatl"          name="zosrfatl"  grid_ref="grid_ptr_T_3D" />
+          <field field_ref="zosrfipc"          name="zosrfipc"  grid_ref="grid_ptr_T_3D" />
+          <field field_ref="sophtadv"          name="sophtadv"  grid_ref="grid_ptr_T_2D" />
+          <field field_ref="sophtldf"          name="sophtldf"  grid_ref="grid_ptr_T_2D" />
+          <field field_ref="sopstadv"          name="sopstadv"  grid_ref="grid_ptr_T_2D" />
+          <field field_ref="sopstldf"          name="sopstldf"  grid_ref="grid_ptr_T_2D" />
+        </file>
+
       </file_group>
       
       <file_group id="2m" output_freq="2mo" output_level="10" enabled=".TRUE."/> <!-- real 2m files -->

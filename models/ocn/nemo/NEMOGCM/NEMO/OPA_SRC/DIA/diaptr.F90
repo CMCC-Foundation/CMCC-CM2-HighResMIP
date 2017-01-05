@@ -8,6 +8,7 @@ MODULE diaptr
    !!            3.2  ! 2010-03  (O. Marti, S. Flavoni) Add fields
    !!            3.3  ! 2010-10  (G. Madec)  dynamical allocation
    !!            3.6  ! 2014-12  (C. Ethe) use of IOM
+   !!            3.6  ! 2016-06  (T. Graham) Addition of diagnostics for CMIP6
    !!----------------------------------------------------------------------
 
    !!----------------------------------------------------------------------
@@ -20,6 +21,7 @@ MODULE diaptr
    USE oce              ! ocean dynamics and active tracers
    USE dom_oce          ! ocean space and time domain
    USE phycst           ! physical constants
+   USE ldftra_oce 
    !
    USE iom              ! IOM library
    USE in_out_manager   ! I/O manager
@@ -37,15 +39,17 @@ MODULE diaptr
    PUBLIC   ptr_sjk        ! 
    PUBLIC   dia_ptr_init   ! call in step module
    PUBLIC   dia_ptr        ! call in step module
+   PUBLIC   dia_ptr_ohst_components        ! called from tra_ldf/tra_adv routines
 
    !                                  !!** namelist  namptr  **
-   REAL(wp), ALLOCATABLE, SAVE, PUBLIC, DIMENSION(:) ::   htr_adv, htr_ldf   !: Heat TRansports (adv, diff, overturn.)
-   REAL(wp), ALLOCATABLE, SAVE, PUBLIC, DIMENSION(:) ::   str_adv, str_ldf   !: Salt TRansports (adv, diff, overturn.)
-   
+   REAL(wp), ALLOCATABLE, SAVE, PUBLIC, DIMENSION(:,:) ::   htr_adv, htr_ldf, htr_eiv, htr_vt   !: Heat TRansports (adv, diff, Bolus.)
+   REAL(wp), ALLOCATABLE, SAVE, PUBLIC, DIMENSION(:,:) ::   str_adv, str_ldf, str_eiv, str_vs   !: Salt TRansports (adv, diff, Bolus.)
+   REAL(wp), ALLOCATABLE, SAVE, PUBLIC, DIMENSION(:,:) ::   htr_ove, str_ove   !: heat Salt TRansports ( overturn.)
+   REAL(wp), ALLOCATABLE, SAVE, PUBLIC, DIMENSION(:,:) ::   htr_btr, str_btr   !: heat Salt TRansports ( barotropic )
 
    LOGICAL, PUBLIC ::   ln_diaptr   !  Poleward transport flag (T) or not (F)
    LOGICAL, PUBLIC ::   ln_subbas   !  Atlantic/Pacific/Indian basins calculation
-   INTEGER         ::   nptr        ! = 1 (l_subbas=F) or = 5 (glo, atl, pac, ind, ipc) (l_subbas=T) 
+   INTEGER, PUBLIC ::   nptr        ! = 1 (l_subbas=F) or = 5 (glo, atl, pac, ind, ipc) (l_subbas=T) 
 
    REAL(wp) ::   rc_sv    = 1.e-6_wp   ! conversion from m3/s to Sverdrup
    REAL(wp) ::   rc_pwatt = 1.e-15_wp  ! conversion from W    to PW (further x rau0 x Cp)
@@ -64,7 +68,7 @@ MODULE diaptr
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id$ 
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -76,12 +80,22 @@ CONTAINS
       REAL(wp), DIMENSION(jpi,jpj,jpk), INTENT(in), OPTIONAL ::   pvtr   ! j-effective transport
       !
       INTEGER  ::   ji, jj, jk, jn   ! dummy loop indices
-      REAL(wp) ::   zv, zsfc               ! local scalar
+      REAL(wp) ::   zsfc,zvfc               ! local scalar
       REAL(wp), DIMENSION(jpi,jpj)     ::  z2d   ! 2D workspace
       REAL(wp), DIMENSION(jpi,jpj,jpk) ::  z3d   ! 3D workspace
       REAL(wp), DIMENSION(jpi,jpj,jpk) ::  zmask   ! 3D workspace
       REAL(wp), DIMENSION(jpi,jpj,jpk,jpts) ::  zts   ! 3D workspace
-      CHARACTER( len = 10 )  :: cl1
+      REAL(wp), DIMENSION(jpj)     ::  vsum   ! 1D workspace
+      REAL(wp), DIMENSION(jpj,jpts)     ::  tssum   ! 1D workspace
+ 
+      !
+      !overturning calculation
+      REAL(wp), DIMENSION(jpj,jpk,nptr) ::   sjk  , r1_sjk ! i-mean i-k-surface and its inverse
+      REAL(wp), DIMENSION(jpj,jpk,nptr) ::   v_msf, sn_jk  , tn_jk ! i-mean T and S, j-Stream-Function
+      REAL(wp), DIMENSION(jpi,jpj,jpk) ::  zvn   ! 3D workspace
+
+
+      CHARACTER( len = 12 )  :: cl1
       !!----------------------------------------------------------------------
       !
       IF( nn_timing == 1 )   CALL timing_start('dia_ptr')
@@ -110,6 +124,124 @@ CONTAINS
                CALL iom_put( cl1, z3d * rc_sv )
             END DO
          ENDIF
+         IF( iom_use("sopstove") .OR. iom_use("sophtove") .OR. iom_use("sopstbtr") .OR. iom_use("sophtbtr") ) THEN
+            ! define fields multiplied by scalar
+            zmask(:,:,:) = 0._wp
+            zts(:,:,:,:) = 0._wp
+            zvn(:,:,:) = 0._wp
+            DO jk = 1, jpkm1
+               DO jj = 1, jpjm1
+                  DO ji = 1, jpi
+                     zvfc = e1v(ji,jj) * fse3v(ji,jj,jk)
+                     zmask(ji,jj,jk)      = vmask(ji,jj,jk)      * zvfc
+                     zts(ji,jj,jk,jp_tem) = (tsn(ji,jj,jk,jp_tem)+tsn(ji,jj+1,jk,jp_tem)) * 0.5 * zvfc  !Tracers averaged onto V grid
+                     zts(ji,jj,jk,jp_sal) = (tsn(ji,jj,jk,jp_sal)+tsn(ji,jj+1,jk,jp_sal)) * 0.5 * zvfc
+                     zvn(ji,jj,jk)        = vn(ji,jj,jk)         * zvfc
+                  ENDDO
+               ENDDO
+             ENDDO
+         ENDIF
+         IF( iom_use("sopstove") .OR. iom_use("sophtove") ) THEN
+             sjk(:,:,1) = ptr_sjk( zmask(:,:,:), btmsk(:,:,1) )
+             r1_sjk(:,:,1) = 0._wp
+             WHERE( sjk(:,:,1) /= 0._wp )   r1_sjk(:,:,1) = 1._wp / sjk(:,:,1)
+
+             ! i-mean T and S, j-Stream-Function, global
+             tn_jk(:,:,1) = ptr_sjk( zts(:,:,:,jp_tem) ) * r1_sjk(:,:,1)
+             sn_jk(:,:,1) = ptr_sjk( zts(:,:,:,jp_sal) ) * r1_sjk(:,:,1)
+             v_msf(:,:,1) = ptr_sjk( zvn(:,:,:) )
+
+             htr_ove(:,1) = SUM( v_msf(:,:,1)*tn_jk(:,:,1) ,2 )
+             str_ove(:,1) = SUM( v_msf(:,:,1)*sn_jk(:,:,1) ,2 )
+
+             z2d(1,:) = htr_ove(:,1) * rc_pwatt        !  (conversion in PW)
+             DO ji = 1, jpi
+               z2d(ji,:) = z2d(1,:)
+             ENDDO
+             cl1 = 'sophtove'
+             CALL iom_put( TRIM(cl1), z2d )
+             z2d(1,:) = str_ove(:,1) * rc_ggram        !  (conversion in Gg)
+             DO ji = 1, jpi
+               z2d(ji,:) = z2d(1,:)
+             ENDDO
+             cl1 = 'sopstove'
+             CALL iom_put( TRIM(cl1), z2d )
+             IF( ln_subbas ) THEN
+                DO jn = 2, nptr
+                    sjk(:,:,jn) = ptr_sjk( zmask(:,:,:), btmsk(:,:,jn) )
+                    r1_sjk(:,:,jn) = 0._wp
+                    WHERE( sjk(:,:,jn) /= 0._wp )   r1_sjk(:,:,jn) = 1._wp / sjk(:,:,jn)
+
+                    ! i-mean T and S, j-Stream-Function, basin
+                    tn_jk(:,:,jn) = ptr_sjk( zts(:,:,:,jp_tem), btmsk(:,:,jn) ) * r1_sjk(:,:,jn)
+                    sn_jk(:,:,jn) = ptr_sjk( zts(:,:,:,jp_sal), btmsk(:,:,jn) ) * r1_sjk(:,:,jn)
+                    v_msf(:,:,jn) = ptr_sjk( zvn(:,:,:), btmsk(:,:,jn) ) 
+                    htr_ove(:,jn) = SUM( v_msf(:,:,jn)*tn_jk(:,:,jn) ,2 )
+                    str_ove(:,jn) = SUM( v_msf(:,:,jn)*sn_jk(:,:,jn) ,2 )
+
+                    z2d(1,:) = htr_ove(:,jn) * rc_pwatt !  (conversion in PW)
+                    DO ji = 1, jpi
+                        z2d(ji,:) = z2d(1,:)
+                    ENDDO
+                    cl1 = TRIM('sophtove_'//clsubb(jn))
+                    CALL iom_put( cl1, z2d )
+                    z2d(1,:) = str_ove(:,jn) * rc_ggram        ! (conversion in Gg)
+                    DO ji = 1, jpi
+                        z2d(ji,:) = z2d(1,:)
+                    ENDDO
+                    cl1 = TRIM('sopstove_'//clsubb(jn))
+                    CALL iom_put( cl1, z2d )
+                END DO
+             ENDIF
+         ENDIF
+         IF( iom_use("sopstbtr") .OR. iom_use("sophtbtr") ) THEN
+         ! Calculate barotropic heat and salt transport here 
+             sjk(:,1,1) = ptr_sj( zmask(:,:,:), btmsk(:,:,1) )
+             r1_sjk(:,1,1) = 0._wp
+             WHERE( sjk(:,1,1) /= 0._wp )   r1_sjk(:,1,1) = 1._wp / sjk(:,1,1)
+            
+            vsum = ptr_sj( zvn(:,:,:), btmsk(:,:,1))
+            tssum(:,jp_tem) = ptr_sj( zts(:,:,:,jp_tem), btmsk(:,:,1) )
+            tssum(:,jp_sal) = ptr_sj( zts(:,:,:,jp_sal), btmsk(:,:,1) )
+            htr_btr(:,1) = vsum * tssum(:,jp_tem) * r1_sjk(:,1,1)
+            str_btr(:,1) = vsum * tssum(:,jp_sal) * r1_sjk(:,1,1)
+            z2d(1,:) = htr_btr(:,1) * rc_pwatt        !  (conversion in PW)
+            DO ji = 2, jpi
+               z2d(ji,:) = z2d(1,:)
+            ENDDO
+            cl1 = 'sophtbtr'
+            CALL iom_put( TRIM(cl1), z2d )
+            z2d(1,:) = str_btr(:,1) * rc_ggram        !  (conversion in Gg)
+            DO ji = 2, jpi
+              z2d(ji,:) = z2d(1,:)
+            ENDDO
+            cl1 = 'sopstbtr'
+            CALL iom_put( TRIM(cl1), z2d )
+            IF( ln_subbas ) THEN
+                DO jn = 2, nptr
+                    sjk(:,1,jn) = ptr_sj( zmask(:,:,:), btmsk(:,:,jn) )
+                    r1_sjk(:,1,jn) = 0._wp
+                    WHERE( sjk(:,1,jn) /= 0._wp )   r1_sjk(:,1,jn) = 1._wp / sjk(:,1,jn)
+                    vsum = ptr_sj( zvn(:,:,:), btmsk(:,:,jn))
+                    tssum(:,jp_tem) = ptr_sj( zts(:,:,:,jp_tem), btmsk(:,:,jn) )
+                    tssum(:,jp_sal) = ptr_sj( zts(:,:,:,jp_sal), btmsk(:,:,jn) )
+                    htr_btr(:,jn) = vsum * tssum(:,jp_tem) * r1_sjk(:,1,jn)
+                    str_btr(:,jn) = vsum * tssum(:,jp_sal) * r1_sjk(:,1,jn)
+                    z2d(1,:) = htr_btr(:,jn) * rc_pwatt !  (conversion in PW)
+                    DO ji = 1, jpi
+                        z2d(ji,:) = z2d(1,:)
+                    ENDDO
+                    cl1 = TRIM('sophtbtr_'//clsubb(jn))
+                    CALL iom_put( cl1, z2d )
+                    z2d(1,:) = str_btr(:,jn) * rc_ggram        ! (conversion in Gg)
+                    DO ji = 1, jpi
+                        z2d(ji,:) = z2d(1,:)
+                    ENDDO
+                    cl1 = TRIM('sopstbtr_'//clsubb(jn))
+                    CALL iom_put( cl1, z2d )
+               ENDDO
+            ENDIF !ln_subbas
+         ENDIF !iom_use("sopstbtr....)
          !
       ELSE
          !
@@ -149,34 +281,132 @@ CONTAINS
          !
          !                                ! Advective and diffusive heat and salt transport
          IF( iom_use("sophtadv") .OR. iom_use("sopstadv") ) THEN   
-            z2d(1,:) = htr_adv(:) * rc_pwatt        !  (conversion in PW)
+            z2d(1,:) = htr_adv(:,1) * rc_pwatt        !  (conversion in PW)
             DO ji = 1, jpi
                z2d(ji,:) = z2d(1,:)
             ENDDO
             cl1 = 'sophtadv'                 
             CALL iom_put( TRIM(cl1), z2d )
-            z2d(1,:) = str_adv(:) * rc_ggram        ! (conversion in Gg)
+            z2d(1,:) = str_adv(:,1) * rc_ggram        ! (conversion in Gg)
             DO ji = 1, jpi
                z2d(ji,:) = z2d(1,:)
             ENDDO
             cl1 = 'sopstadv'
             CALL iom_put( TRIM(cl1), z2d )
+            IF( ln_subbas ) THEN
+              DO jn=2,nptr
+               z2d(1,:) = htr_adv(:,jn) * rc_pwatt        !  (conversion in PW)
+               DO ji = 1, jpi
+                 z2d(ji,:) = z2d(1,:)
+               ENDDO
+               cl1 = TRIM('sophtadv_'//clsubb(jn))                 
+               CALL iom_put( cl1, z2d )
+               z2d(1,:) = str_adv(:,jn) * rc_ggram        ! (conversion in Gg)
+               DO ji = 1, jpi
+                  z2d(ji,:) = z2d(1,:)
+               ENDDO
+               cl1 = TRIM('sopstadv_'//clsubb(jn))                 
+               CALL iom_put( cl1, z2d )              
+              ENDDO
+            ENDIF
          ENDIF
          !
          IF( iom_use("sophtldf") .OR. iom_use("sopstldf") ) THEN   
-            z2d(1,:) = htr_ldf(:) * rc_pwatt        !  (conversion in PW) 
+            z2d(1,:) = htr_ldf(:,1) * rc_pwatt        !  (conversion in PW) 
             DO ji = 1, jpi
                z2d(ji,:) = z2d(1,:)
             ENDDO
             cl1 = 'sophtldf'
             CALL iom_put( TRIM(cl1), z2d )
-            z2d(1,:) = str_ldf(:) * rc_ggram        !  (conversion in Gg)
+            z2d(1,:) = str_ldf(:,1) * rc_ggram        !  (conversion in Gg)
             DO ji = 1, jpi
                z2d(ji,:) = z2d(1,:)
             ENDDO
             cl1 = 'sopstldf'
             CALL iom_put( TRIM(cl1), z2d )
+            IF( ln_subbas ) THEN
+              DO jn=2,nptr
+               z2d(1,:) = htr_ldf(:,jn) * rc_pwatt        !  (conversion in PW)
+               DO ji = 1, jpi
+                 z2d(ji,:) = z2d(1,:)
+               ENDDO
+               cl1 = TRIM('sophtldf_'//clsubb(jn))                 
+               CALL iom_put( cl1, z2d )
+               z2d(1,:) = str_ldf(:,jn) * rc_ggram        ! (conversion in Gg)
+               DO ji = 1, jpi
+                  z2d(ji,:) = z2d(1,:)
+               ENDDO
+               cl1 = TRIM('sopstldf_'//clsubb(jn))                 
+               CALL iom_put( cl1, z2d )              
+              ENDDO
+            ENDIF
          ENDIF
+
+         IF( iom_use("sopht_vt") .OR. iom_use("sopst_vs") ) THEN   
+            z2d(1,:) = htr_vt(:,1) * rc_pwatt        !  (conversion in PW) 
+            DO ji = 1, jpi
+               z2d(ji,:) = z2d(1,:)
+            ENDDO
+            cl1 = 'sopht_vt'
+            CALL iom_put( TRIM(cl1), z2d )
+            z2d(1,:) = str_vs(:,1) * rc_ggram        !  (conversion in Gg)
+            DO ji = 1, jpi
+               z2d(ji,:) = z2d(1,:)
+            ENDDO
+            cl1 = 'sopst_vs'
+            CALL iom_put( TRIM(cl1), z2d )
+            IF( ln_subbas ) THEN
+              DO jn=2,nptr
+               z2d(1,:) = htr_vt(:,jn) * rc_pwatt        !  (conversion in PW)
+               DO ji = 1, jpi
+                 z2d(ji,:) = z2d(1,:)
+               ENDDO
+               cl1 = TRIM('sopht_vt_'//clsubb(jn))                 
+               CALL iom_put( cl1, z2d )
+               z2d(1,:) = str_vs(:,jn) * rc_ggram        ! (conversion in Gg)
+               DO ji = 1, jpi
+                  z2d(ji,:) = z2d(1,:)
+               ENDDO
+               cl1 = TRIM('sopst_vs_'//clsubb(jn))                 
+               CALL iom_put( cl1, z2d )              
+              ENDDO
+            ENDIF
+         ENDIF
+
+#ifdef key_diaeiv
+         IF(lk_traldf_eiv) THEN
+            IF( iom_use("sophteiv") .OR. iom_use("sopsteiv") ) THEN 
+               z2d(1,:) = htr_eiv(:,1) * rc_pwatt        !  (conversion in PW) 
+               DO ji = 1, jpi
+                  z2d(ji,:) = z2d(1,:)
+               ENDDO
+               cl1 = 'sophteiv'
+               CALL iom_put( TRIM(cl1), z2d )
+               z2d(1,:) = str_eiv(:,1) * rc_ggram        !  (conversion in Gg)
+               DO ji = 1, jpi
+                  z2d(ji,:) = z2d(1,:)
+               ENDDO
+               cl1 = 'sopsteiv'
+               CALL iom_put( TRIM(cl1), z2d )
+               IF( ln_subbas ) THEN
+                  DO jn=2,nptr
+                     z2d(1,:) = htr_eiv(:,jn) * rc_pwatt        !  (conversion in PW)
+                     DO ji = 1, jpi
+                        z2d(ji,:) = z2d(1,:)
+                     ENDDO
+                     cl1 = TRIM('sophteiv_'//clsubb(jn))                 
+                     CALL iom_put( cl1, z2d )
+                     z2d(1,:) = str_eiv(:,jn) * rc_ggram        ! (conversion in Gg)
+                     DO ji = 1, jpi
+                        z2d(ji,:) = z2d(1,:)
+                     ENDDO
+                     cl1 = TRIM('sopsteiv_'//clsubb(jn)) 
+                     CALL iom_put( cl1, z2d )              
+                  ENDDO
+               ENDIF
+            ENDIF
+         ENDIF
+#endif
          !
       ENDIF
       !
@@ -255,12 +485,99 @@ CONTAINS
 
          ! Initialise arrays to zero because diatpr is called before they are first calculated
          ! Note that this means diagnostics will not be exactly correct when model run is restarted.
-         htr_adv(:) = 0._wp  ;  str_adv(:) =  0._wp  
-         htr_ldf(:) = 0._wp  ;  str_ldf(:) =  0._wp 
+         htr_adv(:,:) = 0._wp  ;  str_adv(:,:) =  0._wp 
+         htr_ldf(:,:) = 0._wp  ;  str_ldf(:,:) =  0._wp 
+         htr_eiv(:,:) = 0._wp  ;  str_eiv(:,:) =  0._wp 
+         htr_vt(:,:) = 0._wp  ;   str_vs(:,:) =  0._wp
+         htr_ove(:,:) = 0._wp  ;   str_ove(:,:) =  0._wp
+         htr_btr(:,:) = 0._wp  ;   str_btr(:,:) =  0._wp
          !
       ENDIF 
       ! 
    END SUBROUTINE dia_ptr_init
+
+   SUBROUTINE dia_ptr_ohst_components( ktra, cptr, pva ) 
+      !!----------------------------------------------------------------------
+      !!                    ***  ROUTINE dia_ptr_ohst_components  ***
+      !!----------------------------------------------------------------------
+      !! Wrapper for heat and salt transport calculations to calculate them for each basin
+      !! Called from all advection and/or diffusion routines
+      !!----------------------------------------------------------------------
+      INTEGER                         , INTENT(in )  :: ktra  ! tracer index
+      CHARACTER(len=3)                , INTENT(in)   :: cptr  ! transport type  'adv'/'ldf'/'eiv'
+      REAL(wp), DIMENSION(jpi,jpj,jpk), INTENT(in)   :: pva   ! 3D input array of advection/diffusion
+      INTEGER                                        :: jn    !
+
+      IF( cptr == 'adv' ) THEN
+         IF( ktra == jp_tem )  htr_adv(:,1) = ptr_sj( pva(:,:,:) )
+         IF( ktra == jp_sal )  str_adv(:,1) = ptr_sj( pva(:,:,:) )
+      ENDIF
+      IF( cptr == 'ldf' ) THEN
+         IF( ktra == jp_tem )  htr_ldf(:,1) = ptr_sj( pva(:,:,:) )
+         IF( ktra == jp_sal )  str_ldf(:,1) = ptr_sj( pva(:,:,:) )
+      ENDIF
+      IF( cptr == 'eiv' ) THEN
+         IF( ktra == jp_tem )  htr_eiv(:,1) = ptr_sj( pva(:,:,:) )
+         IF( ktra == jp_sal )  str_eiv(:,1) = ptr_sj( pva(:,:,:) )
+      ENDIF
+      IF( cptr == 'vts' ) THEN
+         IF( ktra == jp_tem )  htr_vt(:,1) = ptr_sj( pva(:,:,:) )
+         IF( ktra == jp_sal )  str_vs(:,1) = ptr_sj( pva(:,:,:) )
+      ENDIF
+      !
+      IF( ln_subbas ) THEN
+         !
+         IF( cptr == 'adv' ) THEN
+             IF( ktra == jp_tem ) THEN 
+                DO jn = 2, nptr
+                   htr_adv(:,jn) = ptr_sj( pva(:,:,:), btmsk(:,:,jn) )
+                END DO
+             ENDIF
+             IF( ktra == jp_sal ) THEN 
+                DO jn = 2, nptr
+                   str_adv(:,jn) = ptr_sj( pva(:,:,:), btmsk(:,:,jn) )
+                END DO
+             ENDIF
+         ENDIF
+         IF( cptr == 'ldf' ) THEN
+             IF( ktra == jp_tem ) THEN 
+                DO jn = 2, nptr
+                    htr_ldf(:,jn) = ptr_sj( pva(:,:,:), btmsk(:,:,jn) )
+                 END DO
+             ENDIF
+             IF( ktra == jp_sal ) THEN 
+                DO jn = 2, nptr
+                   str_ldf(:,jn) = ptr_sj( pva(:,:,:), btmsk(:,:,jn) )
+                END DO
+             ENDIF
+         ENDIF
+         IF( cptr == 'eiv' ) THEN
+             IF( ktra == jp_tem ) THEN 
+                DO jn = 2, nptr
+                    htr_eiv(:,jn) = ptr_sj( pva(:,:,:), btmsk(:,:,jn) )
+                 END DO
+             ENDIF
+             IF( ktra == jp_sal ) THEN 
+                DO jn = 2, nptr
+                   str_eiv(:,jn) = ptr_sj( pva(:,:,:), btmsk(:,:,jn) )
+                END DO
+             ENDIF
+         ENDIF
+         IF( cptr == 'vts' ) THEN
+             IF( ktra == jp_tem ) THEN 
+                DO jn = 2, nptr
+                    htr_vt(:,jn) = ptr_sj( pva(:,:,:), btmsk(:,:,jn) )
+                 END DO
+             ENDIF
+             IF( ktra == jp_sal ) THEN 
+                DO jn = 2, nptr
+                   str_vs(:,jn) = ptr_sj( pva(:,:,:), btmsk(:,:,jn) )
+                END DO
+             ENDIF
+         ENDIF
+         !
+      ENDIF
+   END SUBROUTINE dia_ptr_ohst_components
 
 
    FUNCTION dia_ptr_alloc()
@@ -272,9 +589,13 @@ CONTAINS
       !!----------------------------------------------------------------------
       ierr(:) = 0
       !
-      ALLOCATE( btmsk(jpi,jpj,nptr) ,           &
-         &      htr_adv(jpj) , str_adv(jpj) ,   &
-         &      htr_ldf(jpj) , str_ldf(jpj) , STAT=ierr(1)  )
+      ALLOCATE( btmsk(jpi,jpj,nptr) ,              &
+         &      htr_adv(jpj,nptr) , str_adv(jpj,nptr) ,   &
+         &      htr_eiv(jpj,nptr) , str_eiv(jpj,nptr) ,   &
+         &      htr_vt(jpj,nptr)  , str_vs(jpj,nptr)  ,   &
+         &      htr_ove(jpj,nptr) , str_ove(jpj,nptr) ,   &
+         &      htr_btr(jpj,nptr) , str_btr(jpj,nptr) ,   &
+         &      htr_ldf(jpj,nptr) , str_ldf(jpj,nptr) , STAT=ierr(1)  )
          !
       ALLOCATE( p_fval1d(jpj), p_fval2d(jpj,jpk), Stat=ierr(2))
       !
@@ -401,7 +722,7 @@ CONTAINS
       REAL(wp), DIMENSION(jpj*jpk) ::   zwork    ! mask flux array at V-point
 #endif
       !!--------------------------------------------------------------------
-      !
+     !
       p_fval => p_fval2d
 
       p_fval(:,:) = 0._wp
@@ -433,6 +754,7 @@ CONTAINS
       p_fval(:,:) = RESHAPE( zwork, ish2 )
 #endif
       !
+
    END FUNCTION ptr_sjk
 
 

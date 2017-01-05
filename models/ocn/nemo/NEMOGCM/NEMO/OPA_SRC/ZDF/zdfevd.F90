@@ -18,6 +18,8 @@ MODULE zdfevd
    USE dom_oce         ! ocean space and time domain variables
    USE zdf_oce         ! ocean vertical physics variables
    USE zdfkpp          ! KPP vertical mixing
+   USE trd_oce         ! trends: ocean variables
+   USE trdtra          ! trends manager: tracers 
    USE in_out_manager  ! I/O manager
    USE iom             ! for iom_put
    USE lbclnk          ! ocean lateral boundary conditions (or mpp link)
@@ -121,6 +123,7 @@ CONTAINS
 
       zavt_evd(:,:,:) = avt(:,:,:) - zavt_evd(:,:,:)   ! change in avt due to evd
       CALL iom_put( "avt_evd", zavt_evd )              ! output this change
+      IF( l_trdtra ) CALL trd_tra( kt, 'TRA', jp_tem, jptra_evd, zavt_evd )
       !
       IF( nn_timing == 1 )  CALL timing_stop('zdf_evd')
       !

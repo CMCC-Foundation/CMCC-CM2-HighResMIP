@@ -394,6 +394,10 @@ CONTAINS
       IF(lwp) WRITE(numout,*)
       IF(lwp) WRITE(numout,*) '    zgr_bat : defines level and meter bathymetry'
       IF(lwp) WRITE(numout,*) '    ~~~~~~~'
+      !
+      ! (ISF) initialisation ice shelf draft and top level
+      risfdep(:,:)=0._wp
+      misfdep(:,:)=1
       !                                               ! ================== ! 
       IF( ntopo == 0 .OR. ntopo == -1 ) THEN          !   defined by hand  !
          !                                            ! ================== !
@@ -483,8 +487,6 @@ CONTAINS
                bathy (ji,jj) = zdta( mig(ji), mjg(jj) )
             END DO
          END DO
-         risfdep(:,:)=0.e0
-         misfdep(:,:)=1
          !
          DEALLOCATE( idta, zdta )
          !
@@ -534,8 +536,6 @@ CONTAINS
             END IF
             CALL iom_close( inum )
             !                                                
-            risfdep(:,:)=0._wp         
-            misfdep(:,:)=1             
             IF ( ln_isfcav ) THEN
                CALL iom_open ( 'isf_draft_meter.nc', inum ) 
                CALL iom_get  ( inum, jpdom_data, 'isf_draft', risfdep )

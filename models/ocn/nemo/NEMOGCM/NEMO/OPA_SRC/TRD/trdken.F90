@@ -26,6 +26,7 @@ MODULE trdken
    USE iom            ! I/O manager library
    USE lib_mpp        ! MPP library
    USE wrk_nemo       ! Memory allocation
+   USE ldfslp         ! Isopycnal slopes
 
    IMPLICIT NONE
    PRIVATE
@@ -41,6 +42,8 @@ MODULE trdken
    !! * Substitutions
 #  include "domzgr_substitute.h90"
 #  include "vectopt_loop_substitute.h90"
+#  include "ldfeiv_substitute.h90"
+
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
    !! $Id$
@@ -191,6 +194,27 @@ CONTAINS
                     !
                     CALL ken_p2k( kt , zke )
                       CALL iom_put( "ketrd_convP2K", zke )     ! conversion -rau*g*w
+        CASE( jpdyn_eivke )
+            ! CMIP6 diagnostic tknebto = tendency of KE from
+            ! parameterized mesoscale eddy advection
+            ! = vertical_integral( k (N S)^2 ) rho dz
+            ! rho = reference density
+            ! S = isoneutral slope.
+            ! Most terms are on W grid so work on this grid
+            CALL wrk_alloc( jpi, jpj, zke2d )
+            zke2d(:,:) = 0._wp
+            DO jk = 1,jpk
+               DO ji = 1,jpi
+                  DO jj = 1,jpj
+                     zke2d(ji,jj) = zke2d(ji,jj) +  rau0 * fsaeiw(ji, jj, jk)               &
+                          &                      * ( wslpi(ji, jj, jk) * wslpi(ji,jj,jk)    &
+                          &                      +   wslpj(ji, jj, jk) * wslpj(ji,jj,jk) )  &
+                          &                      *   rn2(ji,jj,jk) * fse3w(ji, jj, jk)
+                  ENDDO
+               ENDDO
+            ENDDO
+            CALL iom_put("ketrd_eiv", zke2d)
+            CALL wrk_dealloc( jpi, jpj, zke2d )
          !
       END SELECT
       !

@@ -33,6 +33,7 @@ MODULE traadv_tvd
    USE wrk_nemo       ! Memory Allocation
    USE timing         ! Timing
    USE lib_fortran    ! Fortran utilities (allows no signed zero when 'key_nosignedzero' defined)  
+   USE iom
 
    IMPLICIT NONE
    PRIVATE
@@ -41,6 +42,7 @@ MODULE traadv_tvd
    PUBLIC   tra_adv_tvd_zts    ! routine called by traadv.F90
 
    LOGICAL ::   l_trd   ! flag to compute trends
+   LOGICAL ::   l_trans   ! flag to output vertically integrated transports
 
    !! * Substitutions
 #  include "domzgr_substitute.h90"
@@ -84,7 +86,8 @@ CONTAINS
       REAL(wp) ::   zfp_ui, zfp_vj, zfp_wk   !   -      -
       REAL(wp) ::   zfm_ui, zfm_vj, zfm_wk   !   -      -
       REAL(wp), POINTER, DIMENSION(:,:,:) :: zwi, zwz
-      REAL(wp), POINTER, DIMENSION(:,:,:) :: ztrdx, ztrdy, ztrdz
+      REAL(wp), POINTER, DIMENSION(:,:,:) :: ztrdx, ztrdy, ztrdz, zptry
+      REAL(wp), POINTER, DIMENSION(:,:)   :: z2d
       !!----------------------------------------------------------------------
       !
       IF( nn_timing == 1 )  CALL timing_start('tra_adv_tvd')
@@ -97,12 +100,20 @@ CONTAINS
          IF(lwp) WRITE(numout,*) '~~~~~~~~~~~'
          !
          l_trd = .FALSE.
+         l_trans = .FALSE.
          IF( ( cdtype == 'TRA' .AND. l_trdtra ) .OR. ( cdtype == 'TRC' .AND. l_trdtrc ) ) l_trd = .TRUE.
+         IF( cdtype == 'TRA' .AND. (iom_use("uadv_heattr") .OR. iom_use("vadv_heattr") ) ) l_trans = .TRUE.
       ENDIF
       !
-      IF( l_trd )  THEN
+      IF( l_trd .OR. l_trans )  THEN
          CALL wrk_alloc( jpi, jpj, jpk, ztrdx, ztrdy, ztrdz )
          ztrdx(:,:,:) = 0.e0   ;    ztrdy(:,:,:) = 0.e0   ;   ztrdz(:,:,:) = 0.e0
+         CALL wrk_alloc( jpi, jpj, z2d )
+      ENDIF
+      !
+      IF( cdtype == 'TRA' .AND. ln_diaptr ) THEN  
+         CALL wrk_alloc( jpi, jpj, jpk, zptry )
+         zptry(:,:,:) = 0._wp
       ENDIF
       !
       zwi(:,:,:) = 0.e0 ; 
@@ -186,15 +197,12 @@ CONTAINS
          CALL lbc_lnk( zwi, 'T', 1. )  
 
          !                                 ! trend diagnostics (contribution of upstream fluxes)
-         IF( l_trd )  THEN 
+         IF( l_trd .OR. l_trans )  THEN 
             ! store intermediate advective trends
             ztrdx(:,:,:) = zwx(:,:,:)   ;    ztrdy(:,:,:) = zwy(:,:,:)  ;   ztrdz(:,:,:) = zwz(:,:,:)
          END IF
          !                                 ! "Poleward" heat and salt transports (contribution of upstream fluxes)
-         IF( cdtype == 'TRA' .AND. ln_diaptr ) THEN  
-           IF( jn == jp_tem )  htr_adv(:) = ptr_sj( zwy(:,:,:) )
-           IF( jn == jp_sal )  str_adv(:) = ptr_sj( zwy(:,:,:) )
-         ENDIF
+         IF( cdtype == 'TRA' .AND. ln_diaptr )    zptry(:,:,:) = zwy(:,:,:) 
 
          ! 3. antidiffusive flux : high order minus low order
          ! --------------------------------------------------
@@ -252,25 +260,55 @@ CONTAINS
          END DO
 
          !                                 ! trend diagnostics (contribution of upstream fluxes)
-         IF( l_trd )  THEN 
+         IF( l_trd .OR. l_trans )  THEN 
             ztrdx(:,:,:) = ztrdx(:,:,:) + zwx(:,:,:)  ! <<< Add to previously computed
             ztrdy(:,:,:) = ztrdy(:,:,:) + zwy(:,:,:)  ! <<< Add to previously computed
             ztrdz(:,:,:) = ztrdz(:,:,:) + zwz(:,:,:)  ! <<< Add to previously computed
-            
-            CALL trd_tra( kt, cdtype, jn, jptra_xad, ztrdx, pun, ptn(:,:,:,jn) )   
-            CALL trd_tra( kt, cdtype, jn, jptra_yad, ztrdy, pvn, ptn(:,:,:,jn) )  
-            CALL trd_tra( kt, cdtype, jn, jptra_zad, ztrdz, pwn, ptn(:,:,:,jn) ) 
+         ENDIF
+         
+         IF( l_trd ) THEN 
+            CALL trd_tra( kt, cdtype, jn, jptra_xad, ztrdx, pun, ptn(:,:,:,jn) )
+            CALL trd_tra( kt, cdtype, jn, jptra_yad, ztrdy, pvn, ptn(:,:,:,jn) )
+            CALL trd_tra( kt, cdtype, jn, jptra_zad, ztrdz, pwn, ptn(:,:,:,jn) )
          END IF
-         !                                 ! "Poleward" heat and salt transports (contribution of upstream fluxes)
+
+         IF( l_trans .AND. jn==jp_tem ) THEN
+            z2d(:,:) = 0._wp 
+            DO jk = 1, jpkm1
+               DO jj = 2, jpjm1
+                  DO ji = fs_2, fs_jpim1   ! vector opt.
+                     z2d(ji,jj) = z2d(ji,jj) + ztrdx(ji,jj,jk) 
+                  END DO
+               END DO
+            END DO
+            CALL lbc_lnk( z2d, 'U', -1. )
+            CALL iom_put( "uadv_heattr", rau0_rcp * z2d )       ! heat transport in i-direction
+              !
+            z2d(:,:) = 0._wp 
+            DO jk = 1, jpkm1
+               DO jj = 2, jpjm1
+                  DO ji = fs_2, fs_jpim1   ! vector opt.
+                     z2d(ji,jj) = z2d(ji,jj) + ztrdy(ji,jj,jk) 
+                  END DO
+               END DO
+            END DO
+            CALL lbc_lnk( z2d, 'V', -1. )
+            CALL iom_put( "vadv_heattr", rau0_rcp * z2d )       ! heat transport in j-direction
+         ENDIF
+         ! "Poleward" heat and salt transports (contribution of upstream fluxes)
          IF( cdtype == 'TRA' .AND. ln_diaptr ) THEN  
-           IF( jn == jp_tem )  htr_adv(:) = ptr_sj( zwy(:,:,:) ) + htr_adv(:)
-           IF( jn == jp_sal )  str_adv(:) = ptr_sj( zwy(:,:,:) ) + str_adv(:)
+            zptry(:,:,:) = zptry(:,:,:) + zwy(:,:,:)  ! <<< Add to previously computed
+            CALL dia_ptr_ohst_components( jn, 'adv', zptry(:,:,:) )
          ENDIF
          !
       END DO
       !
-                   CALL wrk_dealloc( jpi, jpj, jpk, zwi, zwz )
-      IF( l_trd )  CALL wrk_dealloc( jpi, jpj, jpk, ztrdx, ztrdy, ztrdz )
+      CALL wrk_dealloc( jpi, jpj, jpk, zwi, zwz )
+      IF( l_trd .OR. l_trans )  THEN 
+         CALL wrk_dealloc( jpi, jpj, jpk, ztrdx, ztrdy, ztrdz )
+         CALL wrk_dealloc( jpi, jpj, z2d )
+      ENDIF
+      IF( cdtype == 'TRA' .AND. ln_diaptr ) CALL wrk_dealloc( jpi, jpj, jpk, zptry )
       !
       IF( nn_timing == 1 )  CALL timing_stop('tra_adv_tvd')
       !
@@ -317,6 +355,7 @@ CONTAINS
       REAL(wp), POINTER, DIMENSION(:,:  ) :: zwx_sav , zwy_sav
       REAL(wp), POINTER, DIMENSION(:,:,:) :: zwi, zwz, zhdiv, zwz_sav, zwzts
       REAL(wp), POINTER, DIMENSION(:,:,:) :: ztrdx, ztrdy, ztrdz
+      REAL(wp), POINTER, DIMENSION(:,:,:) :: zptry
       REAL(wp), POINTER, DIMENSION(:,:,:,:) :: ztrs
       !!----------------------------------------------------------------------
       !
@@ -338,6 +377,11 @@ CONTAINS
       IF( l_trd )  THEN
          CALL wrk_alloc( jpi, jpj, jpk, ztrdx, ztrdy, ztrdz )
          ztrdx(:,:,:) = 0._wp  ;    ztrdy(:,:,:) = 0._wp  ;   ztrdz(:,:,:) = 0._wp
+      ENDIF
+      !
+      IF( cdtype == 'TRA' .AND. ln_diaptr ) THEN  
+         CALL wrk_alloc( jpi, jpj,jpk, zptry )
+         zptry(:,:,:) = 0._wp
       ENDIF
       !
       zwi(:,:,:) = 0._wp
@@ -427,10 +471,7 @@ CONTAINS
             ztrdx(:,:,:) = zwx(:,:,:)   ;    ztrdy(:,:,:) = zwy(:,:,:)  ;   ztrdz(:,:,:) = zwz(:,:,:)
          END IF
          !                                 ! "Poleward" heat and salt transports (contribution of upstream fluxes)
-         IF( cdtype == 'TRA' .AND. ln_diaptr ) THEN  
-           IF( jn == jp_tem )  htr_adv(:) = ptr_sj( zwy(:,:,:) )
-           IF( jn == jp_sal )  str_adv(:) = ptr_sj( zwy(:,:,:) )
-         ENDIF
+         IF( cdtype == 'TRA' .AND. ln_diaptr )  zptry(:,:,:) = zwy(:,:,:)
 
          ! 3. antidiffusive flux : high order minus low order
          ! --------------------------------------------------
@@ -555,8 +596,8 @@ CONTAINS
          END IF
          !                                 ! "Poleward" heat and salt transports (contribution of upstream fluxes)
          IF( cdtype == 'TRA' .AND. ln_diaptr ) THEN  
-           IF( jn == jp_tem )  htr_adv(:) = ptr_sj( zwy(:,:,:) ) + htr_adv(:)
-           IF( jn == jp_sal )  str_adv(:) = ptr_sj( zwy(:,:,:) ) + str_adv(:)
+            zptry(:,:,:) = zptry(:,:,:) + zwy(:,:,:) 
+            CALL dia_ptr_ohst_components( jn, 'adv', zptry(:,:,:) )
          ENDIF
          !
       END DO
@@ -565,6 +606,7 @@ CONTAINS
                    CALL wrk_dealloc( jpi, jpj, jpk, kjpt+1, ztrs )
                    CALL wrk_dealloc( jpi, jpj, zwx_sav, zwy_sav )
       IF( l_trd )  CALL wrk_dealloc( jpi, jpj, jpk, ztrdx, ztrdy, ztrdz )
+      IF( cdtype == 'TRA' .AND. ln_diaptr ) CALL wrk_dealloc( jpi, jpj, jpk, zptry )
       !
       IF( nn_timing == 1 )  CALL timing_stop('tra_adv_tvd_zts')
       !

@@ -135,7 +135,7 @@ CONTAINS
                IF( etot_ndcy(ji,jj,jk) > 1.E-3 ) THEN
                   zval = MAX( 1., zstrn(ji,jj) )
                   zval = 1.5 * zval / ( 12. + zval )
-                  zprbio(ji,jj,jk) = prmax(ji,jj,jk) * zval * ( 1. - fr_i(ji,jj) )
+                  zprbio(ji,jj,jk) = prmax(ji,jj,jk) * zval
                   zprdia(ji,jj,jk) = zprbio(ji,jj,jk)
                ENDIF
             END DO
@@ -201,33 +201,28 @@ CONTAINS
                       znanotot    = enano(ji,jj,jk) * zstrn(ji,jj)
                       zdiattot    = ediat(ji,jj,jk) * zstrn(ji,jj)
                       !
-                      zpislopead (ji,jj,jk) = pislope  * ( 1.+ zadap  * EXP( -znanotot ) )
-                      zpislopead2(ji,jj,jk) = (pislope * zconctemp2 + pislope2 * zconctemp)  / ( trb(ji,jj,jk,jpdia) + rtrn )
-
-                      zpislopen =  zpislopead(ji,jj,jk) * trb(ji,jj,jk,jpnch)                &
-                        &          / ( trb(ji,jj,jk,jpphy) * 12.                  + rtrn )   &
-                        &          / ( prmax(ji,jj,jk) * rday * xlimphy(ji,jj,jk) + rtrn )
-
-                      zpislope2n = zpislopead2(ji,jj,jk) * trb(ji,jj,jk,jpdch)                &
-                        &          / ( trb(ji,jj,jk,jpdia) * 12.                  + rtrn )   &
-                        &          / ( prmax(ji,jj,jk) * rday * xlimdia(ji,jj,jk) + rtrn )
+                      zpislopead (ji,jj,jk) = pislope  * ( 1.+ zadap  * EXP( -znanotot ) )           &
+                         &                   * trb(ji,jj,jk,jpnch) /( trb(ji,jj,jk,jpphy) * 12. + rtrn)
+                      zpislopead2(ji,jj,jk) = (pislope * zconctemp2 + pislope2 * zconctemp)  / ( trb(ji,jj,jk,jpdia) + rtrn )   &
+                         &                   * trb(ji,jj,jk,jpdch) /( trb(ji,jj,jk,jpdia) * 12. + rtrn)
 
                       ! Computation of production function for Carbon
                       !  ---------------------------------------------
+                      zpislopen  =  zpislopead(ji,jj,jk)  / ( prmax(ji,jj,jk) * rday * xlimphy(ji,jj,jk) + rtrn )
+                      zpislope2n =  zpislopead2(ji,jj,jk) / ( prmax(ji,jj,jk) * rday * xlimdia(ji,jj,jk) + rtrn )
                       zprbio(ji,jj,jk) = zprbio(ji,jj,jk) * ( 1.- EXP( -zpislopen  * znanotot ) )
                       zprdia(ji,jj,jk) = zprdia(ji,jj,jk) * ( 1.- EXP( -zpislope2n * zdiattot ) )
 
                       !  Computation of production function for Chlorophyll
                       !--------------------------------------------------
-                      zprnch(ji,jj,jk) = prmax(ji,jj,jk) * ( 1.- EXP( -zpislopen  * enano(ji,jj,jk) ) )
-                      zprdch(ji,jj,jk) = prmax(ji,jj,jk) * ( 1.- EXP( -zpislope2n * ediat(ji,jj,jk) ) )
+                      zprnch(ji,jj,jk) = prmax(ji,jj,jk) * ( 1.- EXP( -zpislopen  * znanotot ) )
+                      zprdch(ji,jj,jk) = prmax(ji,jj,jk) * ( 1.- EXP( -zpislope2n * zdiattot ) )
                   ENDIF
                END DO
             END DO
          END DO
       ENDIF
-
-
+      
       !  Computation of a proxy of the N/C ratio
       !  ---------------------------------------
 !CDIR NOVERRCHK
@@ -277,12 +272,14 @@ CONTAINS
          DO ji = 1, jpi
             zmxltst = MAX( 0.e0, hmld(ji,jj) - heup(ji,jj) )
             zmxlday = zmxltst * zmxltst * r1_rday
-            zmixnano(ji,jj) = 1. - zmxlday / ( 2. + zmxlday )
-            zmixdiat(ji,jj) = 1. - zmxlday / ( 4. + zmxlday )
+            zmixnano(ji,jj) = 1. - zmxlday / ( 1. + zmxlday )
+            zmixdiat(ji,jj) = 1. - zmxlday / ( 2. + zmxlday )
          END DO
       END DO
  
-      !  Mixed-layer effect on production                                                                               
+      !  Mixed-layer effect on production 
+      !  Sea-ice effect on production
+
       DO jk = 1, jpkm1
          DO jj = 1, jpj
             DO ji = 1, jpi
@@ -290,6 +287,8 @@ CONTAINS
                   zprbio(ji,jj,jk) = zprbio(ji,jj,jk) * zmixnano(ji,jj)
                   zprdia(ji,jj,jk) = zprdia(ji,jj,jk) * zmixdiat(ji,jj)
                ENDIF
+                  zprbio(ji,jj,jk) = zprbio(ji,jj,jk) * ( 1. - fr_i(ji,jj) )
+                  zprdia(ji,jj,jk) = zprdia(ji,jj,jk) * ( 1. - fr_i(ji,jj) )
             END DO
          END DO
       END DO
@@ -329,59 +328,33 @@ CONTAINS
          END DO
       END DO
 
-      IF( ln_newprod ) THEN
 !CDIR NOVERRCHK
-         DO jk = 1, jpkm1
+      DO jk = 1, jpkm1
 !CDIR NOVERRCHK
-            DO jj = 1, jpj
+         DO jj = 1, jpj
 !CDIR NOVERRCHK
-               DO ji = 1, jpi
-                  IF( fsdepw(ji,jj,jk+1) <= hmld(ji,jj) ) THEN
-                     zprnch(ji,jj,jk) = zprnch(ji,jj,jk) * zmixnano(ji,jj)
-                     zprdch(ji,jj,jk) = zprdch(ji,jj,jk) * zmixdiat(ji,jj)
-                  ENDIF
-                  IF( etot_ndcy(ji,jj,jk) > 1.E-3 ) THEN
-                     !  production terms for nanophyto. ( chlorophyll )
-                     znanotot = enano(ji,jj,jk) * zstrn(ji,jj)
-                     zprod    = rday * zprorca(ji,jj,jk) * zprnch(ji,jj,jk) * xlimphy(ji,jj,jk)
-                     zprochln(ji,jj,jk) = chlcmin * 12. * zprorca (ji,jj,jk)
-                     zprochln(ji,jj,jk) = zprochln(ji,jj,jk) + (chlcnm-chlcmin) * 12. * zprod / &
-                                        & (  zpislopead(ji,jj,jk) * znanotot +rtrn)
-                     !  production terms for diatomees ( chlorophyll )
-                     zdiattot = ediat(ji,jj,jk) * zstrn(ji,jj)
-                     zprod = rday * zprorcad(ji,jj,jk) * zprdch(ji,jj,jk) * xlimdia(ji,jj,jk)
-                     zprochld(ji,jj,jk) = chlcmin * 12. * zprorcad(ji,jj,jk)
-                     zprochld(ji,jj,jk) = zprochld(ji,jj,jk) + (chlcdm-chlcmin) * 12. * zprod / &
-                                        & ( zpislopead2(ji,jj,jk) * zdiattot +rtrn )
-                  ENDIF
-               END DO
+            DO ji = 1, jpi
+               IF( fsdepw(ji,jj,jk+1) <= hmld(ji,jj) ) THEN
+                  zprnch(ji,jj,jk) = zprnch(ji,jj,jk) * zmixnano(ji,jj)
+                  zprdch(ji,jj,jk) = zprdch(ji,jj,jk) * zmixdiat(ji,jj)
+               ENDIF
+               IF( etot_ndcy(ji,jj,jk) > 1.E-3 ) THEN
+                  !  production terms for nanophyto. ( chlorophyll )
+                  znanotot = enano(ji,jj,jk) * zstrn(ji,jj)
+                  zprod    = rday * zprorca(ji,jj,jk) * zprnch(ji,jj,jk) * xlimphy(ji,jj,jk)
+                  zprochln(ji,jj,jk) = chlcmin * 12. * zprorca (ji,jj,jk)
+                  zprochln(ji,jj,jk) = zprochln(ji,jj,jk) + (chlcnm-chlcmin) * 12. * zprod / &
+                                     & (  zpislopead(ji,jj,jk) * znanotot +rtrn)
+                  !  production terms for diatomees ( chlorophyll )
+                  zdiattot = ediat(ji,jj,jk) * zstrn(ji,jj)
+                  zprod = rday * zprorcad(ji,jj,jk) * zprdch(ji,jj,jk) * xlimdia(ji,jj,jk)
+                  zprochld(ji,jj,jk) = chlcmin * 12. * zprorcad(ji,jj,jk)
+                  zprochld(ji,jj,jk) = zprochld(ji,jj,jk) + (chlcdm-chlcmin) * 12. * zprod / &
+                                     & ( zpislopead2(ji,jj,jk) * zdiattot +rtrn )
+               ENDIF
             END DO
          END DO
-      ELSE
-!CDIR NOVERRCHK
-         DO jk = 1, jpkm1
-!CDIR NOVERRCHK
-            DO jj = 1, jpj
-!CDIR NOVERRCHK
-               DO ji = 1, jpi
-                  IF( etot_ndcy(ji,jj,jk) > 1.E-3 ) THEN
-                     !  production terms for nanophyto. ( chlorophyll )
-                     znanotot = enano(ji,jj,jk)
-                     zprod = rday * zprorca(ji,jj,jk) * zprnch(ji,jj,jk) * trb(ji,jj,jk,jpphy) * xlimphy(ji,jj,jk)
-                     zprochln(ji,jj,jk) = chlcmin * 12. * zprorca (ji,jj,jk)
-                     zprochln(ji,jj,jk) = zprochln(ji,jj,jk) + (chlcnm-chlcmin) * 144. * zprod            &
-                     &                    / ( zpislopead(ji,jj,jk) * trb(ji,jj,jk,jpnch) * znanotot +rtrn )
-                     !  production terms for diatomees ( chlorophyll )
-                     zdiattot = ediat(ji,jj,jk)
-                     zprod = rday * zprorcad(ji,jj,jk) * zprdch(ji,jj,jk) * trb(ji,jj,jk,jpdia) * xlimdia(ji,jj,jk)
-                     zprochld(ji,jj,jk) = chlcmin * 12. * zprorcad(ji,jj,jk)
-                     zprochld(ji,jj,jk) = zprochld(ji,jj,jk) + (chlcdm-chlcmin) * 144. * zprod             &
-                     &                    / ( zpislopead2(ji,jj,jk) * trb(ji,jj,jk,jpdch) * zdiattot +rtrn )
-                  ENDIF
-               END DO
-            END DO
-         END DO
-      ENDIF
+      END DO
 
       !   Update the arrays TRA which contain the biological sources and sinks
       DO jk = 1, jpkm1

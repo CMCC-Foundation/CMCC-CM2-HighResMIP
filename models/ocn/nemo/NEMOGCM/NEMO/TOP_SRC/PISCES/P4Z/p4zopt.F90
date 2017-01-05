@@ -113,12 +113,10 @@ CONTAINS
       !                                        !* Photosynthetically Available Radiation (PAR)
       !                                        !  --------------------------------------
       IF( l_trcdm2dc ) THEN                     !  diurnal cycle
-         !                                       ! 1% of qsr to compute euphotic layer
-         zqsr100(:,:) = 0.01 * qsr_mean(:,:)     !  daily mean qsr
          !
          zqsr_corr(:,:) = qsr_mean(:,:) / ( 1. - fr_i(:,:) + rtrn )
          !
-         CALL p4z_opt_par( kt, zqsr_corr, ze1, ze2, ze3 ) 
+         CALL p4z_opt_par( kt, zqsr_corr, ze1, ze2, ze3, pqsr100 = zqsr100 ) 
          !
          DO jk = 1, nksrp      
             etot_ndcy(:,:,jk) =        ze1(:,:,jk) +        ze2(:,:,jk) +       ze3(:,:,jk)
@@ -135,12 +133,10 @@ CONTAINS
          END DO
          !
       ELSE
-         ! 1% of qsr to compute euphotic layer
-         zqsr100(:,:) = 0.01 * qsr(:,:)
          !
          zqsr_corr(:,:) = qsr(:,:) / ( 1. - fr_i(:,:) + rtrn )
          !
-         CALL p4z_opt_par( kt, zqsr_corr, ze1, ze2, ze3 ) 
+         CALL p4z_opt_par( kt, zqsr_corr, ze1, ze2, ze3, pqsr100 = zqsr100 ) 
          !
          DO jk = 1, nksrp      
             etot (:,:,jk) =        ze1(:,:,jk) +        ze2(:,:,jk) +       ze3(:,:,jk)
@@ -168,7 +164,7 @@ CONTAINS
       DO jk = 2, nksrp
          DO jj = 1, jpj
            DO ji = 1, jpi
-              IF( etot_ndcy(ji,jj,jk) * tmask(ji,jj,jk) >= 0.43 * zqsr100(ji,jj) )  THEN
+              IF( etot_ndcy(ji,jj,jk) * tmask(ji,jj,jk) >= zqsr100(ji,jj) )  THEN
                  neln(ji,jj) = jk+1                    ! Euphotic level : 1rst T-level strictly below Euphotic layer
                  !                                     ! nb: ensure the compatibility with nmld_trc definition in trd_mld_trc_zint
                  heup(ji,jj) = fsdepw(ji,jj,jk+1)      ! Euphotic layer depth
@@ -241,7 +237,7 @@ CONTAINS
       !
    END SUBROUTINE p4z_opt
 
-   SUBROUTINE p4z_opt_par( kt, pqsr, pe1, pe2, pe3, pe0 ) 
+   SUBROUTINE p4z_opt_par( kt, pqsr, pe1, pe2, pe3, pe0, pqsr100 ) 
       !!----------------------------------------------------------------------
       !!                  ***  routine p4z_opt_par  ***
       !!
@@ -250,10 +246,11 @@ CONTAINS
       !!
       !!----------------------------------------------------------------------
       !! * arguments
-      INTEGER, INTENT(in)                                       ::  kt            !   ocean time-step
-      REAL(wp), DIMENSION(jpi,jpj)    , INTENT(in)              ::  pqsr          !   shortwave
-      REAL(wp), DIMENSION(jpi,jpj,jpk), INTENT(inout)           ::  pe1 , pe2 , pe3   !  PAR ( R-G-B)
-      REAL(wp), DIMENSION(jpi,jpj,jpk), INTENT(inout), OPTIONAL ::  pe0  
+      INTEGER, INTENT(in)                                        ::  kt            !   ocean time-step
+      REAL(wp), DIMENSION(jpi,jpj)    , INTENT(in)               ::  pqsr          !   shortwave
+      REAL(wp), DIMENSION(jpi,jpj,jpk), INTENT(inout)            ::  pe1 , pe2 , pe3   !  PAR ( R-G-B)
+      REAL(wp), DIMENSION(jpi,jpj,jpk), INTENT(inout), OPTIONAL  ::  pe0 
+      REAL(wp), DIMENSION(jpi,jpj)    , INTENT(out)  , OPTIONAL  ::  pqsr100  
       !! * local variables
       INTEGER    ::   ji, jj, jk     ! dummy loop indices
       REAL(wp), DIMENSION(jpi,jpj)     ::  zqsr          !   shortwave
@@ -263,6 +260,9 @@ CONTAINS
       IF( ln_varpar ) THEN  ;  zqsr(:,:) = par_varsw(:,:) * pqsr(:,:)
       ELSE                  ;  zqsr(:,:) = xparsw         * pqsr(:,:)
       ENDIF
+
+      !  Light at the euphotic depth 
+      IF( PRESENT( pqsr100 ) )  pqsr100(:,:) = 0.01 * 3. * zqsr(:,:)
       !
       IF( PRESENT( pe0 ) ) THEN     !  W-level
          !

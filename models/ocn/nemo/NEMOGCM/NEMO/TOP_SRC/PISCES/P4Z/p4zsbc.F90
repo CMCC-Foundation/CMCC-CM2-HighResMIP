@@ -158,12 +158,13 @@ CONTAINS
       ! Compute N deposition at nit000 or only if there is more than 1 time record in N deposition file
       IF( ln_ndepo ) THEN
          IF( kt == nit000 .OR. ( kt /= nit000 .AND. ntimes_ndep > 1 ) ) THEN
-            CALL fld_read( kt, 1, sf_ndepo )
-            DO jj = 1, jpj
-               DO ji = 1, jpi
-                  nitdep(ji,jj) = sf_ndepo(1)%fnow(ji,jj,1) / rno3 / ( 14E6 * ryyss * fse3t(ji,jj,1) + rtrn )
-               END DO
-            END DO
+             zcoef = rno3 * 14E6 * ryyss
+             CALL fld_read( kt, 1, sf_ndepo )
+             nitdep(:,:) = sf_ndepo(1)%fnow(:,:,1) / zcoef / fse3t(:,:,1) 
+         ENDIF
+         IF( lk_vvl ) THEN
+           zcoef = rno3 * 14E6 * ryyss
+           nitdep(:,:) = sf_ndepo(1)%fnow(:,:,1) / zcoef / fse3t(:,:,1) 
          ENDIF
       ENDIF
       !
@@ -261,12 +262,6 @@ CONTAINS
       ELSE                                            ;  ll_solub = .FALSE.
       ENDIF
 
-      ! set the number of level over which river runoffs are applied 
-      ! online configuration : computed in sbcrnf
-      IF( lk_offline ) THEN
-        nk_rnf(:,:) = 1
-        h_rnf (:,:) = fsdept(:,:,1)
-      ENDIF
 
       ! dust input from the atmosphere
       ! ------------------------------
@@ -454,7 +449,7 @@ CONTAINS
          DO jk = 1, jpk
             DO jj = 1, jpj
                DO ji = 1, jpi
-                  zexpide   = MIN( 8.,( fsdept(ji,jj,jk) / 500. )**(-1.5) )
+                  zexpide   = MIN( 8.,( gdept_0(ji,jj,jk) / 500. )**(-1.5) )
                   zdenitide = -0.9543 + 0.7662 * LOG( zexpide ) - 0.235 * LOG( zexpide )**2
                   zcmask(ji,jj,jk) = zcmask(ji,jj,jk) * MIN( 1., EXP( zdenitide ) / 0.5 )
                END DO
@@ -464,7 +459,7 @@ CONTAINS
          ! -------------------------
          ironsed(:,:,jpk) = 0._wp
          DO jk = 1, jpkm1
-            ironsed(:,:,jk) = sedfeinput * zcmask(:,:,jk) / ( fse3t(:,:,jk) * rday )
+            ironsed(:,:,jk) = sedfeinput * zcmask(:,:,jk) / ( e3t_0(:,:,jk) * rday )
          END DO
          DEALLOCATE( zcmask)
       ENDIF
@@ -482,7 +477,9 @@ CONTAINS
          CALL iom_get  ( numhydro, jpdom_data, TRIM( sn_hydrofe%clvar ), hydrofe(:,:,:), 1 )
          CALL iom_close( numhydro )
          !
-         hydrofe(:,:,:) = ( hydrofe(:,:,:) * hratio ) / ( cvol(:,:,:) * ryyss + rtrn ) / 1000._wp
+         DO jk = 1, jpk
+            hydrofe(:,:,jk) = ( hydrofe(:,:,jk) * hratio ) / ( e1e2t(:,:) * e3t_0(:,:,jk) * ryyss + rtrn ) / 1000._wp
+         ENDDO
          !
       ENDIF
       ! 

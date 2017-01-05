@@ -32,30 +32,33 @@ MODULE trd_oce
    LOGICAL , PUBLIC ::   l_trdtrc = .FALSE.       !: tracers  trend flag
 # endif
    !                                                  !!!* Active tracers trends indexes
-   INTEGER, PUBLIC, PARAMETER ::   jptot_tra  = 14     !: Total trend nb: change it when adding/removing one indice below
+   INTEGER, PUBLIC, PARAMETER ::   jptot_tra  = 20     !: Total trend nb: change it when adding/removing one indice below
    !                               ===============     !  
    INTEGER, PUBLIC, PARAMETER ::   jptra_xad  =  1     !: x- horizontal advection
    INTEGER, PUBLIC, PARAMETER ::   jptra_yad  =  2     !: y- horizontal advection
    INTEGER, PUBLIC, PARAMETER ::   jptra_zad  =  3     !: z- vertical   advection
    INTEGER, PUBLIC, PARAMETER ::   jptra_sad  =  4     !: z- vertical   advection
-   INTEGER, PUBLIC, PARAMETER ::   jptra_ldf  =  5     !: lateral       diffusion
-   INTEGER, PUBLIC, PARAMETER ::   jptra_zdf  =  6     !: vertical      diffusion
-   INTEGER, PUBLIC, PARAMETER ::   jptra_zdfp =  7     !: "PURE" vert.  diffusion (ln_traldf_iso=T)
-   INTEGER, PUBLIC, PARAMETER ::   jptra_bbc  =  8     !: Bottom Boundary Condition (geoth. heating) 
-   INTEGER, PUBLIC, PARAMETER ::   jptra_bbl  =  9     !: Bottom Boundary Layer (diffusive and/or advective)
-   INTEGER, PUBLIC, PARAMETER ::   jptra_npc  = 10     !: non-penetrative convection treatment
-   INTEGER, PUBLIC, PARAMETER ::   jptra_dmp  = 11     !: internal restoring (damping)
-   INTEGER, PUBLIC, PARAMETER ::   jptra_qsr  = 12     !: penetrative solar radiation
-   INTEGER, PUBLIC, PARAMETER ::   jptra_nsr  = 13     !: non solar radiation / C/D on salinity  (+runoff if ln_rnf=T)
-   INTEGER, PUBLIC, PARAMETER ::   jptra_atf  = 14     !: Asselin time filter
+   INTEGER, PUBLIC, PARAMETER ::   jptra_totad  =  5   !: total         advection
+   INTEGER, PUBLIC, PARAMETER ::   jptra_ldf  =  6     !: lateral       diffusion
+   INTEGER, PUBLIC, PARAMETER ::   jptra_zdf  =  7     !: vertical      diffusion
+   INTEGER, PUBLIC, PARAMETER ::   jptra_zdfp =  8     !: "PURE" vert.  diffusion (ln_traldf_iso=T)
+   INTEGER, PUBLIC, PARAMETER ::   jptra_evd  =  9     !: EVD term (convection)
+   INTEGER, PUBLIC, PARAMETER ::   jptra_bbc  = 10     !: Bottom Boundary Condition (geoth. heating) 
+   INTEGER, PUBLIC, PARAMETER ::   jptra_bbl  = 11     !: Bottom Boundary Layer (diffusive and/or advective)
+   INTEGER, PUBLIC, PARAMETER ::   jptra_npc  = 12     !: non-penetrative convection treatment
+   INTEGER, PUBLIC, PARAMETER ::   jptra_dmp  = 13     !: internal restoring (damping)
+   INTEGER, PUBLIC, PARAMETER ::   jptra_qsr  = 14     !: penetrative solar radiation
+   INTEGER, PUBLIC, PARAMETER ::   jptra_nsr  = 15     !: non solar radiation / C/D on salinity  (+runoff if ln_rnf=T)
+   INTEGER, PUBLIC, PARAMETER ::   jptra_atf  = 16     !: Asselin time filter
+   INTEGER, PUBLIC, PARAMETER ::   jptra_tot  = 17     !: Model total trend
    !
    !                                                  !!!* Passive tracers trends indices (use if "key_top" defined)
-   INTEGER, PUBLIC, PARAMETER ::   jptra_sms  = 15     !: sources m. sinks
-   INTEGER, PUBLIC, PARAMETER ::   jptra_radn = 16     !: corr. trn<0 in trcrad
-   INTEGER, PUBLIC, PARAMETER ::   jptra_radb = 17     !: corr. trb<0 in trcrad (like atf)
+   INTEGER, PUBLIC, PARAMETER ::   jptra_sms  = 18     !: sources m. sinks
+   INTEGER, PUBLIC, PARAMETER ::   jptra_radn = 19     !: corr. trn<0 in trcrad
+   INTEGER, PUBLIC, PARAMETER ::   jptra_radb = 20     !: corr. trb<0 in trcrad (like atf)
    !
    !                                                  !!!* Momentum trends indices
-   INTEGER, PUBLIC, PARAMETER ::   jptot_dyn  = 15     !: Total trend nb: change it when adding/removing one indice below
+   INTEGER, PUBLIC, PARAMETER ::   jptot_dyn  = 16     !: Total trend nb: change it when adding/removing one indice below
    !                               ===============     !  
    INTEGER, PUBLIC, PARAMETER ::   jpdyn_hpg  =  1     !: hydrostatic pressure gradient 
    INTEGER, PUBLIC, PARAMETER ::   jpdyn_spg  =  2     !: surface     pressure gradient
@@ -72,6 +75,7 @@ MODULE trd_oce
    INTEGER, PUBLIC, PARAMETER ::   jpdyn_ken  = 13     !: use for calculation of KE
    INTEGER, PUBLIC, PARAMETER ::   jpdyn_spgflt  = 14  !: filter contribution to surface pressure gradient (spg_flt)
    INTEGER, PUBLIC, PARAMETER ::   jpdyn_spgexp  = 15  !: explicit contribution to surface pressure gradient (spg_flt)
+   INTEGER, PUBLIC, PARAMETER ::   jpdyn_eivke   = 16  !: K.E trend from Gent McWilliams scheme
    !
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)

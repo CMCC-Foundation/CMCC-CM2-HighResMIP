@@ -42,7 +42,7 @@ MODULE sbccpl
    USE lbclnk          ! ocean lateral boundary conditions (or mpp link)
    USE eosbn2
    USE sbcrnf   , ONLY : l_rnfcpl
-#if defined key_cpl_carbon_cycle
+#if defined key_cpl_carbon_cycle && defined key_pisces
    USE p4zflx, ONLY : oce_co2
 #endif
 #if defined key_cice
@@ -1417,14 +1417,23 @@ CONTAINS
          ztprecip(:,:) =   frcv(jpr_rain)%z3(:,:,1) + zsprecip(:,:)  ! May need to ensure positive here
          zemp_tot(:,:) =   frcv(jpr_tevp)%z3(:,:,1) - ztprecip(:,:)
          zemp_ice(:,:) = ( frcv(jpr_ievp)%z3(:,:,1) - frcv(jpr_snow)%z3(:,:,1) ) * zicefr(:,:)
-               CALL iom_put( 'rain'         ,   frcv(jpr_rain)%z3(:,:,1)                                                         )  ! liquid precipitation 
+         IF( iom_use('precip') )          &
+            &  CALL iom_put( 'precip'       ,   frcv(jpr_rain)%z3(:,:,1) + frcv(jpr_snow)%z3(:,:,1)                              )  ! total  precipitation
+         IF( iom_use('rain') )            &
+            &  CALL iom_put( 'rain'         ,   frcv(jpr_rain)%z3(:,:,1)                                                         )  ! liquid precipitation 
+         IF( iom_use('rain_ao_cea') )   &
+            &  CALL iom_put( 'rain_ao_cea'  , frcv(jpr_rain)%z3(:,:,1)* p_frld(:,:) * tmask(:,:,1)      )   ! liquid precipitation 
          IF( iom_use('hflx_rain_cea') )   &
-            &  CALL iom_put( 'hflx_rain_cea',   frcv(jpr_rain)%z3(:,:,1) * zcptn(:,:)                                            )  ! heat flux from liq. precip. 
+            CALL iom_put( 'hflx_rain_cea', frcv(jpr_rain)%z3(:,:,1) * zcptn(:,:) * tmask(:,:,1))   ! heat flux from liq. precip. 
+         IF( iom_use('hflx_prec_cea') )   &
+            CALL iom_put( 'hflx_prec_cea', ztprecip * zcptn(:,:) * tmask(:,:,1) * p_frld(:,:) )   ! heat content flux from all precip  (cell avg)
+         IF( iom_use('evap_ao_cea') .OR. iom_use('hflx_evap_cea') )   &
+            ztmp(:,:) = frcv(jpr_tevp)%z3(:,:,1) - frcv(jpr_ievp)%z3(:,:,1) * zicefr(:,:)
          IF( iom_use('evap_ao_cea'  ) )   &
-            &  CALL iom_put( 'evap_ao_cea'  ,   frcv(jpr_tevp)%z3(:,:,1) - frcv(jpr_ievp)%z3(:,:,1) * zicefr(:,:)                )  ! ice-free oce evap (cell average)
+            CALL iom_put( 'evap_ao_cea'  , ztmp * tmask(:,:,1)                  )   ! ice-free oce evap (cell average)
          IF( iom_use('hflx_evap_cea') )   &
-            &  CALL iom_put( 'hflx_evap_cea', ( frcv(jpr_tevp)%z3(:,:,1) - frcv(jpr_ievp)%z3(:,:,1) * zicefr(:,:) ) * zcptn(:,:) )  ! heat flux from from evap (cell average)
-      CASE( 'oce and ice' )   ! received fields: jpr_sbpr, jpr_semp, jpr_oemp, jpr_ievp
+            CALL iom_put( 'hflx_evap_cea', ztmp(:,:) * zcptn(:,:) * tmask(:,:,1) )   ! heat flux from from evap (cell average)
+      CASE( 'oce and ice'   )   ! received fields: jpr_sbpr, jpr_semp, jpr_oemp, jpr_ievp
          zemp_tot(:,:) = p_frld(:,:) * frcv(jpr_oemp)%z3(:,:,1) + zicefr(:,:) * frcv(jpr_sbpr)%z3(:,:,1)
          zemp_ice(:,:) = frcv(jpr_semp)%z3(:,:,1) * zicefr(:,:)
          zsprecip(:,:) = frcv(jpr_ievp)%z3(:,:,1) - frcv(jpr_semp)%z3(:,:,1)
@@ -1487,6 +1496,8 @@ CONTAINS
 #else
       ! runoffs and calving (put in emp_tot)
       IF( srcv(jpr_rnf)%laction )   rnf(:,:) = frcv(jpr_rnf)%z3(:,:,1)
+      IF( iom_use('hflx_rnf_cea') )   &
+         CALL iom_put( 'hflx_rnf_cea' , rnf(:,:) * zcptn(:,:) )
       IF( srcv(jpr_cal)%laction ) THEN 
          zemp_tot(:,:) = zemp_tot(:,:) - frcv(jpr_cal)%z3(:,:,1)
          CALL iom_put( 'calving_cea', frcv(jpr_cal)%z3(:,:,1) )
@@ -1606,12 +1617,11 @@ CONTAINS
          qemp_ice (:,:  ) = zqemp_ice (:,:  )
       ENDIF
 
-      !! clem: we should output qemp_oce and qemp_ice (at least)
-      IF( iom_use('hflx_snow_cea') )   CALL iom_put( 'hflx_snow_cea', sprecip(:,:) * ( zcptn(:,:) - Lfus ) )   ! heat flux from snow (cell average)
-      !! these diags are not outputed yet
-!!      IF( iom_use('hflx_rain_cea') )   CALL iom_put( 'hflx_rain_cea', ( tprecip(:,:) - sprecip(:,:) ) * zcptn(:,:) )   ! heat flux from rain (cell average)
-!!      IF( iom_use('hflx_snow_ao_cea') ) CALL iom_put( 'hflx_snow_ao_cea', sprecip(:,:) * ( zcptn(:,:) - Lfus ) * (1._wp - zsnw(:,:)) ) ! heat flux from snow (cell average)
-!!      IF( iom_use('hflx_snow_ai_cea') ) CALL iom_put( 'hflx_snow_ai_cea', sprecip(:,:) * ( zcptn(:,:) - Lfus ) * zsnw(:,:) ) ! heat flux from snow (cell average)
+      ! some more outputs
+      IF( iom_use('hflx_snow_cea') )    CALL iom_put('hflx_snow_cea',   sprecip(:,:) * ( zcptn(:,:) - Lfus ) )                       ! heat flux from snow (cell average)
+      IF( iom_use('hflx_rain_cea') )    CALL iom_put('hflx_rain_cea', ( tprecip(:,:) - sprecip(:,:) ) * zcptn(:,:) )                 ! heat flux from rain (cell average)
+      IF( iom_use('hflx_snow_ao_cea') ) CALL iom_put('hflx_snow_ao_cea',sprecip(:,:) * ( zcptn(:,:) - Lfus ) * (1._wp - zsnw(:,:)) ) ! heat flux from snow (cell average)
+      IF( iom_use('hflx_snow_ai_cea') ) CALL iom_put('hflx_snow_ai_cea',sprecip(:,:) * ( zcptn(:,:) - Lfus ) * zsnw(:,:) )           ! heat flux from snow (cell average)
 
 #else
       ! clem: this formulation is certainly wrong... but better than it was...
@@ -1927,7 +1937,7 @@ CONTAINS
          IF( ssnd(jps_hsnw)%laction )   CALL cpl_snd( jps_hsnw, isec, ztmp4, info )
       ENDIF
       !
-#if defined key_cpl_carbon_cycle
+#if defined key_cpl_carbon_cycle && defined key_pisces
       !                                                      ! ------------------------- !
       !                                                      !  CO2 flux from PISCES     ! 
       !                                                      ! ------------------------- !

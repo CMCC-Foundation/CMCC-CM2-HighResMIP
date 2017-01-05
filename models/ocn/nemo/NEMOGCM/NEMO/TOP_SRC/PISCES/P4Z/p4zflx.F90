@@ -85,15 +85,16 @@ CONTAINS
       INTEGER  ::   ji, jj, jm, iind, iindm1
       REAL(wp) ::   ztc, ztc2, ztc3, ztc4, zws, zkgwan
       REAL(wp) ::   zfld, zflu, zfld16, zflu16, zfact
+      REAL(wp) ::   zvapsw, zsal, zfco2, zxc2, xCO2approx, ztkel, zfugcoeff
       REAL(wp) ::   zph, zah2, zbot, zdic, zalk, zsch_o2, zalka, zsch_co2
       REAL(wp) ::   zyr_dec, zdco2dt
       CHARACTER (len=25) :: charout
-      REAL(wp), POINTER, DIMENSION(:,:) :: zkgco2, zkgo2, zh2co3, zoflx, zw2d 
+      REAL(wp), POINTER, DIMENSION(:,:) :: zkgco2, zkgo2, zh2co3, zoflx, zw2d, zpco2atm 
       !!---------------------------------------------------------------------
       !
       IF( nn_timing == 1 )  CALL timing_start('p4z_flx')
       !
-      CALL wrk_alloc( jpi, jpj, zkgco2, zkgo2, zh2co3, zoflx )
+      CALL wrk_alloc( jpi, jpj, zkgco2, zkgo2, zh2co3, zoflx, zpco2atm )
       !
 
       ! SURFACE CHEMISTRY (PCO2 AND [H+] IN
@@ -182,17 +183,26 @@ CONTAINS
 
       DO jj = 1, jpj
          DO ji = 1, jpi
+            ztkel  = tsn(ji,jj,1,jp_tem) + 273.15
+            zsal   = tsn(ji,jj,1,jp_sal) + ( 1.- tmask(ji,jj,1) ) * 35.
+            zvapsw = EXP(24.4543 - 67.4509*(100.0/ztkel) - 4.8489*LOG(ztkel/100) - 0.000544*zsal)
+            zpco2atm(ji,jj) = satmco2(ji,jj) * ( patm(ji,jj) - zvapsw )
+            zxc2 = (1.0 - zpco2atm(ji,jj) * 1E-6 )**2
+            zfugcoeff = EXP(patm(ji,jj) * (chemc(ji,jj,2) + 2.0 * zxc2 * chemc(ji,jj,3) )   &
+            &           / (82.05736 * ztkel))
+            zfco2 = zpco2atm(ji,jj) * zfugcoeff
+
             ! Compute CO2 flux for the sea and air
-            zfld = satmco2(ji,jj) * patm(ji,jj) * tmask(ji,jj,1) * chemc(ji,jj) * zkgco2(ji,jj)   ! (mol/L) * (m/s)
-            zflu = zh2co3(ji,jj) * tmask(ji,jj,1) * zkgco2(ji,jj)                                   ! (mol/L) (m/s) ?
+            zfld = zfco2 * chemc(ji,jj,1) * zkgco2(ji,jj)  ! (mol/L) * (m/s)
+            zflu = zh2co3(ji,jj) * zkgco2(ji,jj)                                   ! (mol/L) (m/s) ?
             oce_co2(ji,jj) = ( zfld - zflu ) * rfact2 * e1e2t(ji,jj) * tmask(ji,jj,1) * 1000.
             ! compute the trend
-            tra(ji,jj,1,jpdic) = tra(ji,jj,1,jpdic) + ( zfld - zflu ) * rfact2 / fse3t(ji,jj,1)
+            tra(ji,jj,1,jpdic) = tra(ji,jj,1,jpdic) + ( zfld - zflu ) * rfact2 / fse3t(ji,jj,1) * tmask(ji,jj,1)
 
             ! Compute O2 flux 
-            zfld16 = patm(ji,jj) * chemo2(ji,jj,1) * tmask(ji,jj,1) * zkgo2(ji,jj)          ! (mol/L) * (m/s)
-            zflu16 = trb(ji,jj,1,jpoxy) * tmask(ji,jj,1) * zkgo2(ji,jj)
-            zoflx(ji,jj) = zfld16 - zflu16
+            zfld16 = patm(ji,jj) * chemo2(ji,jj,1) * zkgo2(ji,jj)          ! (mol/L) * (m/s)
+            zflu16 = trb(ji,jj,1,jpoxy) * zkgo2(ji,jj)
+            zoflx(ji,jj) = ( zfld16 - zflu16 ) * tmask(ji,jj,1)
             tra(ji,jj,1,jpoxy) = tra(ji,jj,1,jpoxy) + zoflx(ji,jj) * rfact2 / fse3t(ji,jj,1)
          END DO
       END DO
@@ -223,7 +233,7 @@ CONTAINS
             CALL iom_put( "Kg"   , zw2d )
          ENDIF
          IF( iom_use( "Dpco2" ) ) THEN
-           zw2d(:,:) = ( satmco2(:,:) * patm(:,:) - zh2co3(:,:) / ( chemc(:,:) + rtrn ) ) * tmask(:,:,1)
+           zw2d(:,:) = ( zpco2atm(:,:) - zh2co3(:,:) / ( chemc(:,:,1) + rtrn ) ) * tmask(:,:,1)
            CALL iom_put( "Dpco2" ,  zw2d )
          ENDIF
          IF( iom_use( "Dpo2" ) )  THEN
@@ -239,11 +249,11 @@ CONTAINS
             trc2d(:,:,jp_pcs0_2d    ) = oce_co2(:,:) / e1e2t(:,:) * rfact2r 
             trc2d(:,:,jp_pcs0_2d + 1) = zoflx(:,:) * 1000 * tmask(:,:,1) 
             trc2d(:,:,jp_pcs0_2d + 2) = zkgco2(:,:) * tmask(:,:,1) 
-            trc2d(:,:,jp_pcs0_2d + 3) = ( satmco2(:,:) * patm(:,:) - zh2co3(:,:) / ( chemc(:,:) + rtrn ) ) * tmask(:,:,1) 
+            trc2d(:,:,jp_pcs0_2d + 3) = ( zpco2atm(:,:) - zh2co3(:,:) / ( chemc(:,:,1) + rtrn ) ) * tmask(:,:,1)
          ENDIF
       ENDIF
       !
-      CALL wrk_dealloc( jpi, jpj, zkgco2, zkgo2, zh2co3, zoflx )
+      CALL wrk_dealloc( jpi, jpj, zkgco2, zkgo2, zh2co3, zoflx, zpco2atm )
       !
       IF( nn_timing == 1 )  CALL timing_stop('p4z_flx')
       !

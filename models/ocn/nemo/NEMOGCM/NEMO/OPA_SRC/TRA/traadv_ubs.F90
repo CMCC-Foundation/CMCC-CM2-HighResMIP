@@ -176,10 +176,7 @@ CONTAINS
              CALL trd_tra( kt, cdtype, jn, jptra_yad, ztv, pvn, ptn(:,:,:,jn) )
          END IF
          !                                 ! "Poleward" heat and salt transports (contribution of upstream fluxes)
-         IF( cdtype == 'TRA' .AND. ln_diaptr ) THEN  
-            IF( jn == jp_tem )  htr_adv(:) = ptr_sj( ztv(:,:,:) )
-            IF( jn == jp_sal )  str_adv(:) = ptr_sj( ztv(:,:,:) )
-         ENDIF
+         IF( cdtype == 'TRA' .AND. ln_diaptr ) CALL dia_ptr_ohst_components( jn, 'adv', ztv(:,:,:) )
          
          ! TVD scheme for the vertical direction  
          ! ----------------------

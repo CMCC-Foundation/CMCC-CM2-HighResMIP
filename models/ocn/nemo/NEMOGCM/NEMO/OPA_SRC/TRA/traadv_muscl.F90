@@ -44,7 +44,7 @@ MODULE traadv_muscl
 #  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
-   !! $Id$ 
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -218,10 +218,7 @@ CONTAINS
             CALL trd_tra( kt, cdtype, jn, jptra_yad, zwy, pvn, ptb(:,:,:,jn) )
          END IF
          !                                 ! "Poleward" heat and salt transports (contribution of upstream fluxes)
-         IF( cdtype == 'TRA' .AND. ln_diaptr ) THEN  
-            IF( jn == jp_tem )  htr_adv(:) = ptr_sj( zwy(:,:,:) )
-            IF( jn == jp_sal )  str_adv(:) = ptr_sj( zwy(:,:,:) )
-         ENDIF
+         IF( cdtype == 'TRA' .AND. ln_diaptr )  CALL dia_ptr_ohst_components( jn, 'adv', zwy(:,:,:)  )
 
          ! II. Vertical advective fluxes
          ! -----------------------------

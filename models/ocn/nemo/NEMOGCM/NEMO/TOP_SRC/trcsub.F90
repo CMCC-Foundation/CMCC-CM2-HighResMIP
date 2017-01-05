@@ -15,12 +15,6 @@ MODULE trcsub
    USE iom
    USE in_out_manager
    USE lbclnk
-#if defined key_zdftke
-   USE zdftke          ! twice TKE (en)
-#endif
-#if defined key_zdfgls
-   USE zdfgls, ONLY: en
-#endif
    USE trabbl
    USE zdf_oce
    USE domvvl

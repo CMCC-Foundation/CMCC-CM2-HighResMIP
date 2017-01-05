@@ -23,6 +23,8 @@ MODULE diaar5
    USE fldread        ! type FLD_N
    USE phycst         ! physical constant
    USE in_out_manager  ! I/O manager
+   USE zdfddm
+   USE zdf_oce
 
    IMPLICIT NONE
    PRIVATE
@@ -41,6 +43,7 @@ MODULE diaar5
       
    !! * Substitutions
 #  include "domzgr_substitute.h90"
+#  include "zdfddm_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
    !! $Id$
@@ -74,14 +77,20 @@ CONTAINS
       !
       INTEGER  ::   ji, jj, jk                      ! dummy loop arguments
       REAL(wp) ::   zvolssh, zvol, zssh_steric, zztmp, zarho, ztemp, zsal, zmass
+      REAL(wp) ::   zaw, zbw, zrw
       !
       REAL(wp), POINTER, DIMENSION(:,:)     :: zarea_ssh , zbotpres       ! 2D workspace 
+      REAL(wp), POINTER, DIMENSION(:,:)     :: pe                         ! 2D workspace 
       REAL(wp), POINTER, DIMENSION(:,:,:)   :: zrhd , zrhop               ! 3D workspace
       REAL(wp), POINTER, DIMENSION(:,:,:,:) :: ztsn                       ! 4D workspace
       !!--------------------------------------------------------------------
       IF( nn_timing == 1 )   CALL timing_start('dia_ar5')
+
+      !Call to init moved to here so that we can call iom_use in the
+      !initialisation
+      IF( kt == nit000 )     CALL dia_ar5_init
  
-      CALL wrk_alloc( jpi , jpj              , zarea_ssh , zbotpres )
+      CALL wrk_alloc( jpi , jpj              , zarea_ssh , zbotpres, pe )
       CALL wrk_alloc( jpi , jpj , jpk        , zrhd      , zrhop    )
       CALL wrk_alloc( jpi , jpj , jpk , jpts , ztsn                 )
 
@@ -94,33 +103,35 @@ CONTAINS
       
       CALL iom_put( 'voltot', zvol               )
       CALL iom_put( 'sshtot', zvolssh / area_tot )
+      CALL iom_put( 'sshdyn', sshn(:,:) - (zvolssh / area_tot) )
 
       !                     
-      ztsn(:,:,:,jp_tem) = tsn(:,:,:,jp_tem)                    ! thermosteric ssh
-      ztsn(:,:,:,jp_sal) = sn0(:,:,:)
-      CALL eos( ztsn, zrhd, fsdept_n(:,:,:) )                       ! now in situ density using initial salinity
-      !
-      zbotpres(:,:) = 0._wp                        ! no atmospheric surface pressure, levitating sea-ice
-      DO jk = 1, jpkm1
-         zbotpres(:,:) = zbotpres(:,:) + fse3t(:,:,jk) * zrhd(:,:,jk)
-      END DO
-      IF( .NOT.lk_vvl ) THEN
-         IF ( ln_isfcav ) THEN
-            DO ji=1,jpi
-               DO jj=1,jpj
-                  zbotpres(ji,jj) = zbotpres(ji,jj) + sshn(ji,jj) * zrhd(ji,jj,mikt(ji,jj)) + riceload(ji,jj)
+      IF( iom_use('sshthster')) THEN
+         ztsn(:,:,:,jp_tem) = tsn(:,:,:,jp_tem)                    ! thermosteric ssh
+         ztsn(:,:,:,jp_sal) = sn0(:,:,:)
+         CALL eos( ztsn, zrhd, fsdept_n(:,:,:) )                       ! now in situ density using initial salinity
+         !
+         zbotpres(:,:) = 0._wp                        ! no atmospheric surface pressure, levitating sea-ice
+         DO jk = 1, jpkm1
+            zbotpres(:,:) = zbotpres(:,:) + fse3t(:,:,jk) * zrhd(:,:,jk)
+         END DO
+         IF( .NOT.lk_vvl ) THEN
+            IF ( ln_isfcav ) THEN
+               DO ji=1,jpi
+                  DO jj=1,jpj
+                     zbotpres(ji,jj) = zbotpres(ji,jj) + sshn(ji,jj) * zrhd(ji,jj,mikt(ji,jj)) + riceload(ji,jj)
+                  END DO
                END DO
-            END DO
-         ELSE
-            zbotpres(:,:) = zbotpres(:,:) + sshn(:,:) * zrhd(:,:,1)
+            ELSE
+               zbotpres(:,:) = zbotpres(:,:) + sshn(:,:) * zrhd(:,:,1)
+            END IF
          END IF
-      END IF
       !                                         
-      zarho = SUM( area(:,:) * zbotpres(:,:) ) 
-      IF( lk_mpp )   CALL mpp_sum( zarho )
-      zssh_steric = - zarho / area_tot
-      CALL iom_put( 'sshthster', zssh_steric )
-      
+         zarho = SUM( area(:,:) * zbotpres(:,:) ) 
+         IF( lk_mpp )   CALL mpp_sum( zarho )
+         zssh_steric = - zarho / area_tot
+         CALL iom_put( 'sshthster', zssh_steric )
+      ENDIF
       !                                         ! steric sea surface height
       CALL eos( tsn, zrhd, zrhop, fsdept_n(:,:,:) )                 ! now in situ and potential density
       zrhop(:,:,jpk) = 0._wp
@@ -194,8 +205,43 @@ CONTAINS
       CALL iom_put( 'masstot', zmass )
       CALL iom_put( 'temptot', ztemp )
       CALL iom_put( 'saltot' , zsal  )
+
+      IF( iom_use( 'tnpeo' )) THEN    
+      ! Work done against stratification by vertical mixing
+      ! Exclude points where rn2 is negative as convection kicks in here and
+      ! work is not being done against stratification
+          pe(:,:) = 0._wp
+          IF( lk_zdfddm ) THEN
+             DO ji=1,jpi
+                DO jj=1,jpj
+                   DO jk=1,jpk
+                      zrw =   ( fsdepw(ji,jj,jk  ) - fsdept(ji,jj,jk) )   &
+                         &  / ( fsdept(ji,jj,jk-1) - fsdept(ji,jj,jk) )
+                      !
+                      zaw = rab_n(ji,jj,jk,jp_tem) * (1. - zrw) + rab_n(ji,jj,jk-1,jp_tem)* zrw
+                      zbw = rab_n(ji,jj,jk,jp_sal) * (1. - zrw) + rab_n(ji,jj,jk-1,jp_sal)* zrw
+                      !
+                      pe(ji, jj) = pe(ji, jj) - MIN(0._wp, rn2(ji,jj,jk)) * &
+                           &       grav * (avt(ji,jj,jk) * zaw * (tsn(ji,jj,jk-1,jp_tem) - tsn(ji,jj,jk,jp_tem) )  &
+                           &       - fsavs(ji,jj,jk) * zbw * (tsn(ji,jj,jk-1,jp_sal) - tsn(ji,jj,jk,jp_sal) ) )
+
+                   ENDDO
+                ENDDO
+             ENDDO
+          ELSE
+             DO ji=1,jpi
+                DO jj=1,jpj
+                   DO jk=1,jpk
+                       pe(ji,jj) = pe(ji,jj) + avt(ji, jj, jk) * MIN(0._wp,rn2(ji, jj, jk)) * rau0 * fse3w(ji, jj, jk)
+                   ENDDO
+                ENDDO
+             ENDDO
+          ENDIF
+          CALL lbc_lnk(pe, 'T', 1._wp)         
+          CALL iom_put( 'tnpeo', pe )
+      ENDIF
       !
-      CALL wrk_dealloc( jpi , jpj              , zarea_ssh , zbotpres )
+      CALL wrk_dealloc( jpi , jpj              , zarea_ssh , zbotpres, pe )
       CALL wrk_dealloc( jpi , jpj , jpk        , zrhd      , zrhop    )
       CALL wrk_dealloc( jpi , jpj , jpk , jpts , ztsn                 )
       !
@@ -236,23 +282,25 @@ CONTAINS
       END DO
       IF( lk_mpp )   CALL mpp_sum( vol0 )
 
-      CALL iom_open ( 'sali_ref_clim_monthly', inum )
-      CALL iom_get  ( inum, jpdom_data, 'vosaline' , zsaldta(:,:,:,1), 1  )
-      CALL iom_get  ( inum, jpdom_data, 'vosaline' , zsaldta(:,:,:,2), 12 )
-      CALL iom_close( inum )
+      IF( iom_use('sshthster')) THEN
+         CALL iom_open ( 'sali_ref_clim_monthly', inum )
+         CALL iom_get  ( inum, jpdom_data, 'vosaline' , zsaldta(:,:,:,1), 1  )
+         CALL iom_get  ( inum, jpdom_data, 'vosaline' , zsaldta(:,:,:,2), 12 )
+         CALL iom_close( inum )
 
-      sn0(:,:,:) = 0.5_wp * ( zsaldta(:,:,:,1) + zsaldta(:,:,:,2) )        
-      sn0(:,:,:) = sn0(:,:,:) * tmask(:,:,:)
-      IF( ln_zps ) THEN               ! z-coord. partial steps
-         DO jj = 1, jpj               ! interpolation of salinity at the last ocean level (i.e. the partial step)
-            DO ji = 1, jpi
-               ik = mbkt(ji,jj)
-               IF( ik > 1 ) THEN
-                  zztmp = ( gdept_1d(ik) - gdept_0(ji,jj,ik) ) / ( gdept_1d(ik) - gdept_1d(ik-1) )
-                  sn0(ji,jj,ik) = ( 1._wp - zztmp ) * sn0(ji,jj,ik) + zztmp * sn0(ji,jj,ik-1)
-               ENDIF
+         sn0(:,:,:) = 0.5_wp * ( zsaldta(:,:,:,1) + zsaldta(:,:,:,2) )        
+         sn0(:,:,:) = sn0(:,:,:) * tmask(:,:,:)
+         IF( ln_zps ) THEN               ! z-coord. partial steps
+            DO jj = 1, jpj               ! interpolation of salinity at the last ocean level (i.e. the partial step)
+               DO ji = 1, jpi
+                  ik = mbkt(ji,jj)
+                  IF( ik > 1 ) THEN
+                     zztmp = ( gdept_1d(ik) - gdept_0(ji,jj,ik) ) / ( gdept_1d(ik) - gdept_1d(ik-1) )
+                     sn0(ji,jj,ik) = ( 1._wp - zztmp ) * sn0(ji,jj,ik) + zztmp * sn0(ji,jj,ik-1)
+                  ENDIF
+               END DO
             END DO
-         END DO
+         ENDIF
       ENDIF
       !
       CALL wrk_dealloc( jpi, jpj, jpk, 2, zsaldta )

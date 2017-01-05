@@ -427,6 +427,8 @@ ln_useCT    = .false.  ! use of Conservative Temp. ==> surface CT converted in P
 !-----------------------------------------------------------------------
 &namptr       !   Poleward Transport Diagnostic
 !-----------------------------------------------------------------------
+   ln_diaptr  = .true.     !  Poleward heat and salt transport (T) or not (F)
+   ln_subbas  = .true.     !  Atlantic/Pacific/Indian basins computation (T) or not
 /
 !-----------------------------------------------------------------------
 &namhsb       !  Heat and salt budgets

@@ -41,7 +41,6 @@ MODULE diahsb
 
    PUBLIC   dia_hsb        ! routine called by step.F90
    PUBLIC   dia_hsb_init   ! routine called by nemogcm.F90
-   PUBLIC   dia_hsb_rst    ! routine called by step.F90
 
    LOGICAL, PUBLIC ::   ln_diahsb   !: check the heat and salt budgets
 
@@ -89,6 +88,7 @@ CONTAINS
       REAL(wp), DIMENSION(:,:), POINTER ::   z2d0, z2d1
       !!---------------------------------------------------------------------------
       IF( nn_timing == 1 )   CALL timing_start('dia_hsb')      
+      !
       CALL wrk_alloc( jpi,jpj,   z2d0, z2d1 )
       !
       tsn(:,:,:,1) = tsn(:,:,:,1) * tmask(:,:,:) ; tsb(:,:,:,1) = tsb(:,:,:,1) * tmask(:,:,:) ;
@@ -184,7 +184,9 @@ CONTAINS
             &                           * ( fse3t_n(:,:,jk) * tsn(:,:,jk,jp_sal) - sc_loc_ini(:,:,jk) ) )
       ENDDO
 
-      ! Substract forcing from heat content, salt content and volume variations
+      ! ------------------------ !
+      ! 3 -  Drifts              !
+      ! ------------------------ !
       zdiff_v1 = zdiff_v1 - frc_v
       IF( lk_vvl )   zdiff_v2 = zdiff_v2 - frc_v
       zdiff_hc = zdiff_hc - frc_t
@@ -197,7 +199,7 @@ CONTAINS
       ENDIF
 
       ! ----------------------- !
-      ! 3 - Diagnostics writing !
+      ! 4 - Diagnostics writing !
       ! ----------------------- !
       zvol_tot = 0._wp                    ! total ocean volume (calculated with scale factors)
       DO jk = 1, jpkm1
@@ -210,25 +212,29 @@ CONTAINS
 !      ENDIF
 !!gm end
 
+      CALL iom_put(   'bgfrcvol' , frc_v    * 1.e-9    )              ! vol - surface forcing (km3) 
+      CALL iom_put(   'bgfrctem' , frc_t    * rau0 * rcp * 1.e-20 )   ! hc  - surface forcing (1.e20 J) 
+      CALL iom_put(   'bgfrchfx' , frc_t    * rau0 * rcp /  &         ! hc  - surface forcing (W/m2) 
+         &                       ( surf_tot * kt * rdt )        )
+      CALL iom_put(   'bgfrcsal' , frc_s    * 1.e-9    )              ! sc  - surface forcing (psu*km3) 
+
       IF( lk_vvl ) THEN
-        CALL iom_put( 'bgtemper' , zdiff_hc / zvol_tot )              ! Temperature variation (C) 
-        CALL iom_put( 'bgsaline' , zdiff_sc / zvol_tot )              ! Salinity    variation (psu)
-        CALL iom_put( 'bgheatco' , zdiff_hc * 1.e-20 * rau0 * rcp )   ! Heat content variation (1.e20 J) 
-        CALL iom_put( 'bgsaltco' , zdiff_sc * 1.e-9    )              ! Salt content variation (psu*km3)
-        CALL iom_put( 'bgvolssh' , zdiff_v1 * 1.e-9    )              ! volume ssh variation (km3)  
-        CALL iom_put( 'bgvole3t' , zdiff_v2 * 1.e-9    )              ! volume e3t variation (km3)  
-        CALL iom_put( 'bgfrcvol' , frc_v    * 1.e-9    )              ! vol - surface forcing (km3) 
-        CALL iom_put( 'bgfrctem' , frc_t / zvol_tot    )              ! hc  - surface forcing (C) 
-        CALL iom_put( 'bgfrcsal' , frc_s / zvol_tot    )              ! sc  - surface forcing (psu) 
+        CALL iom_put( 'bgtemper' , zdiff_hc / zvol_tot )              ! Temperature drift     (C) 
+        CALL iom_put( 'bgsaline' , zdiff_sc / zvol_tot )              ! Salinity    drift     (pss)
+        CALL iom_put( 'bgheatco' , zdiff_hc * 1.e-20 * rau0 * rcp )   ! Heat content drift    (1.e20 J) 
+        CALL iom_put( 'bgheatfx' , zdiff_hc * rau0 * rcp /  &         ! Heat flux drift       (W/m2) 
+           &                       ( surf_tot * kt * rdt )        )
+        CALL iom_put( 'bgsaltco' , zdiff_sc * 1.e-9    )              ! Salt content drift    (psu*km3)
+        CALL iom_put( 'bgvolssh' , zdiff_v1 * 1.e-9    )              ! volume ssh drift      (km3)  
+        CALL iom_put( 'bgvole3t' , zdiff_v2 * 1.e-9    )              ! volume e3t drift      (km3)  
       ELSE
-        CALL iom_put( 'bgtemper' , zdiff_hc1 / zvol_tot)              ! Heat content variation (C) 
-        CALL iom_put( 'bgsaline' , zdiff_sc1 / zvol_tot)              ! Salt content variation (psu)
-        CALL iom_put( 'bgheatco' , zdiff_hc1 * 1.e-20 * rau0 * rcp )  ! Heat content variation (1.e20 J) 
-        CALL iom_put( 'bgsaltco' , zdiff_sc1 * 1.e-9    )             ! Salt content variation (psu*km3)
-        CALL iom_put( 'bgvolssh' , zdiff_v1 * 1.e-9    )              ! volume ssh variation (km3)  
-        CALL iom_put( 'bgfrcvol' , frc_v    * 1.e-9    )              ! vol - surface forcing (km3) 
-        CALL iom_put( 'bgfrctem' , frc_t / zvol_tot    )              ! hc  - surface forcing (C) 
-        CALL iom_put( 'bgfrcsal' , frc_s / zvol_tot    )              ! sc  - surface forcing (psu) 
+        CALL iom_put( 'bgtemper' , zdiff_hc1 / zvol_tot)              ! Heat content drift    (C) 
+        CALL iom_put( 'bgsaline' , zdiff_sc1 / zvol_tot)              ! Salt content drift    (pss)
+        CALL iom_put( 'bgheatco' , zdiff_hc1 * 1.e-20 * rau0 * rcp )  ! Heat content drift    (1.e20 J) 
+        CALL iom_put( 'bgheatfx' , zdiff_hc1 * rau0 * rcp /  &        ! Heat flux drift       (W/m2) 
+           &                       ( surf_tot * kt * rdt )         )
+        CALL iom_put( 'bgsaltco' , zdiff_sc1 * 1.e-9    )             ! Salt content drift    (psu*km3)
+        CALL iom_put( 'bgvolssh' , zdiff_v1 * 1.e-9    )              ! volume ssh drift      (km3)  
         CALL iom_put( 'bgmistem' , zerr_hc1 / zvol_tot )              ! hc  - error due to free surface (C)
         CALL iom_put( 'bgmissal' , zerr_sc1 / zvol_tot )              ! sc  - error due to free surface (psu)
       ENDIF
@@ -254,12 +260,10 @@ CONTAINS
      CHARACTER(len=*), INTENT(in) ::   cdrw   ! "READ"/"WRITE" flag
      !
      INTEGER ::   ji, jj, jk   ! dummy loop indices
-     INTEGER ::   id1          ! local integers
      !!----------------------------------------------------------------------
      !
      IF( TRIM(cdrw) == 'READ' ) THEN        ! Read/initialise 
         IF( ln_rstart ) THEN                   !* Read the restart file
-           !id1 = iom_varid( numror, 'frc_vol'  , ldstop = .FALSE. )
            !
            IF(lwp) WRITE(numout,*) '~~~~~~~'
            IF(lwp) WRITE(numout,*) ' dia_hsb_rst at it= ', kt,' date= ', ndastp
@@ -271,13 +275,13 @@ CONTAINS
               CALL iom_get( numror, 'frc_wn_t', frc_wn_t )
               CALL iom_get( numror, 'frc_wn_s', frc_wn_s )
            ENDIF
-           CALL iom_get( numror, jpdom_autoglo, 'ssh_ini', ssh_ini )
-           CALL iom_get( numror, jpdom_autoglo, 'e3t_ini', e3t_ini )
-           CALL iom_get( numror, jpdom_autoglo, 'hc_loc_ini', hc_loc_ini )
-           CALL iom_get( numror, jpdom_autoglo, 'sc_loc_ini', sc_loc_ini )
+           CALL iom_get( numror, jpdom_autoglo, 'ssh_ini', ssh_ini(:,:) )
+           CALL iom_get( numror, jpdom_autoglo, 'e3t_ini', e3t_ini(:,:,:) )
+           CALL iom_get( numror, jpdom_autoglo, 'hc_loc_ini', hc_loc_ini(:,:,:) )
+           CALL iom_get( numror, jpdom_autoglo, 'sc_loc_ini', sc_loc_ini(:,:,:) )
            IF( .NOT. lk_vvl ) THEN
-              CALL iom_get( numror, jpdom_autoglo, 'ssh_hc_loc_ini', ssh_hc_loc_ini )
-              CALL iom_get( numror, jpdom_autoglo, 'ssh_sc_loc_ini', ssh_sc_loc_ini )
+              CALL iom_get( numror, jpdom_autoglo, 'ssh_hc_loc_ini', ssh_hc_loc_ini(:,:) )
+              CALL iom_get( numror, jpdom_autoglo, 'ssh_sc_loc_ini', ssh_sc_loc_ini(:,:) )
            ENDIF
        ELSE
           IF(lwp) WRITE(numout,*) '~~~~~~~'
@@ -322,14 +326,15 @@ CONTAINS
            CALL iom_rstput( kt, nitrst, numrow, 'frc_wn_t', frc_wn_t )
            CALL iom_rstput( kt, nitrst, numrow, 'frc_wn_s', frc_wn_s )
         ENDIF
-        CALL iom_rstput( kt, nitrst, numrow, 'ssh_ini', ssh_ini )
-        CALL iom_rstput( kt, nitrst, numrow, 'e3t_ini', e3t_ini )
-        CALL iom_rstput( kt, nitrst, numrow, 'hc_loc_ini', hc_loc_ini )
-        CALL iom_rstput( kt, nitrst, numrow, 'sc_loc_ini', sc_loc_ini )
+        CALL iom_rstput( kt, nitrst, numrow, 'ssh_ini', ssh_ini(:,:) )
+        CALL iom_rstput( kt, nitrst, numrow, 'e3t_ini', e3t_ini(:,:,:) )
+        CALL iom_rstput( kt, nitrst, numrow, 'hc_loc_ini', hc_loc_ini(:,:,:) )
+        CALL iom_rstput( kt, nitrst, numrow, 'sc_loc_ini', sc_loc_ini(:,:,:) )
         IF( .NOT. lk_vvl ) THEN
-           CALL iom_rstput( kt, nitrst, numrow, 'ssh_hc_loc_ini', ssh_hc_loc_ini )
-           CALL iom_rstput( kt, nitrst, numrow, 'ssh_sc_loc_ini', ssh_sc_loc_ini )
+           CALL iom_rstput( kt, nitrst, numrow, 'ssh_hc_loc_ini', ssh_hc_loc_ini(:,:) )
+           CALL iom_rstput( kt, nitrst, numrow, 'ssh_sc_loc_ini', ssh_sc_loc_ini(:,:) )
         ENDIF
+
         !
      ENDIF
      !
@@ -348,18 +353,11 @@ CONTAINS
       !!             - Initialize forcing trends
       !!             - Compute coefficients for conversion
       !!---------------------------------------------------------------------------
-      INTEGER ::   jk       ! dummy loop indice
       INTEGER ::   ierror   ! local integer
       INTEGER ::   ios
       !
       NAMELIST/namhsb/ ln_diahsb
       !!----------------------------------------------------------------------
-
-      IF(lwp) THEN
-         WRITE(numout,*)
-         WRITE(numout,*) 'dia_hsb_init : check the heat and salt budgets'
-         WRITE(numout,*) '~~~~~~~~ '
-      ENDIF
 
       REWIND( numnam_ref )              ! Namelist namhsb in reference namelist
       READ  ( numnam_ref, namhsb, IOSTAT = ios, ERR = 901)
@@ -370,16 +368,13 @@ CONTAINS
 902   IF( ios /= 0 ) CALL ctl_nam ( ios , 'namhsb in configuration namelist', lwp )
       IF(lwm) WRITE ( numond, namhsb )
 
-      !
-      IF(lwp) THEN                   ! Control print
+      IF(lwp) THEN
          WRITE(numout,*)
-         WRITE(numout,*) 'dia_hsb_init : check the heat and salt budgets'
-         WRITE(numout,*) '~~~~~~~~~~~~'
-         WRITE(numout,*) '   Namelist namhsb : set hsb parameters'
-         WRITE(numout,*) '      Switch for hsb diagnostic (T) or not (F)  ln_diahsb  = ', ln_diahsb
-         WRITE(numout,*)
+         WRITE(numout,*) 'dia_hsb_init'
+         WRITE(numout,*) '~~~~~~~~ '
+         WRITE(numout,*) '  check the heat and salt budgets (T) or not (F)       ln_diahsb = ', ln_diahsb
       ENDIF
-
+      !
       IF( .NOT. ln_diahsb )   RETURN
          !      IF( .NOT. lk_mpp_rep ) &
          !        CALL ctl_stop (' Your global mpp_sum if performed in single precision - 64 bits -', &
@@ -392,21 +387,23 @@ CONTAINS
       ALLOCATE( hc_loc_ini(jpi,jpj,jpk), sc_loc_ini(jpi,jpj,jpk), &
          &      e3t_ini(jpi,jpj,jpk), surf(jpi,jpj),  ssh_ini(jpi,jpj), STAT=ierror )
       IF( ierror > 0 ) THEN
-         CALL ctl_stop( 'dia_hsb: unable to allocate hc_loc_ini' )   ;   RETURN
+         CALL ctl_stop( 'dia_hsb: unable to allocate hc_loc_ini' )
+         RETURN
       ENDIF
 
-      IF(.NOT. lk_vvl ) ALLOCATE( ssh_hc_loc_ini(jpi,jpj), ssh_sc_loc_ini(jpi,jpj),STAT=ierror )
-      IF( ierror > 0 ) THEN
-         CALL ctl_stop( 'dia_hsb: unable to allocate hc_loc_ini' )   ;   RETURN
+      IF( .NOT. lk_vvl ) THEN
+         ALLOCATE( ssh_hc_loc_ini(jpi,jpj), ssh_sc_loc_ini(jpi,jpj), STAT=ierror )
+         IF( ierror > 0 )   THEN
+            CALL ctl_stop( 'dia_hsb: unable to allocate hc_loc_ini' )
+            RETURN
+         ENDIF
       ENDIF
 
       ! ----------------------------------------------- !
       ! 2 - Time independant variables and file opening !
       ! ----------------------------------------------- !
-      IF(lwp) WRITE(numout,*) "dia_hsb: heat salt volume budgets activated"
-      IF(lwp) WRITE(numout,*) '~~~~~~~'
       surf(:,:) = e1t(:,:) * e2t(:,:) * tmask_i(:,:)      ! masked surface grid cell area
-      surf_tot  = glob_sum( surf(:,:) )                                       ! total ocean surface area
+      surf_tot  = glob_sum( surf(:,:) )                   ! total ocean surface area
 
       IF( lk_bdy ) CALL ctl_warn( 'dia_hsb does not take open boundary fluxes into account' )         
       !

@@ -228,6 +228,8 @@ CONTAINS
       ! automatic definitions of some of the xml attributs
       CALL set_xmlatt
 
+      CALL set_1point
+
       ! end file definition
       dtime%second = rdt
       CALL xios_set_timestep(dtime)
@@ -1566,8 +1568,23 @@ CONTAINS
       
       zz=REAL(narea,wp)
       CALL iom_set_domain_attr('scalarpoint', lonvalue=zz, latvalue=zz)
-      
+
    END SUBROUTINE set_scalar
+
+   SUBROUTINE set_1point
+      !!----------------------------------------------------------------------
+      !!                     ***  ROUTINE set_1point  ***
+      !!
+      !! ** Purpose :   define zoom grid for scalar fields
+      !!
+      !!----------------------------------------------------------------------
+      REAL(wp), DIMENSION(1)   ::   zz = 1.
+      INTEGER  :: ix, iy
+      !!----------------------------------------------------------------------
+      CALL dom_ngb( 180., 90., ix, iy, 'T' ) !  Nearest point to north pole should be ocean
+      CALL iom_set_domain_attr('1point', zoom_ibegin=ix, zoom_jbegin=iy)
+
+   END SUBROUTINE set_1point
 
 
    SUBROUTINE set_xmlatt

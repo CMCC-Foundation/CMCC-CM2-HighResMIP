@@ -25,6 +25,8 @@ MODULE traadv
    USE traadv_mle      ! ML eddy induced velocity  (tra_adv_mle    routine)
    USE cla             ! cross land advection      (cla_traadv     routine)
    USE ldftra_oce      ! lateral diffusion coefficient on tracers
+   USE trd_oce         ! trends: ocean variables
+   USE trdtra          ! trends manager: tracers 
    !
    USE in_out_manager  ! I/O manager
    USE iom             ! I/O module
@@ -78,6 +80,7 @@ CONTAINS
       !
       INTEGER ::   jk   ! dummy loop index
       REAL(wp), POINTER, DIMENSION(:,:,:) :: zun, zvn, zwn
+      REAL(wp), POINTER, DIMENSION(:,:,:) ::   ztrdt, ztrds   ! 3D workspace
       !!----------------------------------------------------------------------
       !
       IF( nn_timing == 1 )  CALL timing_start('tra_adv')
@@ -119,7 +122,12 @@ CONTAINS
       !
       IF( ln_diaptr )   CALL dia_ptr( zvn )                                     ! diagnose the effective MSF 
       !
-   
+      IF( l_trdtra )   THEN                    !* Save ta and sa trends
+         CALL wrk_alloc( jpi, jpj, jpk, ztrdt, ztrds )
+         ztrdt(:,:,:) = tsa(:,:,:,jp_tem)
+         ztrds(:,:,:) = tsa(:,:,:,jp_sal)
+      ENDIF
+      !
       SELECT CASE ( nadv )                            !==  compute advection trend and add it to general trend  ==!
       CASE ( 1 )   ;    CALL tra_adv_cen2   ( kt, nit000, 'TRA',         zun, zvn, zwn, tsb, tsn, tsa, jpts )   !  2nd order centered
       CASE ( 2 )   ;    CALL tra_adv_tvd    ( kt, nit000, 'TRA', r2dtra, zun, zvn, zwn, tsb, tsn, tsa, jpts )   !  TVD 
@@ -150,6 +158,15 @@ CONTAINS
             &          tab3d_2=tsa(:,:,:,jp_sal), clinfo2=       ' Sa: ', mask2=tmask, clinfo3='tra' )
       END SELECT
       !
+      IF( l_trdtra )   THEN                      ! save the advective trends for further diagnostics
+         DO jk = 1, jpkm1
+            ztrdt(:,:,jk) = tsa(:,:,jk,jp_tem) - ztrdt(:,:,jk)
+            ztrds(:,:,jk) = tsa(:,:,jk,jp_sal) - ztrds(:,:,jk)
+         END DO
+         CALL trd_tra( kt, 'TRA', jp_tem, jptra_totad, ztrdt )
+         CALL trd_tra( kt, 'TRA', jp_sal, jptra_totad, ztrds )
+         CALL wrk_dealloc( jpi, jpj, jpk, ztrdt, ztrds )
+      ENDIF
       !                                              ! print mean trends (used for debugging)
       IF(ln_ctl)   CALL prt_ctl( tab3d_1=tsa(:,:,:,jp_tem), clinfo1=' adv  - Ta: ', mask1=tmask,               &
          &                       tab3d_2=tsa(:,:,:,jp_sal), clinfo2=       ' Sa: ', mask2=tmask, clinfo3='tra' )

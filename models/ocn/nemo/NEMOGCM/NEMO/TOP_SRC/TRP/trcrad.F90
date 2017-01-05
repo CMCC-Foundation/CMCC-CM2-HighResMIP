@@ -27,7 +27,7 @@ MODULE trcrad
 #  include "top_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/TOP 3.3 , NEMO Consortium (2010)
-   !! $Id$ 
+   !! $Id$
    !! Software governed by the CeCILL licence (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
    
@@ -60,10 +60,11 @@ CONTAINS
          IF(lwp) WRITE(numout,*) '~~~~~~~ '
       ENDIF
 
+      IF( lk_age     )   CALL trc_rad_sms( kt, trb, trn, jp_age0 , jp_age1               )  ! AGE tracer
       IF( lk_cfc     )   CALL trc_rad_sms( kt, trb, trn, jp_cfc0 , jp_cfc1               )  ! CFC model
       IF( lk_c14b    )   CALL trc_rad_sms( kt, trb, trn, jp_c14b0, jp_c14b1              )  ! bomb C14
       IF( lk_pisces  )   CALL trc_rad_sms( kt, trb, trn, jp_pcs0 , jp_pcs1, cpreserv='Y' )  ! PISCES model
-      IF( lk_my_trc  )   CALL trc_rad_sms( kt, trb, trn, jp_myt0 , jp_myt1               )  ! MY_TRC model
+      IF( lk_my_trc  )   CALL trc_rad_sms( kt, trb, trn, jp_myt0 , jp_myt1, cpreserv='Y' )  ! MY_TRC model
 
       !
       IF(ln_ctl) THEN      ! print mean trends (used for debugging)

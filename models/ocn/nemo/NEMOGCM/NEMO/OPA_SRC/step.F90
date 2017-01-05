@@ -233,6 +233,7 @@ CONTAINS
       IF( lk_diadct  )      CALL dia_dct( kstp )         ! Transports
       IF( lk_diaar5  )      CALL dia_ar5( kstp )         ! ar5 diag
       IF( lk_diaharm )      CALL dia_harm( kstp )        ! Tidal harmonic analysis
+                            CALL dia_prod( kstp )        ! ocean model: product diagnostics
                             CALL dia_wri( kstp )         ! ocean model: outputs
       !
       IF( ln_crs     )      CALL crs_fld( kstp )         ! ocean model: online field coarsening & output
@@ -340,6 +341,8 @@ CONTAINS
                                CALL ssh_swp( kstp )         ! swap of sea surface height
       IF( lk_vvl           )   CALL dom_vvl_sf_swp( kstp )  ! swap of vertical scale factors
       !
+      IF( ln_diahsb        )   CALL dia_hsb( kstp )         ! - ML - global conservation diagnostics
+
       IF( lrst_oce         )   CALL rst_write( kstp )       ! write output ocean restart file
       IF( ln_sto_eos       )   CALL sto_rst_write( kstp )   ! write restart file for stochastic parameters
 
@@ -354,11 +357,7 @@ CONTAINS
                                CALL Agrif_Update_Dyn()      ! Update momentum
       ENDIF
 #endif
-      IF( ln_diahsb        )   CALL dia_hsb( kstp )         ! - ML - global conservation diagnostics
-      IF( lk_diaobs  )         CALL dia_obs( kstp )         ! obs-minus-model (assimilation) diagnostics (call after dynamics update)
-#if defined CCSMCOUPLED
-      IF( lrst_oce .AND. ln_diahsb )   CALL dia_hsb_rst( kstp, 'WRITE' )
-#endif
+      IF( lk_diaobs        )   CALL dia_obs( kstp )         ! obs-minus-model (assimilation) diagnostics (call after dynamics update)
       !>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
       ! Control
       !<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<

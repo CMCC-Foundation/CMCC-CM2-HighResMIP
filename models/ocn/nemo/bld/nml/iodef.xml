@@ -66,6 +66,9 @@
     
    <axis_definition>  
       <axis id="deptht"  long_name="Vertical T levels"  unit="m" positive="down" />
+      <axis id="deptht300" axis_ref="deptht" >
+         <zoom_axis begin="0" n="35" />
+      </axis>
       <axis id="depthu"  long_name="Vertical U levels"  unit="m" positive="down" />
       <axis id="depthv"  long_name="Vertical V levels"  unit="m" positive="down" />
       <axis id="depthw"  long_name="Vertical W levels"  unit="m" positive="down" />
@@ -74,6 +77,9 @@
       <axis id="ncatice" long_name="Ice category"       unit="1"                 />
       <axis id="iax_20C" long_name="20 degC isotherm"   unit="degC"              />
       <axis id="iax_28C" long_name="28 degC isotherm"   unit="degC"              />
+      <axis id="deptht_surface" axis_ref="deptht" >
+         <zoom_axis begin=" 0 " n=" 1 " />
+      </axis>
    </axis_definition> 
     
    <domain_definition src="./domain_def.xml"/>
@@ -144,23 +150,58 @@
          <domain domain_ref="EqT" />
        </grid>
         <!--  -->
-       <grid id="gznl_T_2D">
-         <domain domain_ref="ptr" />
+       <grid id="grid_znl_T_2D">
+         <domain id="gznl" />
        </grid>
         <!--  -->
-       <grid id="gznl_T_3D">
-         <domain domain_ref="ptr" />
+       <grid id="grid_znl_T_3D">
+         <domain id="gznl" />
          <axis id="deptht" />
        </grid>
         <!--  -->
-       <grid id="gznl_W_2D">
-         <domain domain_ref="ptr" />
-       </grid>
-        <!--  -->
-       <grid id="gznl_W_3D">
-         <domain domain_ref="ptr" />
+       <grid id="grid_znl_W_3D">
+         <domain id="gznl" />
          <axis id="depthw" />
        </grid>
+
+      <grid id="grid_ptr_T_2D">
+       <domain id="ptr" />
+      </grid>
+
+      <grid id="grid_ptr_T_3D">
+       <domain id="ptr" />
+         <axis id="deptht" />
+       </grid>
+
+      <grid id="grid_ptr_W_3D">
+       <domain id="ptr" />
+         <axis id="depthw" />
+      </grid>
+
+       <grid id="vert_sum">
+         <domain domain_ref="grid_T"/>
+         <scalar>
+            <reduce_axis operation="sum" />
+         </scalar>
+       </grid>
+
+       <grid id="zoom_300">
+         <domain domain_ref="grid_T" />
+         <axis axis_ref="deptht300"/>
+       </grid>
+
+       <grid id="zoom_300_sum">
+         <domain domain_ref="grid_T" />
+         <scalar>
+            <reduce_axis operation="sum" />
+         </scalar>
+       </grid>
+
+       <grid id="grid_T_surface_extract">
+         <domain domain_ref="grid_T" />
+         <axis   axis_ref="deptht_surface" />
+       </grid>
+
     </grid_definition>
 
   </context>

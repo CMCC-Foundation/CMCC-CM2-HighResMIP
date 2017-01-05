@@ -385,10 +385,7 @@ CONTAINS
          END DO
          !
          !                             ! "Poleward" diffusive heat or salt transports (T-S case only)
-         IF( cdtype == 'TRA' .AND. ln_diaptr ) THEN
-            IF( jn == jp_tem)   htr_ldf(:) = ptr_sj( zftv(:,:,:) )        ! 3.3  names
-            IF( jn == jp_sal)   str_ldf(:) = ptr_sj( zftv(:,:,:) )
-         ENDIF
+         IF( cdtype == 'TRA' .AND. ln_diaptr )  CALL dia_ptr_ohst_components( jn, 'ldf', zftv(:,:,:) )
 
          IF( iom_use("udiff_heattr") .OR. iom_use("vdiff_heattr") ) THEN
            !

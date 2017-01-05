@@ -43,8 +43,6 @@ MODULE p4zrem
    REAL(wp), PUBLIC ::  xsirem     !: remineralisation rate of POC 
    REAL(wp), PUBLIC ::  xsiremlab  !: fast remineralisation rate of POC 
    REAL(wp), PUBLIC ::  xsilab     !: fraction of labile biogenic silica 
-   REAL(wp), PUBLIC ::  oxymin     !: halk saturation constant for anoxia 
-
 
    REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   denitr     !: denitrification array
    REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   denitnh4   !: -    -    -    -   -
@@ -110,17 +108,6 @@ CONTAINS
                   zdepbac (ji,jj,jk) = zdepmin**0.683 * ztempbac(ji,jj)
                   zdepprod(ji,jj,jk) = zdepmin**0.273
                ENDIF
-            END DO
-         END DO
-      END DO
-
-      DO jk = 1, jpkm1
-         DO jj = 1, jpj
-            DO ji = 1, jpi
-               ! denitrification factor computed from O2 levels
-               nitrfac(ji,jj,jk) = MAX(  0.e0, 0.4 * ( 6.e-6  - trb(ji,jj,jk,jpoxy) )    &
-                  &                                / ( oxymin + trb(ji,jj,jk,jpoxy) )  )
-               nitrfac(ji,jj,jk) = MIN( 1., nitrfac(ji,jj,jk) )
             END DO
          END DO
       END DO
@@ -356,8 +343,7 @@ CONTAINS
       !! ** input   :   Namelist nampisrem
       !!
       !!----------------------------------------------------------------------
-      NAMELIST/nampisrem/ xremik, xremip, nitrif, xsirem, xsiremlab, xsilab,   &
-      &                   oxymin
+      NAMELIST/nampisrem/ xremik, xremip, nitrif, xsirem, xsiremlab, xsilab
       INTEGER :: ios                 ! Local integer output status for namelist read
 
       REWIND( numnatp_ref )              ! Namelist nampisrem in reference namelist : Pisces remineralization
@@ -379,10 +365,8 @@ CONTAINS
          WRITE(numout,*) '    fast remineralization rate of Si          xsiremlab =', xsiremlab
          WRITE(numout,*) '    fraction of labile biogenic silica        xsilab    =', xsilab
          WRITE(numout,*) '    NH4 nitrification rate                    nitrif    =', nitrif
-         WRITE(numout,*) '    halk saturation constant for anoxia       oxymin    =', oxymin
       ENDIF
       !
-      nitrfac (:,:,:) = 0._wp
       denitr  (:,:,:) = 0._wp
       denitnh4(:,:,:) = 0._wp
       !

@@ -37,7 +37,8 @@ MODULE trdtra
 
    REAL(wp) ::   r2dt   ! time-step, = 2 rdttra except at nit000 (=rdttra) if neuler=0
 
-   REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   trdtx, trdty, trdt   ! use to store the temperature trends
+   REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   trdtx, trdty, trdt  ! use to store the temperature trends
+   REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   avt_evd  ! store avt_evd to calculate EVD trend
 
    !! * Substitutions
 #  include "domzgr_substitute.h90"
@@ -54,7 +55,7 @@ CONTAINS
       !!---------------------------------------------------------------------
       !!                  ***  FUNCTION trd_tra_alloc  ***
       !!---------------------------------------------------------------------
-      ALLOCATE( trdtx(jpi,jpj,jpk) , trdty(jpi,jpj,jpk) , trdt(jpi,jpj,jpk) , STAT= trd_tra_alloc )
+      ALLOCATE( trdtx(jpi,jpj,jpk) , trdty(jpi,jpj,jpk) , trdt(jpi,jpj,jpk) , avt_evd(jpi,jpj,jpk), STAT= trd_tra_alloc )
       !
       IF( lk_mpp             )   CALL mpp_sum ( trd_tra_alloc )
       IF( trd_tra_alloc /= 0 )   CALL ctl_warn('trd_tra_alloc: failed to allocate arrays')
@@ -103,6 +104,7 @@ CONTAINS
             &  jptra_qsr )   ;   trdt(:,:,:) = ptrd(:,:,:) * tmask(:,:,:)
                                  ztrds(:,:,:) = 0._wp
                                  CALL trd_tra_mng( trdt, ztrds, ktrd, kt )
+         CASE( jptra_evd )   ;   avt_evd(:,:,:) = ptrd(:,:,:) * tmask(:,:,:)
          CASE DEFAULT                 ! other trends: masked trends
             trdt(:,:,:) = ptrd(:,:,:) * tmask(:,:,:)              ! mask & store
          END SELECT
@@ -127,7 +129,7 @@ CONTAINS
             zwt(:,:, 1 ) = 0._wp   ;   zws(:,:, 1 ) = 0._wp            ! vertical diffusive fluxes
             zwt(:,:,jpk) = 0._wp   ;   zws(:,:,jpk) = 0._wp
             DO jk = 2, jpk
-               zwt(:,:,jk) =   avt(:,:,jk) * ( tsa(:,:,jk-1,jp_tem) - tsa(:,:,jk,jp_tem) ) / fse3w(:,:,jk) * tmask(:,:,jk)
+               zwt(:,:,jk) = avt_k(:,:,jk) * ( tsa(:,:,jk-1,jp_tem) - tsa(:,:,jk,jp_tem) ) / fse3w(:,:,jk) * tmask(:,:,jk)
                zws(:,:,jk) = fsavs(:,:,jk) * ( tsa(:,:,jk-1,jp_sal) - tsa(:,:,jk,jp_sal) ) / fse3w(:,:,jk) * tmask(:,:,jk)
             END DO
             !
@@ -137,6 +139,20 @@ CONTAINS
                ztrds(:,:,jk) = ( zws(:,:,jk) - zws(:,:,jk+1) ) / fse3t(:,:,jk) 
             END DO
             CALL trd_tra_mng( ztrdt, ztrds, jptra_zdfp, kt )  
+            !
+            !                         ! Also calculate EVD trend at this point. 
+            zwt(:,:,:) = 0._wp   ;   zws(:,:,:) = 0._wp            ! vertical diffusive fluxes
+            DO jk = 2, jpk
+               zwt(:,:,jk) = avt_evd(:,:,jk) * ( tsa(:,:,jk-1,jp_tem) - tsa(:,:,jk,jp_tem) ) / fse3w(:,:,jk) * tmask(:,:,jk)
+               zws(:,:,jk) = avt_evd(:,:,jk) * ( tsa(:,:,jk-1,jp_sal) - tsa(:,:,jk,jp_sal) ) / fse3w(:,:,jk) * tmask(:,:,jk)
+            END DO
+            !
+            ztrdt(:,:,jpk) = 0._wp   ;   ztrds(:,:,jpk) = 0._wp
+            DO jk = 1, jpkm1
+               ztrdt(:,:,jk) = ( zwt(:,:,jk) - zwt(:,:,jk+1) ) / fse3t(:,:,jk)
+               ztrds(:,:,jk) = ( zws(:,:,jk) - zws(:,:,jk+1) ) / fse3t(:,:,jk) 
+            END DO
+            CALL trd_tra_mng( ztrdt, ztrds, jptra_evd, kt )  
             !
             CALL wrk_dealloc( jpi, jpj, jpk, zwt, zws, ztrdt )
             !
@@ -311,24 +327,30 @@ CONTAINS
                                   CALL iom_put( "strd_sad", z2dy )
                                   CALL wrk_dealloc( jpi, jpj, z2dx, z2dy )
                                ENDIF
+      CASE( jptra_totad  ) ;   CALL iom_put( "ttrd_totad" , ptrdx )        ! total   advection
+                               CALL iom_put( "strd_totad" , ptrdy )
       CASE( jptra_ldf  )   ;   CALL iom_put( "ttrd_ldf" , ptrdx )        ! lateral diffusion
                                CALL iom_put( "strd_ldf" , ptrdy )
       CASE( jptra_zdf  )   ;   CALL iom_put( "ttrd_zdf" , ptrdx )        ! vertical diffusion (including Kz contribution)
                                CALL iom_put( "strd_zdf" , ptrdy )
       CASE( jptra_zdfp )   ;   CALL iom_put( "ttrd_zdfp", ptrdx )        ! PURE vertical diffusion (no isoneutral contribution)
                                CALL iom_put( "strd_zdfp", ptrdy )
+      CASE( jptra_evd )    ;   CALL iom_put( "ttrd_evd", ptrdx )         ! EVD trend (convection)
+                               CALL iom_put( "strd_evd", ptrdy )
       CASE( jptra_dmp  )   ;   CALL iom_put( "ttrd_dmp" , ptrdx )        ! internal restoring (damping)
                                CALL iom_put( "strd_dmp" , ptrdy )
       CASE( jptra_bbl  )   ;   CALL iom_put( "ttrd_bbl" , ptrdx )        ! bottom boundary layer
                                CALL iom_put( "strd_bbl" , ptrdy )
       CASE( jptra_npc  )   ;   CALL iom_put( "ttrd_npc" , ptrdx )        ! static instability mixing
                                CALL iom_put( "strd_npc" , ptrdy )
-      CASE( jptra_nsr  )   ;   CALL iom_put( "ttrd_qns" , ptrdx )        ! surface forcing + runoff (ln_rnf=T)
-                               CALL iom_put( "strd_cdt" , ptrdy )
+      CASE( jptra_nsr  )   ;   CALL iom_put( "ttrd_qns" , ptrdx(:,:,1) )        ! surface forcing + runoff (ln_rnf=T)
+                               CALL iom_put( "strd_cdt" , ptrdy(:,:,1) )        ! output as 2D surface fields
       CASE( jptra_qsr  )   ;   CALL iom_put( "ttrd_qsr" , ptrdx )        ! penetrative solar radiat. (only on temperature)
       CASE( jptra_bbc  )   ;   CALL iom_put( "ttrd_bbc" , ptrdx )        ! geothermal heating   (only on temperature)
       CASE( jptra_atf  )   ;   CALL iom_put( "ttrd_atf" , ptrdx )        ! asselin time Filter
                                CALL iom_put( "strd_atf" , ptrdy )
+      CASE( jptra_tot  )   ;   CALL iom_put( "ttrd_tot" , ptrdx )        ! model total trend
+                               CALL iom_put( "strd_tot" , ptrdy )
       END SELECT
       !
    END SUBROUTINE trd_tra_iom

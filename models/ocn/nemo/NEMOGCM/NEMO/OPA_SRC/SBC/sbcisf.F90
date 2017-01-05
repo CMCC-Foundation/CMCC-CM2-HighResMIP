@@ -90,6 +90,9 @@ CONTAINS
     CHARACTER(LEN=256)           :: cnameis                     ! name of iceshelf file
     CHARACTER (LEN=32)           :: cvarLeff                    ! variable name for efficient Length scale
     INTEGER           ::   ios           ! Local integer output status for namelist read
+
+    REAL(wp), DIMENSION(:,:,:), POINTER :: zfwfisf3d, zqhcisf3d, zqlatisf3d
+    REAL(wp), DIMENSION(:,:  ), POINTER :: zqhcisf2d
       !
       !!---------------------------------------------------------------------
       NAMELIST/namsbc_isf/ nn_isfblk, rn_hisf_tbl, ln_divisf, ln_conserve, rn_gammat0, rn_gammas0, nn_gammablk, &
@@ -272,8 +275,8 @@ CONTAINS
          risf_tsc(:,:,jp_sal) = (1.0_wp-rdivisf) * fwfisf(:,:) * stbl(:,:) * r1_rau0
 
          ! output
-         IF( iom_use('qisf'  ) )   CALL iom_put('qisf'  , qisf)
-         IF( iom_use('fwfisf') )   CALL iom_put('fwfisf', fwfisf * stbl(:,:) / soce )
+         IF( iom_use('qlatisf' ) )   CALL iom_put('qlatisf', qisf)
+         IF( iom_use('fwfisf'  ) )   CALL iom_put('fwfisf' , fwfisf * stbl(:,:) / soce )
 
          ! if apply only on the trend and not as a volume flux (rdivisf = 0), fwfisf have to be set to 0 now
          fwfisf(:,:) = rdivisf * fwfisf(:,:)         
@@ -283,6 +286,41 @@ CONTAINS
          CALL lbc_lnk(risf_tsc(:,:,jp_sal),'T',1.)
          CALL lbc_lnk(fwfisf(:,:)   ,'T',1.)
          CALL lbc_lnk(qisf(:,:)     ,'T',1.)
+
+!=============================================================================================================================================
+         IF ( iom_use('fwfisf3d') .OR. iom_use('qlatisf3d') .OR. iom_use('qhcisf3d') .OR. iom_use('qhcisf')) THEN
+            CALL wrk_alloc( jpi,jpj,jpk, zfwfisf3d, zqhcisf3d, zqlatisf3d )
+            CALL wrk_alloc( jpi,jpj,     zqhcisf2d                        )
+
+            zfwfisf3d(:,:,:) = 0.0_wp                         ! 3d ice shelf melting (kg/m2/s)
+            zqhcisf3d(:,:,:) = 0.0_wp                         ! 3d heat content flux (W/m2)
+            zqlatisf3d(:,:,:)= 0.0_wp                         ! 3d ice shelf melting latent heat flux (W/m2)
+            zqhcisf2d(:,:)   = fwfisf(:,:) * zt_frz * rcp     ! 2d heat content flux (W/m2)
+
+            DO jj = 1,jpj
+               DO ji = 1,jpi
+                  ikt = misfkt(ji,jj)
+                  ikb = misfkb(ji,jj)
+                  DO jk = ikt, ikb - 1
+                     zfwfisf3d (ji,jj,jk) = zfwfisf3d (ji,jj,jk) + fwfisf   (ji,jj) * r1_hisf_tbl(ji,jj) * fse3t(ji,jj,jk)
+                     zqhcisf3d (ji,jj,jk) = zqhcisf3d (ji,jj,jk) + zqhcisf2d(ji,jj) * r1_hisf_tbl(ji,jj) * fse3t(ji,jj,jk)
+                     zqlatisf3d(ji,jj,jk) = zqlatisf3d(ji,jj,jk) + qisf     (ji,jj) * r1_hisf_tbl(ji,jj) * fse3t(ji,jj,jk)
+                  END DO
+                  zfwfisf3d (ji,jj,jk) = zfwfisf3d (ji,jj,jk) + fwfisf   (ji,jj) * r1_hisf_tbl(ji,jj) * ralpha(ji,jj) * fse3t(ji,jj,jk)
+                  zqhcisf3d (ji,jj,jk) = zqhcisf3d (ji,jj,jk) + zqhcisf2d(ji,jj) * r1_hisf_tbl(ji,jj) * ralpha(ji,jj) * fse3t(ji,jj,jk)
+                  zqlatisf3d(ji,jj,jk) = zqlatisf3d(ji,jj,jk) + qisf     (ji,jj) * r1_hisf_tbl(ji,jj) * ralpha(ji,jj) * fse3t(ji,jj,jk)
+               END DO
+            END DO
+
+            CALL iom_put('fwfisf3d' , zfwfisf3d (:,:,:))
+            CALL iom_put('qlatisf3d', zqlatisf3d(:,:,:))
+            CALL iom_put('qhcisf3d' , zqhcisf3d (:,:,:))
+            CALL iom_put('qhcisf'   , zqhcisf2d (:,:  ))
+
+            CALL wrk_dealloc( jpi,jpj,jpk, zfwfisf3d, zqhcisf3d, zqlatisf3d )
+            CALL wrk_dealloc( jpi,jpj,     zqhcisf2d                        )
+         END IF
+!=============================================================================================================================================
 
          IF( kt == nit000 ) THEN                          !   set the forcing field at nit000 - 1    !
             IF( ln_rstart .AND.    &                     ! Restart: read in restart file

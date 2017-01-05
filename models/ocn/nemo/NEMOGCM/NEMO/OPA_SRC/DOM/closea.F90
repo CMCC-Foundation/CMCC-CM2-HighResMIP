@@ -163,17 +163,28 @@ CONTAINS
             !                                        ! =======================
          CASE ( 025 )                                ! ORCA_R025 configuration
             !                                        ! =======================
-            isrow = 1207 - jpjglo                    !  eORCA025 R025 - Using full isf­extended
+            isrow = 1207 - jpjglo                    !  eORCA025 R025 - Using full isf­extended  
                                                      !  domain for reference. - Adjust j­indices
             ncsnr(1)   = 1    ; ncstt(1)   = 0               ! Caspian + Aral sea
             ncsi1(1)   = 1330 ; ncsj1(1)   = 831 - isrow
             ncsi2(1)   = 1400 ; ncsj2(1)   = 981 - isrow
             ncsir(1,1) = 1    ; ncsjr(1,1) = 1
-            !
-            ncsnr(2)   = 1    ; ncstt(2)   = 0               ! Azov Sea
+            !                                        
+            ncsnr(2)   = 1    ; ncstt(2)   = 0               ! Azov Sea 
             ncsi1(2)   = 1284 ; ncsj1(2)   = 908 - isrow
             ncsi2(2)   = 1304 ; ncsj2(2)   = 933 - isrow
             ncsir(2,1) = 1    ; ncsjr(2,1) = 1
+            !
+            ncsnr(3)   = 1    ; ncstt(3)   = 0               ! Great Lakes
+            ncsi1(3)   = 775  ; ncsj1(3)   = 866 - isrow
+            ncsi2(3)   = 848  ; ncsj2(3)   = 931 - isrow
+            ncsir(3,1) = 1    ; ncsjr(3,1) = 1
+            !   
+            ncsnr(4)   = 1    ; ncstt(4)   = 0               ! Lake Victoria
+            ncsi1(4)   = 1270 ; ncsj1(4)   = 661 - isrow
+            ncsi2(4)   = 1295 ; ncsj2(4)   = 696 - isrow
+            ncsir(4,1) = 1    ; ncsjr(4,1) = 1
+            !        
             !
          END SELECT
          !

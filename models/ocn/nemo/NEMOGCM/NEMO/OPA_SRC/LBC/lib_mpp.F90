@@ -2662,7 +2662,8 @@ CONTAINS
       INTEGER :: iflag
       !!----------------------------------------------------------------------
       !
-      ALLOCATE( ztab(jpiglo,4,num_fields), znorthloc(jpi,4,num_fields), zfoldwk(jpi,4,num_fields), znorthgloio(jpi,4,num_fields,jpni) )   ! expanded to 3 dimensions
+      ALLOCATE( ztab(jpiglo,4,num_fields), znorthloc(jpi,4,num_fields), zfoldwk(jpi,4,num_fields),   & 
+            &   znorthgloio(jpi,4,num_fields,jpni) )   ! expanded to 3 dimensions
       ALLOCATE( ztabl(jpi,4,num_fields), ztabr(jpi*jpmaxngh, 4,num_fields) )
       !
       ijpj   = 4

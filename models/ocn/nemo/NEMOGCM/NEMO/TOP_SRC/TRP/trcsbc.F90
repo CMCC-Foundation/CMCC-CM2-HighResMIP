@@ -101,7 +101,7 @@ CONTAINS
          IF(lwp) WRITE(numout,*) 'trc_sbc : Passive tracers surface boundary condition'
          IF(lwp) WRITE(numout,*) '~~~~~~~ '
 
-         IF( ln_rsttr .AND.    &                     ! Restart: read in restart  file
+         IF( ln_rsttr .AND. .NOT.ln_top_euler .AND.   &                     ! Restart: read in restart  file
             iom_varid( numrtr, 'sbc_'//TRIM(ctrcnm(1))//'_b', ldstop = .FALSE. ) > 0 ) THEN
             IF(lwp) WRITE(numout,*) '          nittrc000-nn_dttrc surface tracer content forcing fields red in the restart file'
             zfact = 0.5_wp
@@ -127,9 +127,9 @@ CONTAINS
       ! one only consider the concentration/dilution effect due to evaporation minus precipitation + freezing/melting of sea-ice
       ! Coupling offline : runoff are in emp which contains E-P-R
       !
-      IF( .NOT. lk_offline .AND. lk_vvl ) THEN  ! online coupling with vvl
+      IF( lk_vvl ) THEN                         ! linear free surface vvl
          zsfx(:,:) = 0._wp
-      ELSE                                      ! online coupling free surface or offline with free surface
+      ELSE                                      ! no vvl
          zsfx(:,:) = emp(:,:)
       ENDIF
 
@@ -189,7 +189,7 @@ CONTAINS
 
       !                                           Write in the tracer restar  file
       !                                          *******************************
-      IF( lrst_trc ) THEN
+      IF( lrst_trc .AND. .NOT.ln_top_euler ) THEN
          IF(lwp) WRITE(numout,*)
          IF(lwp) WRITE(numout,*) 'sbc : ocean surface tracer content forcing fields written in tracer restart file ',   &
             &                    'at it= ', kt,' date= ', ndastp

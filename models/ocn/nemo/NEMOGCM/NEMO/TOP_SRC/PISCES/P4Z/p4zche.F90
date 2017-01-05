@@ -30,48 +30,20 @@ MODULE p4zche
 
    REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   sio3eq   ! chemistry of Si
    REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   fekeq    ! chemistry of Fe
-   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:)   ::   chemc    ! Solubilities of O2 and CO2
+   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   chemc    ! Solubilities of O2 and CO2
    REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   chemo2   ! Solubilities of O2 and CO2
+   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   tempis   ! In situ temperature
 
    REAL(wp), PUBLIC ::   atcox  = 0.20946         ! units atm
 
    REAL(wp) ::   salchl = 1. / 1.80655    ! conversion factor for salinity --> chlorinity (Wooster et al. 1969)
    REAL(wp) ::   o2atm  = 1. / ( 1000. * 0.20946 )  
 
-   REAL(wp) ::   akcc1  = -171.9065       ! coeff. for apparent solubility equilibrium
-   REAL(wp) ::   akcc2  =   -0.077993     ! Millero et al. 1995 from Mucci 1983
-   REAL(wp) ::   akcc3  = 2839.319        
-   REAL(wp) ::   akcc4  =   71.595        
-   REAL(wp) ::   akcc5  =   -0.77712      
-   REAL(wp) ::   akcc6  =    0.00284263   
-   REAL(wp) ::   akcc7  =  178.34        
-   REAL(wp) ::   akcc8  =   -0.07711     
-   REAL(wp) ::   akcc9  =    0.0041249   
-
-   REAL(wp) ::   rgas   = 83.143         ! universal gas constants
+   REAL(wp) ::   rgas   = 83.14472       ! universal gas constants
    REAL(wp) ::   oxyco  = 1. / 22.4144   ! converts from liters of an ideal gas to moles
 
    REAL(wp) ::   bor1   = 0.00023        ! borat constants
    REAL(wp) ::   bor2   = 1. / 10.82
-
-   REAL(wp) ::   ca0    = -162.8301      ! WEISS & PRICE 1980, units mol/(kg atm)
-   REAL(wp) ::   ca1    =  218.2968
-   REAL(wp) ::   ca2    =   90.9241
-   REAL(wp) ::   ca3    =   -1.47696
-   REAL(wp) ::   ca4    =    0.025695
-   REAL(wp) ::   ca5    =   -0.025225
-   REAL(wp) ::   ca6    =    0.0049867
-
-   REAL(wp) ::   c10    = -3670.7        ! Coeff. for 1. dissoc. of carbonic acid (Edmond and Gieskes, 1970)   
-   REAL(wp) ::   c11    =    62.008     
-   REAL(wp) ::   c12    =    -9.7944    
-   REAL(wp) ::   c13    =     0.0118     
-   REAL(wp) ::   c14    =    -0.000116
-
-   REAL(wp) ::   c20    = -1394.7       ! coeff. for 2. dissoc. of carbonic acid (Millero, 1995)   
-   REAL(wp) ::   c21    =    -4.777   
-   REAL(wp) ::   c22    =     0.0184   
-   REAL(wp) ::   c23    =    -0.000118
 
    REAL(wp) ::   st1    =      0.14     ! constants for calculate concentrations for sulfate
    REAL(wp) ::   st2    =  1./96.062    !  (Morris & Riley 1966)
@@ -145,13 +117,29 @@ CONTAINS
       REAL(wp) ::   ztkel, zt   , zt2   , zsal  , zsal2 , zbuf1 , zbuf2
       REAL(wp) ::   ztgg , ztgg2, ztgg3 , ztgg4 , ztgg5
       REAL(wp) ::   zpres, ztc  , zcl   , zcpexp, zoxy  , zcpexp2
-      REAL(wp) ::   zsqrt, ztr  , zlogt , zcek1
-      REAL(wp) ::   zis  , zis2 , zsal15, zisqrt
+      REAL(wp) ::   zsqrt, ztr  , zlogt , zcek1, zc1, zplat
+      REAL(wp) ::   zis  , zis2 , zsal15, zisqrt, za1  , za2
       REAL(wp) ::   zckb , zck1 , zck2  , zckw  , zak1 , zak2  , zakb , zaksp0, zakw
       REAL(wp) ::   zst  , zft  , zcks  , zckf  , zaksp1
       !!---------------------------------------------------------------------
       !
       IF( nn_timing == 1 )  CALL timing_start('p4z_che')
+      !
+      ! Computations of chemical constants require in situ temperature
+      ! Here a quite simple formulation is used to convert 
+      ! potential temperature to in situ temperature. The errors is less than 
+      ! 0.04°C relative to an exact computation
+      ! ---------------------------------------------------------------------
+      DO jk = 1, jpk
+         DO jj = 1, jpj
+            DO ji = 1, jpi
+               zpres = fsdept(ji,jj,jk) / 1000.
+               za1 = 0.04 * ( 1.0 + 0.185 * tsn(ji,jj,jk,jp_tem) + 0.035 * (tsn(ji,jj,jk,jp_sal) - 35.0) )
+               za2 = 0.0075 * ( 1.0 - tsn(ji,jj,jk,jp_tem) / 30.0 )
+               tempis(ji,jj,jk) = tsn(ji,jj,jk,jp_tem) - za1 * zpres + za2 * zpres**2
+            END DO
+         END DO
+      END DO
       !
       ! CHEMICAL CONSTANTS - SURFACE LAYER
       ! ----------------------------------
@@ -160,7 +148,7 @@ CONTAINS
 !CDIR NOVERRCHK
          DO ji = 1, jpi
             !                             ! SET ABSOLUTE TEMPERATURE
-            ztkel = tsn(ji,jj,1,jp_tem) + 273.15
+            ztkel = tempis(ji,jj,1) + 273.15
             zt    = ztkel * 0.01
             zt2   = zt * zt
             zsal  = tsn(ji,jj,1,jp_sal) + ( 1.- tmask(ji,jj,1) ) * 35.
@@ -168,9 +156,12 @@ CONTAINS
             zlogt = LOG( zt )
             !                             ! LN(K0) OF SOLUBILITY OF CO2 (EQ. 12, WEISS, 1980)
             !                             !     AND FOR THE ATMOSPHERE FOR NON IDEAL GAS
-            zcek1 = ca0 + ca1 / zt + ca2 * zlogt + ca3 * zt2 + zsal * ( ca4 + ca5 * zt + ca6 * zt2 )
+            zcek1 = 9345.17/ztkel - 60.2409 + 23.3585 * LOG(zt) + zsal*(0.023517 - 0.00023656*ztkel    &
+            &       + 0.0047036e-4*ztkel**2)
             !                             ! SET SOLUBILITIES OF O2 AND CO2 
-            chemc(ji,jj) = EXP( zcek1 ) * 1.e-6 * rhop(ji,jj,1) / 1000.  ! mol/(L uatm)
+            chemc(ji,jj,1) = EXP( zcek1 ) * 1.e-6 * rhop(ji,jj,1) / 1000. ! mol/(kg uatm)
+            chemc(ji,jj,2) = -1636.75 + 12.0408*ztkel - 0.0327957*ztkel**2 + 0.0000316528*ztkel**3
+            chemc(ji,jj,3) = 57.7 - 0.118*ztkel
             !
          END DO
       END DO
@@ -183,10 +174,10 @@ CONTAINS
          DO jj = 1, jpj
 !CDIR NOVERRCHK
             DO ji = 1, jpi
-              ztkel = tsn(ji,jj,jk,jp_tem) + 273.15
+              ztkel = tempis(ji,jj,jk) + 273.15
               zsal  = tsn(ji,jj,jk,jp_sal) + ( 1.- tmask(ji,jj,jk) ) * 35.
               zsal2 = zsal * zsal
-              ztgg  = LOG( ( 298.15 - tsn(ji,jj,jk,jp_tem) ) / ztkel )  ! Set the GORDON & GARCIA scaled temperature
+              ztgg  = LOG( ( 298.15 - tempis(ji,jj,jk) ) / ztkel )  ! Set the GORDON & GARCIA scaled temperature
               ztgg2 = ztgg  * ztgg
               ztgg3 = ztgg2 * ztgg
               ztgg4 = ztgg3 * ztgg
@@ -209,11 +200,14 @@ CONTAINS
 !CDIR NOVERRCHK
             DO ji = 1, jpi
 
-               ! SET PRESSION
-               zpres   = 1.025e-1 * fsdept(ji,jj,jk)
+               ! SET PRESSION ACCORDING TO SAUNDER (1980)
+               zplat   = SIN ( ABS(gphit(ji,jj)*3.141592654/180.) )
+               zc1 = 5.92E-3 + zplat**2 * 5.25E-3
+               zpres = ((1-zc1)-SQRT(((1-zc1)**2)-(8.84E-6*fsdept(ji,jj,jk)))) / 4.42E-6
+               zpres = zpres / 10.0
 
                ! SET ABSOLUTE TEMPERATURE
-               ztkel   = tsn(ji,jj,jk,jp_tem) + 273.15
+               ztkel   = tempis(ji,jj,jk) + 273.15
                zsal    = tsn(ji,jj,jk,jp_sal) + ( 1.-tmask(ji,jj,jk) ) * 35.
                zsqrt  = SQRT( zsal )
                zsal15  = zsqrt * zsal
@@ -222,7 +216,7 @@ CONTAINS
                zis    = 19.924 * zsal / ( 1000.- 1.005 * zsal )
                zis2   = zis * zis
                zisqrt = SQRT( zis )
-               ztc     = tsn(ji,jj,jk,jp_tem) + ( 1.- tmask(ji,jj,jk) ) * 20.
+               ztc     = tempis(ji,jj,jk) + ( 1.- tmask(ji,jj,jk) ) * 20.
 
                ! CHLORINITY (WOOSTER ET AL., 1969)
                zcl     = zsal * salchl
@@ -255,8 +249,12 @@ CONTAINS
                &      * zlogt + 0.053105*zsqrt*ztkel
 
 
-               zck1    = c10 * ztr + c11 + c12 * zlogt + c13 * zsal + c14 * zsal * zsal
-               zck2    = c20 * ztr + c21 + c22 * zsal   + c23 * zsal**2
+               ! DISSOCIATION COEFFICIENT FOR CARBONATE ACCORDING TO 
+               ! MEHRBACH (1973) REFIT BY MILLERO (1995), seawater scale
+               zck1    = -1.0*(3633.86*ztr - 61.2172 + 9.6777*zlogt  &
+                  - 0.011555*zsal + 0.0001152*zsal*zsal)
+               zck2    = -1.0*(471.78*ztr + 25.9290 - 3.16967*zlogt      &
+                  - 0.01781*zsal + 0.0001122*zsal*zsal)
 
                ! PKW (H2O) (DICKSON AND RILEY, 1979)
                zckw = -13847.26*ztr + 148.9652 - 23.6521 * zlogt    & 
@@ -265,8 +263,9 @@ CONTAINS
 
                ! APPARENT SOLUBILITY PRODUCT K'SP OF CALCITE IN SEAWATER
                !       (S=27-43, T=2-25 DEG C) at pres =0 (atmos. pressure) (MUCCI 1983)
-               zaksp0  = akcc1 + akcc2 * ztkel + akcc3 * ztr + akcc4 * LOG10( ztkel )   &
-                  &   + ( akcc5 + akcc6 * ztkel + akcc7 * ztr ) * zsqrt + akcc8 * zsal + akcc9 * zsal15
+               zaksp0  = -171.9065 -0.077993*ztkel + 2839.319*ztr + 71.595*LOG10( ztkel )   &
+                  &      + (-0.77712 + 0.00284263*ztkel + 178.34*ztr) * zsqrt  &
+                  &      - 0.07711*zsal + 0.0041249*zsal15
 
                ! K1, K2 OF CARBONIC ACID, KB OF BORIC ACID, KW (H2O) (LIT.?)
                zak1    = 10**(zck1)
@@ -336,8 +335,8 @@ CONTAINS
       !!----------------------------------------------------------------------
       !!                     ***  ROUTINE p4z_che_alloc  ***
       !!----------------------------------------------------------------------
-      ALLOCATE( sio3eq(jpi,jpj,jpk), fekeq(jpi,jpj,jpk), chemc(jpi,jpj), chemo2(jpi,jpj,jpk),   &
-      &         STAT=p4z_che_alloc )
+      ALLOCATE( sio3eq(jpi,jpj,jpk), fekeq(jpi,jpj,jpk), chemc(jpi,jpj,3), chemo2(jpi,jpj,jpk),   &
+      &         tempis(jpi,jpj,jpk), STAT=p4z_che_alloc )
       !
       IF( p4z_che_alloc /= 0 )   CALL ctl_warn('p4z_che_alloc : failed to allocate arrays.')
       !

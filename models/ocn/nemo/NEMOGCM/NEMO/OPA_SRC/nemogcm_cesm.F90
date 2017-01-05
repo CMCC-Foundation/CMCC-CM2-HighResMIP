@@ -430,7 +430,6 @@ CONTAINS
 #endif
       !                                     ! Diagnostics
       IF( lk_floats     )   CALL     flo_init   ! drifting Floats
-      IF( lk_diaar5     )   CALL dia_ar5_init   ! ar5 diag
                             CALL dia_ptr_init   ! Poleward TRansports initialization
       IF( lk_diadct     )   CALL dia_dct_init   ! Sections tranports
                             CALL dia_hsb_init   ! heat content, salt content and volume budgets
@@ -586,13 +585,13 @@ CONTAINS
       IF( numnam_ice_cfg  /= -1 )   CLOSE( numnam_ice_cfg  )   ! ice configuration namelist
       IF( lwm.AND.numoni  /= -1 )   CLOSE( numoni          )   ! ice output namelist
       IF( numevo_ice      /= -1 )   CLOSE( numevo_ice      )   ! ice variables (temp. evolution)
-      IF( numout          /=  6 )   CLOSE( numout          )   ! standard model output file
+      IF( numout          /= -1 )   CLOSE( numout          )   ! standard model output file
       IF( numdct_vol      /= -1 )   CLOSE( numdct_vol      )   ! volume transports
       IF( numdct_heat     /= -1 )   CLOSE( numdct_heat     )   ! heat transports
       IF( numdct_salt     /= -1 )   CLOSE( numdct_salt     )   ! salt transports
 
       !
-      numout = 6                                     ! redefine numout in case it is used after this point...
+      !numout = 6                                     ! redefine numout in case it is used after this point...
       !
    END SUBROUTINE nemo_closefile
 

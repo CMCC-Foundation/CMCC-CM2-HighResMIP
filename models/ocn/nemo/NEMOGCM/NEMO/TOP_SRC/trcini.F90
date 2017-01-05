@@ -22,10 +22,10 @@ MODULE trcini
    USE trcini_cfc      ! CFC      initialisation
    USE trcini_pisces   ! PISCES   initialisation
    USE trcini_c14b     ! C14 bomb initialisation
+   USE trcini_age      ! AGE      initialisation
    USE trcini_my_trc   ! MY_TRC   initialisation
    USE trcdta          ! initialisation from files
    USE daymod          ! calendar manager
-   USE zpshde          ! partial step: hor. derivative   (zps_hde routine)
    USE prtctl_trc      ! Print control passive tracers (prt_ctl_trc_init routine)
    USE trcsub          ! variables to substep passive tracers
    USE lib_mpp         ! distribued memory computing library
@@ -41,7 +41,7 @@ MODULE trcini
 #  include "domzgr_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/TOP 4.0 , NEMO Consortium (2011)
-   !! $Id$ 
+   !! $Id$
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
 CONTAINS
@@ -96,9 +96,10 @@ CONTAINS
       areatot = glob_sum( cvol(:,:,:) )
 
       IF( lk_pisces  )       CALL trc_ini_pisces       ! PISCES  bio-model
-      IF( lk_cfc     )       CALL trc_ini_cfc          ! CFC     tracers
+      IF( lk_cfc     )       CALL trc_ini_cfc          ! CFC       tracers
       IF( lk_c14b    )       CALL trc_ini_c14b         ! C14 bomb  tracer
-      IF( lk_my_trc  )       CALL trc_ini_my_trc       ! MY_TRC  tracers
+      IF( lk_age     )       CALL trc_ini_age          ! AGE       tracer
+      IF( lk_my_trc  )       CALL trc_ini_my_trc       ! MY_TRC    tracers
 
       CALL trc_ice_ini                                 ! Tracers in sea ice
 
@@ -141,12 +142,6 @@ CONTAINS
       ENDIF
  
       tra(:,:,:,:) = 0._wp
-      IF( ln_zps .AND. .NOT. lk_c1d .AND. .NOT. ln_isfcav )   &              ! Partial steps: before horizontal gradient of passive
-        &    CALL zps_hde    ( nit000, jptra, trn, gtru, gtrv  )  ! Partial steps: before horizontal gradient
-      IF( ln_zps .AND. .NOT. lk_c1d .AND.       ln_isfcav )   &
-        &    CALL zps_hde_isf( nit000, jptra, trn, pgtu=gtru, pgtv=gtrv, pgtui=gtrui, pgtvi=gtrvi )       ! tracers at the bottom ocean level
-
-
       !
       IF( nn_dttrc /= 1 )        CALL trc_sub_ini      ! Initialize variables for substepping passive tracers
       !

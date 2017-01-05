@@ -90,7 +90,7 @@ CONTAINS
       IF( ln_tra_mxl .OR. ln_vor_trd )   CALL ctl_stop( 'ML tracer and Barotropic vorticity diags are still using old IOIPSL' )
 !!gm end
       !
-      IF( lk_vvl .AND. ( l_trdtra .OR. l_trddyn ) )  CALL ctl_stop( 'trend diagnostics with variable volume not validated' )
+!      IF( lk_vvl .AND. ( l_trdtra .OR. l_trddyn ) )  CALL ctl_stop( 'trend diagnostics with variable volume not validated' )
       
 !!gm  : Potential BUG : 3D output only for vector invariant form!  add a ctl_stop or code the flux form case
 !!gm  : bug/pb for vertical advection of tracer in vvl case: add T.dt[eta] in the output... 

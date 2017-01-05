@@ -43,6 +43,7 @@ MODULE p4zlim
    REAL(wp), PUBLIC ::  xksi2       !:  half saturation constant for Si/C 
    REAL(wp), PUBLIC ::  xkdoc       !:  2nd half-sat. of DOC remineralization  
    REAL(wp), PUBLIC ::  concbfe     !:  Fe half saturation for bacteria 
+   REAL(wp), PUBLIC ::  oxymin      !:  half saturation constant for anoxia
    REAL(wp), PUBLIC ::  qnfelim     !:  optimal Fe quota for nanophyto
    REAL(wp), PUBLIC ::  qdfelim     !:  optimal Fe quota for diatoms
    REAL(wp), PUBLIC ::  caco3r      !:  mean rainratio 
@@ -120,7 +121,7 @@ CONTAINS
                !
                zlim1    = xnanono3(ji,jj,jk) + xnanonh4(ji,jj,jk)
                zlim2    = trb(ji,jj,jk,jppo4) / ( trb(ji,jj,jk,jppo4) + concbnh4 )
-               zlim3    = trb(ji,jj,jk,jpfer) / ( concbfe + trb(ji,jj,jk,jpfer) )
+               zlim3    = biron(ji,jj,jk)     / ( concbfe + biron(ji,jj,jk) )
                zlim4    = trb(ji,jj,jk,jpdoc) / ( xkdoc   + trb(ji,jj,jk,jpdoc) )
                xlimbacl(ji,jj,jk) = MIN( zlim1, zlim2, zlim3 )
                xlimbac (ji,jj,jk) = MIN( zlim1, zlim2, zlim3 ) * zlim4
@@ -186,6 +187,16 @@ CONTAINS
          END DO
       END DO
       !
+      DO jk = 1, jpkm1
+         DO jj = 1, jpj
+            DO ji = 1, jpi
+               ! denitrification factor computed from O2 levels
+               nitrfac(ji,jj,jk) = MAX(  0.e0, 0.4 * ( 6.e-6  - trb(ji,jj,jk,jpoxy) )    &
+                  &                                / ( oxymin + trb(ji,jj,jk,jpoxy) )  )
+               nitrfac(ji,jj,jk) = MIN( 1., nitrfac(ji,jj,jk) )
+            END DO
+         END DO
+      END DO
       !
       IF( lk_iomput .AND. knt == nrdttrc ) THEN        ! save output diagnostics
         IF( iom_use( "xfracal" ) ) CALL iom_put( "xfracal", xfracal(:,:,:) * tmask(:,:,:) )  ! euphotic layer deptht
@@ -215,7 +226,7 @@ CONTAINS
 
       NAMELIST/nampislim/ concnno3, concdno3, concnnh4, concdnh4, concnfer, concdfer, concbfe,   &
          &                concbno3, concbnh4, xsizedia, xsizephy, xsizern, xsizerd,          & 
-         &                xksi1, xksi2, xkdoc, qnfelim, qdfelim, caco3r
+         &                xksi1, xksi2, xkdoc, qnfelim, qdfelim, caco3r, oxymin
       INTEGER :: ios                 ! Local integer output status for namelist read
 
       REWIND( numnatp_ref )              ! Namelist nampislim in reference namelist : Pisces nutrient limitation parameters
@@ -248,10 +259,13 @@ CONTAINS
          WRITE(numout,*) '    Minimum size criteria for diatoms        xsizedia  = ', xsizedia
          WRITE(numout,*) '    Minimum size criteria for nanophyto      xsizephy  = ', xsizephy
          WRITE(numout,*) '    Fe half saturation for bacteria          concbfe   = ', concbfe
+         WRITE(numout,*) '    halk saturation constant for anoxia       oxymin   =' , oxymin
          WRITE(numout,*) '    optimal Fe quota for nano.               qnfelim   = ', qnfelim
          WRITE(numout,*) '    Optimal Fe quota for diatoms             qdfelim   = ', qdfelim
       ENDIF
-
+      !
+      nitrfac (:,:,:) = 0._wp
+      !
    END SUBROUTINE p4z_lim_init
 
 #else
