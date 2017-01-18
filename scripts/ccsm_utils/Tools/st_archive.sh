@@ -375,7 +375,7 @@ done
 #copy back CESM pointers and link the required NetCDF files for next restart
 cp ${sta}/rest/${dname}/rpointer.* .
 ln -s ${sta}/rest/${dname}/${CASE}*.nc -t .
-cp --remove-destination ${sta}/rest/${dname}/${CASE}*.h0.*.nc .
+cp --remove-destination ${sta}/rest/${dname}/${CASE}*.h[0-6].*.nc .
 
 #if mv ${sta}/* ${DOUT_S_ROOT}; then
 #    rm -fr ${sta}
