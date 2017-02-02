@@ -22,6 +22,7 @@ MODULE p4zlys
    USE trc             !  passive tracers common variables 
    USE sms_pisces      !  PISCES Source Minus Sink variables
    USE prtctl_trc      !  print control for debugging
+   USE p4zche          !  Chemical model
    USE iom             !  I/O manager
 
    IMPLICIT NONE
@@ -59,51 +60,35 @@ CONTAINS
       !!---------------------------------------------------------------------
       !
       INTEGER, INTENT(in) ::   kt, knt ! ocean time step
-      INTEGER  ::   ji, jj, jk, jn
-      REAL(wp) ::   zalk, zdic, zph, zah2
-      REAL(wp) ::   zdispot, zfact, zcalcon, zalka, zaldi
+      INTEGER  ::   ji, jj, jk
+      REAL(wp) ::   zdispot, zfact, zcalcon
       REAL(wp) ::   zomegaca, zexcess, zexcess0
       CHARACTER (len=25) :: charout
-      REAL(wp), POINTER, DIMENSION(:,:,:) :: zco3, zco3sat, zcaldiss   
+      REAL(wp), POINTER, DIMENSION(:,:,:) :: zco3, zco3sat, zcaldiss, zhinit, zhi   
       !!---------------------------------------------------------------------
       !
       IF( nn_timing == 1 )  CALL timing_start('p4z_lys')
       !
-      CALL wrk_alloc( jpi, jpj, jpk, zco3, zco3sat, zcaldiss )
+      CALL wrk_alloc( jpi, jpj, jpk, zco3, zco3sat, zcaldiss, zhinit, zhi )
       !
       zco3    (:,:,:) = 0.
       zcaldiss(:,:,:) = 0.
+      zhinit(:,:,:)   = hi(:,:,:) * 1000. / ( rhop(:,:,:) + rtrn )
       !     -------------------------------------------
       !     COMPUTE [CO3--] and [H+] CONCENTRATIONS
       !     -------------------------------------------
-      
-      DO jn = 1, 5                               !  BEGIN OF ITERATION
-         !
-!CDIR NOVERRCHK
-         DO jk = 1, jpkm1
-!CDIR NOVERRCHK
-            DO jj = 1, jpj
-!CDIR NOVERRCHK
-               DO ji = 1, jpi
-                  zfact = rhop(ji,jj,jk) / 1000. + rtrn
-                  zph  = hi(ji,jj,jk) * tmask(ji,jj,jk) / zfact + ( 1.-tmask(ji,jj,jk) ) * 1.e-9 ! [H+]
-                  zdic  = trb(ji,jj,jk,jpdic) / zfact
-                  zalka = trb(ji,jj,jk,jptal) / zfact
-                  ! CALCULATE [ALK]([CO3--], [HCO3-])
-                  zalk  = zalka - ( akw3(ji,jj,jk) / zph - zph / ( aphscale(ji,jj,jk) + rtrn )  &
-                  &       + borat(ji,jj,jk) / ( 1. + zph / akb3(ji,jj,jk) ) )
-                  ! CALCULATE [H+] and [CO3--]
-                  zaldi = zdic - zalk
-                  zah2  = SQRT( zaldi * zaldi + 4.* ( zalk * ak23(ji,jj,jk) / ak13(ji,jj,jk) ) * ( zdic + zaldi ) )
-                  zah2  = 0.5 * ak13(ji,jj,jk) / zalk * ( zaldi + zah2 )
-                  !
-                  zco3(ji,jj,jk) = zalk / ( 2. + zah2 / ak23(ji,jj,jk) ) * zfact
-                  hi(ji,jj,jk)   = zah2 * zfact
-               END DO
+
+      CALL p4z_che_solve_hi( zhinit, zhi )
+
+      DO jk = 1, jpkm1
+         DO jj = 1, jpj
+            DO ji = 1, jpi
+               zco3(ji,jj,jk) = trb(ji,jj,jk,jpdic) * ak13(ji,jj,jk) * ak23(ji,jj,jk) / (zhi(ji,jj,jk)**2   &
+               &                + ak13(ji,jj,jk) * zhi(ji,jj,jk) + ak13(ji,jj,jk) * ak23(ji,jj,jk) + rtrn )
+               hi(ji,jj,jk)   = zhi(ji,jj,jk) * rhop(ji,jj,jk) / 1000.
             END DO
          END DO
-         !
-      END DO 
+      END DO
 
       !     ---------------------------------------------------------
       !        CALCULATE DEGREE OF CACO3 SATURATION AND CORRESPONDING
@@ -137,7 +122,6 @@ CONTAINS
               !  CHANGE OF [CO3--] , [ALK], PARTICULATE [CACO3],
               !       AND [SUM(CO2)] DUE TO CACO3 DISSOLUTION/PRECIPITATION
               zcaldiss(ji,jj,jk)  = zdispot * rfact2 / rmtss ! calcite dissolution
-              zco3(ji,jj,jk)      = zco3(ji,jj,jk) + zcaldiss(ji,jj,jk)
               !
               tra(ji,jj,jk,jptal) = tra(ji,jj,jk,jptal) + 2. * zcaldiss(ji,jj,jk)
               tra(ji,jj,jk,jpcal) = tra(ji,jj,jk,jpcal) -      zcaldiss(ji,jj,jk)
@@ -166,7 +150,7 @@ CONTAINS
         CALL prt_ctl_trc(tab4d=tra, mask=tmask, clinfo=ctrcnm)
       ENDIF
       !
-      CALL wrk_dealloc( jpi, jpj, jpk, zco3, zco3sat, zcaldiss )
+      CALL wrk_dealloc( jpi, jpj, jpk, zco3, zcaldiss, zhinit, zhi, zco3sat )
       !
       IF( nn_timing == 1 )  CALL timing_stop('p4z_lys')
       !
@@ -185,11 +169,7 @@ CONTAINS
       !! ** input   :   Namelist nampiscal
       !!
       !!----------------------------------------------------------------------
-      INTEGER  ::  ji, jj, jk
       INTEGER  ::  ios                 ! Local integer output status for namelist read
-      REAL(wp) ::  zcaralk, zbicarb, zco3
-      REAL(wp) ::  ztmas, ztmas1
-
       NAMELIST/nampiscal/ kdca, nca
       !!----------------------------------------------------------------------
 

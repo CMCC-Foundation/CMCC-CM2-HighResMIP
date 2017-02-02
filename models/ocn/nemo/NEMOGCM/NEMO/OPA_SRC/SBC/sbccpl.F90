@@ -42,6 +42,7 @@ MODULE sbccpl
    USE lbclnk          ! ocean lateral boundary conditions (or mpp link)
    USE eosbn2
    USE sbcrnf   , ONLY : l_rnfcpl
+   USE sbcisf   , ONLY : l_isfcpl
 #if defined key_cpl_carbon_cycle && defined key_pisces
    USE p4zflx, ONLY : oce_co2
 #endif
@@ -104,7 +105,9 @@ MODULE sbccpl
    INTEGER, PARAMETER ::   jpr_fice   = 40            ! ice fraction          
    INTEGER, PARAMETER ::   jpr_e3t1st = 41            ! first T level thickness 
    INTEGER, PARAMETER ::   jpr_fraqsr = 42            ! fraction of solar net radiation absorbed in the first ocean level
-   INTEGER, PARAMETER ::   jprcv      = 42            ! total number of fields received
+   INTEGER, PARAMETER ::   jpr_isf    = 43
+   INTEGER, PARAMETER ::   jpr_icb    = 44
+   INTEGER, PARAMETER ::   jprcv      = 44            ! total number of fields received
 
    INTEGER, PARAMETER ::   jps_fice   =  1            ! ice fraction sent to the atmosphere
    INTEGER, PARAMETER ::   jps_toce   =  2            ! ocean temperature
@@ -148,7 +151,7 @@ MODULE sbccpl
    TYPE(FLD_C) ::   sn_snd_temp, sn_snd_alb, sn_snd_thick, sn_snd_crt, sn_snd_co2                        
    ! Received from the atmosphere                     !
    TYPE(FLD_C) ::   sn_rcv_w10m, sn_rcv_taumod, sn_rcv_tau, sn_rcv_dqnsdt, sn_rcv_qsr, sn_rcv_qns, sn_rcv_emp, sn_rcv_rnf
-   TYPE(FLD_C) ::   sn_rcv_cal, sn_rcv_iceflx, sn_rcv_co2                        
+   TYPE(FLD_C) ::   sn_rcv_cal, sn_rcv_iceflx, sn_rcv_co2, sn_rcv_icb, sn_rcv_isf                               
    ! Other namelist parameters                        !
    INTEGER     ::   nn_cplmodel            ! Maximum number of models to/from which NEMO is potentialy sending/receiving data
    LOGICAL     ::   ln_usecplmask          !  use a coupling mask file to merge data received from several models
@@ -218,7 +221,7 @@ CONTAINS
       NAMELIST/namsbc_cpl/  sn_snd_temp, sn_snd_alb   , sn_snd_thick, sn_snd_crt   , sn_snd_co2,      &
          &                  sn_rcv_w10m, sn_rcv_taumod, sn_rcv_tau  , sn_rcv_dqnsdt, sn_rcv_qsr,      &
          &                  sn_rcv_qns , sn_rcv_emp   , sn_rcv_rnf  , sn_rcv_cal   , sn_rcv_iceflx,   &
-         &                  sn_rcv_co2 , nn_cplmodel  , ln_usecplmask
+         &                  sn_rcv_co2 , sn_rcv_icb , sn_rcv_isf, nn_cplmodel  , ln_usecplmask
       !!---------------------------------------------------------------------
       !
       IF( nn_timing == 1 )  CALL timing_start('sbc_cpl_init')
@@ -257,6 +260,8 @@ CONTAINS
          WRITE(numout,*)'      freshwater budget               = ', TRIM(sn_rcv_emp%cldes   ), ' (', TRIM(sn_rcv_emp%clcat   ), ')'
          WRITE(numout,*)'      runoffs                         = ', TRIM(sn_rcv_rnf%cldes   ), ' (', TRIM(sn_rcv_rnf%clcat   ), ')'
          WRITE(numout,*)'      calving                         = ', TRIM(sn_rcv_cal%cldes   ), ' (', TRIM(sn_rcv_cal%clcat   ), ')'
+         WRITE(numout,*)'      iceberg                         = ', TRIM(sn_rcv_icb%cldes   ), ' (', TRIM(sn_rcv_icb%clcat   ), ')'
+         WRITE(numout,*)'      ice shelf                       = ', TRIM(sn_rcv_isf%cldes   ), ' (', TRIM(sn_rcv_isf%clcat   ), ')'
          WRITE(numout,*)'      sea ice heat fluxes             = ', TRIM(sn_rcv_iceflx%cldes), ' (', TRIM(sn_rcv_iceflx%clcat), ')'
          WRITE(numout,*)'      atm co2                         = ', TRIM(sn_rcv_co2%cldes   ), ' (', TRIM(sn_rcv_co2%clcat   ), ')'
          WRITE(numout,*)'  sent fields (multiple ice categories)'
@@ -396,9 +401,10 @@ CONTAINS
       CASE default              ;   CALL ctl_stop( 'sbc_cpl_init: wrong definition of sn_rcv_emp%cldes' )
       END SELECT
 
-      !                                                      ! ------------------------- !
-      !                                                      !     Runoffs & Calving     !   
-      !                                                      ! ------------------------- !
+
+      !                                                      ! ---------------------------------------------------- !
+      !                                                      !     Runoffs, Calving, Iceberg, Iceshelf cavities     !   
+      !                                                      ! ---------------------------------------------------- !
       srcv(jpr_rnf   )%clname = 'O_Runoff'
       IF( TRIM( sn_rcv_rnf%cldes ) == 'coupled' ) THEN
          srcv(jpr_rnf)%laction = .TRUE.
@@ -408,7 +414,15 @@ CONTAINS
          IF(lwp) WRITE(numout,*) '   runoffs received from oasis -> force ln_rnf = ', ln_rnf
       ENDIF
       !
-      srcv(jpr_cal   )%clname = 'OCalving'   ;   IF( TRIM( sn_rcv_cal%cldes ) == 'coupled' )   srcv(jpr_cal)%laction = .TRUE.
+      srcv(jpr_cal)%clname = 'OCalving'   ;  IF( TRIM( sn_rcv_cal%cldes) == 'coupled' )   srcv(jpr_cal)%laction = .TRUE.
+      srcv(jpr_isf)%clname = 'OIcshelf'   ;  IF( TRIM( sn_rcv_isf%cldes) == 'coupled' )   srcv(jpr_isf)%laction = .TRUE.
+      srcv(jpr_icb)%clname = 'OIceberg'   ;  IF( TRIM( sn_rcv_icb%cldes) == 'coupled' )   srcv(jpr_icb)%laction = .TRUE.
+
+      IF( srcv(jpr_isf)%laction .AND. nn_isf > 0 ) THEN
+         l_isfcpl             = .TRUE.                      ! -> no need to read isf in sbcisf
+         IF(lwp) WRITE(numout,*)
+         IF(lwp) WRITE(numout,*) '   iceshelf received from oasis '
+      ENDIF
 
       !                                                      ! ------------------------- !
       !                                                      !    non solar radiation    !   Qns
@@ -1070,9 +1084,16 @@ CONTAINS
             zemp(:,:) = 0._wp
          ENDIF
          !
+         !   
          !                                                        ! runoffs and calving (added in emp)
-         IF( srcv(jpr_rnf)%laction )     rnf(:,:) = frcv(jpr_rnf)%z3(:,:,1)
+         IF( srcv(jpr_rnf)%laction )     rnf(:,:)  = frcv(jpr_rnf)%z3(:,:,1)
          IF( srcv(jpr_cal)%laction )     zemp(:,:) = zemp(:,:) - frcv(jpr_cal)%z3(:,:,1)
+
+         IF( srcv(jpr_icb)%laction )  THEN 
+             fwficb(:,:) = frcv(jpr_icb)%z3(:,:,1)
+             rnf(:,:)    = rnf(:,:) + fwficb(:,:)   ! iceberg added to runfofs
+         ENDIF
+         IF( srcv(jpr_isf)%laction )  fwfisf(:,:) = - frcv(jpr_isf)%z3(:,:,1)  ! fresh water flux from the isf (fwfisf <0 mean melting)  
          
          IF( ln_mixcpl ) THEN   ;   emp(:,:) = emp(:,:) * xcplmask(:,:,0) + zemp(:,:) * zmsk(:,:)
          ELSE                   ;   emp(:,:) =                              zemp(:,:)
@@ -1090,6 +1111,9 @@ CONTAINS
                zqns(:,:) = zqns(:,:) - frcv(jpr_snow)%z3(:,:,1) * lfus    ! energy for melting solid precipitation over the free ocean
             ENDIF
          ENDIF
+         !
+         IF( srcv(jpr_icb)%laction )  zqns(:,:) = zqns(:,:) - frcv(jpr_icb)%z3(:,:,1) * lfus ! remove heat content associated to iceberg melting
+         !
          IF( ln_mixcpl ) THEN   ;   qns(:,:) = qns(:,:) * xcplmask(:,:,0) + zqns(:,:) * zmsk(:,:)
          ELSE                   ;   qns(:,:) =                              zqns(:,:)
          ENDIF
@@ -1467,6 +1491,17 @@ CONTAINS
          CALL iom_put( 'calving_cea', frcv(jpr_cal)%z3(:,:,1) )
       ENDIF
 
+      IF( srcv(jpr_icb)%laction )  THEN 
+         fwficb(:,:) = frcv(jpr_icb)%z3(:,:,1)
+         rnf(:,:)    = rnf(:,:) + fwficb(:,:)   ! iceberg added to runoffs
+         CALL iom_put( 'iceberg_cea', frcv(jpr_icb)%z3(:,:,1) )
+      ENDIF
+      IF( srcv(jpr_isf)%laction )  THEN
+        fwfisf(:,:) = - frcv(jpr_isf)%z3(:,:,1)  ! fresh water flux from the isf (fwfisf <0 mean melting)  
+        CALL iom_put( 'iceshelf_cea', frcv(jpr_isf)%z3(:,:,1) )
+      ENDIF
+
+
       IF( ln_mixcpl ) THEN
          emp_tot(:,:) = emp_tot(:,:) * xcplmask(:,:,0) + zemp_tot(:,:) * zmsk(:,:)
          emp_ice(:,:) = emp_ice(:,:) * xcplmask(:,:,0) + zemp_ice(:,:) * zmsk(:,:)
@@ -1502,6 +1537,18 @@ CONTAINS
          zemp_tot(:,:) = zemp_tot(:,:) - frcv(jpr_cal)%z3(:,:,1)
          CALL iom_put( 'calving_cea', frcv(jpr_cal)%z3(:,:,1) )
       ENDIF
+
+
+      IF( srcv(jpr_icb)%laction )  THEN 
+         fwficb(:,:) = frcv(jpr_icb)%z3(:,:,1)
+         rnf(:,:)    = rnf(:,:) + fwficb(:,:)   ! iceberg added to runoffs
+         CALL iom_put( 'iceberg_cea', frcv(jpr_icb)%z3(:,:,1) )
+      ENDIF
+      IF( srcv(jpr_isf)%laction )  THEN
+        fwfisf(:,:) = - frcv(jpr_isf)%z3(:,:,1)  ! fresh water flux from the isf (fwfisf <0 mean melting)  
+        CALL iom_put( 'iceshelf_cea', frcv(jpr_isf)%z3(:,:,1) )
+      ENDIF
+
 
       IF( ln_mixcpl ) THEN
          emp_tot(:,:) = emp_tot(:,:) * xcplmask(:,:,0) + zemp_tot(:,:) * zmsk(:,:)
@@ -1569,6 +1616,13 @@ CONTAINS
                                                                          ! we suppose it melts at 0deg, though it should be temp. of surrounding ocean
          IF( iom_use('hflx_cal_cea') )   CALL iom_put( 'hflx_cal_cea', - frcv(jpr_cal)%z3(:,:,1) * lfus )   ! heat flux from calving
       ENDIF
+
+!!chris     
+!!    The heat content associated to the ice shelf in removed in the routine sbcisf.F90
+      !
+      IF( srcv(jpr_icb)%laction )  zqns_tot(:,:) = zqns_tot(:,:) - frcv(jpr_icb)%z3(:,:,1) * lfus ! remove heat content associated to iceberg melting
+      !
+!!      !
 
 #if defined key_lim3      
       ! --- non solar flux over ocean --- !

@@ -26,6 +26,7 @@ MODULE traadv_tvd
    USE trdtra         ! tracers trends
    USE dynspg_oce     ! choice/control of key cpp for surface pressure gradient
    USE diaptr         ! poleward transport diagnostics
+   USE phycst
    !
    USE lib_mpp        ! MPP library
    USE lbclnk         ! ocean lateral boundary condition (or mpp link) 
@@ -99,11 +100,12 @@ CONTAINS
          IF(lwp) WRITE(numout,*) 'tra_adv_tvd : TVD advection scheme on ', cdtype
          IF(lwp) WRITE(numout,*) '~~~~~~~~~~~'
          !
-         l_trd = .FALSE.
-         l_trans = .FALSE.
-         IF( ( cdtype == 'TRA' .AND. l_trdtra ) .OR. ( cdtype == 'TRC' .AND. l_trdtrc ) ) l_trd = .TRUE.
-         IF( cdtype == 'TRA' .AND. (iom_use("uadv_heattr") .OR. iom_use("vadv_heattr") ) ) l_trans = .TRUE.
       ENDIF
+
+      l_trd = .FALSE.
+      l_trans = .FALSE.
+      IF( ( cdtype == 'TRA' .AND. l_trdtra ) .OR. ( cdtype == 'TRC' .AND. l_trdtrc ) ) l_trd = .TRUE.
+      IF( cdtype == 'TRA' .AND. (iom_use("uadv_heattr") .OR. iom_use("vadv_heattr") ) ) l_trans = .TRUE.
       !
       IF( l_trd .OR. l_trans )  THEN
          CALL wrk_alloc( jpi, jpj, jpk, ztrdx, ztrdy, ztrdz )

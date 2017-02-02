@@ -54,6 +54,8 @@ MODULE sbcisf
    REAL(wp)   , PUBLIC, ALLOCATABLE, SAVE, DIMENSION (:,:)     ::  ttbl, stbl, utbl, vtbl !:top boundary layer variable at T point
    INTEGER,    PUBLIC, ALLOCATABLE, SAVE, DIMENSION (:,:)     ::  misfkt, misfkb         !:Level of ice shelf base
 
+   LOGICAL, PUBLIC ::   l_isfcpl = .false.       ! isf recieved from oasis
+
 
    REAL(wp), PUBLIC, SAVE ::   rcpi   = 2000.0_wp     ! phycst ?
    REAL(wp), PUBLIC, SAVE ::   kappa  = 1.54e-6_wp    ! phycst ?
@@ -93,6 +95,8 @@ CONTAINS
 
     REAL(wp), DIMENSION(:,:,:), POINTER :: zfwfisf3d, zqhcisf3d, zqlatisf3d
     REAL(wp), DIMENSION(:,:  ), POINTER :: zqhcisf2d
+    REAL(wp)                            :: zhisf
+
       !
       !!---------------------------------------------------------------------
       NAMELIST/namsbc_isf/ nn_isfblk, rn_hisf_tbl, ln_divisf, ln_conserve, rn_gammat0, rn_gammas0, nn_gammablk, &
@@ -141,9 +145,11 @@ CONTAINS
             rhisf_tbl(:,:) = rn_hisf_tbl
             misfkt(:,:)    = mikt(:,:)         ! same indice for bg03 et cav => used in isfdiv
          ELSE IF ((nn_isf == 3) .OR. (nn_isf == 2)) THEN
-            ALLOCATE( sf_rnfisf(1), STAT=ierror )
-            ALLOCATE( sf_rnfisf(1)%fnow(jpi,jpj,1), sf_rnfisf(1)%fdta(jpi,jpj,1,2) )
-            CALL fld_fill( sf_rnfisf, (/ sn_rnfisf /), cn_dirisf, 'sbc_isf_init', 'read fresh water flux isf data', 'namsbc_isf' )
+            IF( .NOT.l_isfcpl ) THEN
+               ALLOCATE( sf_rnfisf(1), STAT=ierror )
+               ALLOCATE( sf_rnfisf(1)%fnow(jpi,jpj,1), sf_rnfisf(1)%fdta(jpi,jpj,1,2) )
+               CALL fld_fill( sf_rnfisf, (/ sn_rnfisf /), cn_dirisf, 'sbc_isf_init', 'read fresh water flux isf data', 'namsbc_isf' )
+             ENDIF
 
             !: read effective lenght (BG03)
             IF (nn_isf == 2) THEN
@@ -184,11 +190,13 @@ CONTAINS
             misfkt(:,:)    = mikt(:,:)         ! same indice for bg03 et cav => used in isfdiv
             
             ! load variable used in fldread (use for temporal interpolation of isf fwf forcing)
-            ALLOCATE( sf_fwfisf(1), sf_qisf(1), STAT=ierror )
-            ALLOCATE( sf_fwfisf(1)%fnow(jpi,jpj,1), sf_fwfisf(1)%fdta(jpi,jpj,1,2) )
-            ALLOCATE( sf_qisf(1)%fnow(jpi,jpj,1), sf_qisf(1)%fdta(jpi,jpj,1,2) )
-            CALL fld_fill( sf_fwfisf, (/ sn_fwfisf /), cn_dirisf, 'sbc_isf_init', 'read fresh water flux isf data', 'namsbc_isf' )
-            !CALL fld_fill( sf_qisf  , (/ sn_qisf   /), cn_dirisf, 'sbc_isf_init', 'read heat flux isf data'       , 'namsbc_isf' )
+            IF( .NOT.l_isfcpl ) THEN
+               ALLOCATE( sf_fwfisf(1), sf_qisf(1), STAT=ierror )
+               ALLOCATE( sf_fwfisf(1)%fnow(jpi,jpj,1), sf_fwfisf(1)%fdta(jpi,jpj,1,2) )
+               ALLOCATE( sf_qisf(1)%fnow(jpi,jpj,1), sf_qisf(1)%fdta(jpi,jpj,1,2) )
+               CALL fld_fill( sf_fwfisf, (/ sn_fwfisf /), cn_dirisf, 'sbc_isf_init', 'read fresh water flux isf data', 'namsbc_isf' )
+               !CALL fld_fill( sf_qisf  , (/ sn_qisf   /), cn_dirisf, 'sbc_isf_init', 'read heat flux isf data'       , 'namsbc_isf' )
+            ENDIF
          END IF
          
          ! save initial top boundary layer thickness         
@@ -241,7 +249,9 @@ CONTAINS
             CALL iom_put('utbl',utbl(:,:))
             CALL iom_put('vtbl',vtbl(:,:))
             ! compute fwf and heat flux
-            CALL sbc_isf_cav (kt)
+            IF( .NOT.l_isfcpl ) THEN    ;   CALL sbc_isf_cav (kt)
+            ELSE                        ;   qisf(:,:)  = fwfisf(:,:) * lfusisf              ! heat        flux
+            ENDIF
 
          ELSE IF (nn_isf == 2) THEN
             ! Beckmann and Goosse parametrisation 
@@ -250,16 +260,20 @@ CONTAINS
 
          ELSE IF (nn_isf == 3) THEN
             ! specified runoff in depth (Mathiot et al., XXXX in preparation)
-            CALL fld_read ( kt, nn_fsbc, sf_rnfisf   )
-            fwfisf(:,:) = - sf_rnfisf(1)%fnow(:,:,1)         ! fresh water flux from the isf (fwfisf <0 mean melting) 
+            IF( .NOT.l_isfcpl ) THEN
+               CALL fld_read ( kt, nn_fsbc, sf_rnfisf   )
+               fwfisf(:,:) = - sf_rnfisf(1)%fnow(:,:,1)         ! fresh water flux from the isf (fwfisf <0 mean melting) 
+            ENDIF
             qisf(:,:)   = fwfisf(:,:) * lfusisf              ! heat        flux
             stbl(:,:)   = soce
 
          ELSE IF (nn_isf == 4) THEN
             ! specified fwf and heat flux forcing beneath the ice shelf
-            CALL fld_read ( kt, nn_fsbc, sf_fwfisf   )
-            !CALL fld_read ( kt, nn_fsbc, sf_qisf   )
-            fwfisf(:,:) = sf_fwfisf(1)%fnow(:,:,1)            ! fwf
+            IF( .NOT.l_isfcpl ) THEN
+               CALL fld_read ( kt, nn_fsbc, sf_fwfisf   )
+               !CALL fld_read ( kt, nn_fsbc, sf_qisf   )
+               fwfisf(:,:) = sf_fwfisf(1)%fnow(:,:,1)            ! fwf
+            ENDIF
             qisf(:,:)   = fwfisf(:,:) * lfusisf              ! heat        flux
             !qisf(:,:)   = sf_qisf(1)%fnow(:,:,1)              ! heat flux
             stbl(:,:)   = soce
@@ -287,41 +301,45 @@ CONTAINS
          CALL lbc_lnk(fwfisf(:,:)   ,'T',1.)
          CALL lbc_lnk(qisf(:,:)     ,'T',1.)
 
-!=============================================================================================================================================
-         IF ( iom_use('fwfisf3d') .OR. iom_use('qlatisf3d') .OR. iom_use('qhcisf3d') .OR. iom_use('qhcisf')) THEN
+         ! Diagnostics
+         IF( iom_use('fwfisf3d') .OR. iom_use('qlatisf3d') .OR. iom_use('qhcisf3d') .OR. iom_use('qhcisf')) THEN
+            !
             CALL wrk_alloc( jpi,jpj,jpk, zfwfisf3d, zqhcisf3d, zqlatisf3d )
             CALL wrk_alloc( jpi,jpj,     zqhcisf2d                        )
-
+            !
             zfwfisf3d(:,:,:) = 0.0_wp                         ! 3d ice shelf melting (kg/m2/s)
             zqhcisf3d(:,:,:) = 0.0_wp                         ! 3d heat content flux (W/m2)
             zqlatisf3d(:,:,:)= 0.0_wp                         ! 3d ice shelf melting latent heat flux (W/m2)
             zqhcisf2d(:,:)   = fwfisf(:,:) * zt_frz * rcp     ! 2d heat content flux (W/m2)
-
+            !
             DO jj = 1,jpj
                DO ji = 1,jpi
                   ikt = misfkt(ji,jj)
                   ikb = misfkb(ji,jj)
                   DO jk = ikt, ikb - 1
-                     zfwfisf3d (ji,jj,jk) = zfwfisf3d (ji,jj,jk) + fwfisf   (ji,jj) * r1_hisf_tbl(ji,jj) * fse3t(ji,jj,jk)
-                     zqhcisf3d (ji,jj,jk) = zqhcisf3d (ji,jj,jk) + zqhcisf2d(ji,jj) * r1_hisf_tbl(ji,jj) * fse3t(ji,jj,jk)
-                     zqlatisf3d(ji,jj,jk) = zqlatisf3d(ji,jj,jk) + qisf     (ji,jj) * r1_hisf_tbl(ji,jj) * fse3t(ji,jj,jk)
+                     zhisf = r1_hisf_tbl(ji,jj) * fse3t(ji,jj,jk)
+                     zfwfisf3d (ji,jj,jk) = zfwfisf3d (ji,jj,jk) + fwfisf(ji,jj)    * zhisf
+                     zqhcisf3d (ji,jj,jk) = zqhcisf3d (ji,jj,jk) + zqhcisf2d(ji,jj) * zhisf
+                     zqlatisf3d(ji,jj,jk) = zqlatisf3d(ji,jj,jk) + qisf(ji,jj)      * zhisf
                   END DO
-                  zfwfisf3d (ji,jj,jk) = zfwfisf3d (ji,jj,jk) + fwfisf   (ji,jj) * r1_hisf_tbl(ji,jj) * ralpha(ji,jj) * fse3t(ji,jj,jk)
-                  zqhcisf3d (ji,jj,jk) = zqhcisf3d (ji,jj,jk) + zqhcisf2d(ji,jj) * r1_hisf_tbl(ji,jj) * ralpha(ji,jj) * fse3t(ji,jj,jk)
-                  zqlatisf3d(ji,jj,jk) = zqlatisf3d(ji,jj,jk) + qisf     (ji,jj) * r1_hisf_tbl(ji,jj) * ralpha(ji,jj) * fse3t(ji,jj,jk)
+                  jk = ikb
+                  zhisf = r1_hisf_tbl(ji,jj) * fse3t(ji,jj,jk)
+                  zfwfisf3d (ji,jj,jk) = zfwfisf3d (ji,jj,jk) + fwfisf   (ji,jj) * zhisf * ralpha(ji,jj) 
+                  zqhcisf3d (ji,jj,jk) = zqhcisf3d (ji,jj,jk) + zqhcisf2d(ji,jj) * zhisf * ralpha(ji,jj)
+                  zqlatisf3d(ji,jj,jk) = zqlatisf3d(ji,jj,jk) + qisf     (ji,jj) * zhisf * ralpha(ji,jj)
                END DO
             END DO
-
-            CALL iom_put('fwfisf3d' , zfwfisf3d (:,:,:))
-            CALL iom_put('qlatisf3d', zqlatisf3d(:,:,:))
-            CALL iom_put('qhcisf3d' , zqhcisf3d (:,:,:))
-            CALL iom_put('qhcisf'   , zqhcisf2d (:,:  ))
-
+            !
+            CALL iom_put( 'fwfisf3d' , zfwfisf3d (:,:,:) )
+            CALL iom_put( 'qlatisf3d', zqlatisf3d(:,:,:) )
+            CALL iom_put( 'qhcisf3d' , zqhcisf3d (:,:,:) )
+            CALL iom_put( 'qhcisf'   , zqhcisf2d (:,:  ) )
+            !
             CALL wrk_dealloc( jpi,jpj,jpk, zfwfisf3d, zqhcisf3d, zqlatisf3d )
             CALL wrk_dealloc( jpi,jpj,     zqhcisf2d                        )
+            !
          END IF
-!=============================================================================================================================================
-
+         !
          IF( kt == nit000 ) THEN                          !   set the forcing field at nit000 - 1    !
             IF( ln_rstart .AND.    &                     ! Restart: read in restart file
                  & iom_varid( numror, 'fwf_isf_b', ldstop = .FALSE. ) > 0 ) THEN

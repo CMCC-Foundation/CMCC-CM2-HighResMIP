@@ -115,6 +115,7 @@ MODULE sbc_oce
    REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:) ::   fmmflx            !: freshwater budget: freezing/melting          [Kg/m2/s]
    REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:) ::   rnf    , rnf_b    !: river runoff        [Kg/m2/s]  
    REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:) ::   fwfisf , fwfisf_b !: ice shelf melting   [Kg/m2/s]  
+   REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:) ::   fwficb , fwficb_b !: iceberg melting [Kg/m2/s]  
    !!
    REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::  sbc_tsc, sbc_tsc_b  !: sbc content trend                      [K.m/s] jpi,jpj,jpts
    REAL(wp), PUBLIC, ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::  qsr_hc , qsr_hc_b   !: heat content trend due to qsr flux     [K.m/s] jpi,jpj,jpk
@@ -166,7 +167,8 @@ CONTAINS
          &      sfx    (jpi,jpj) , sfx_b(jpi,jpj) , emp_tot(jpi,jpj), fmmflx(jpi,jpj), STAT=ierr(2) )
          !
       ALLOCATE( fwfisf  (jpi,jpj), rnf  (jpi,jpj) , sbc_tsc  (jpi,jpj,jpts) , qsr_hc  (jpi,jpj,jpk) ,     &
-         &      fwfisf_b(jpi,jpj), rnf_b(jpi,jpj) , sbc_tsc_b(jpi,jpj,jpts) , qsr_hc_b(jpi,jpj,jpk) , STAT=ierr(3) )
+         &      fwfisf_b(jpi,jpj), rnf_b(jpi,jpj) , sbc_tsc_b(jpi,jpj,jpts) , qsr_hc_b(jpi,jpj,jpk) ,     &
+         &      fwficb  (jpi,jpj), fwficb_b(jpi,jpj), STAT=ierr(3) )
          !
       ALLOCATE( tprecip(jpi,jpj) , sprecip(jpi,jpj) , fr_i(jpi,jpj) ,     &
 #if defined key_cpl_carbon_cycle

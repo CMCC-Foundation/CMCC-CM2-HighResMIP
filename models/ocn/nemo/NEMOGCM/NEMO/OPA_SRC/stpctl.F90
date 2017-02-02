@@ -240,8 +240,8 @@ CONTAINS
          !
       ENDIF
 
-9200  FORMAT('it:', i8, ' iter:', i4, ' r: ',e16.10, ' b: ',e16.10 )
-9300  FORMAT(' it :', i8, ' ssh2: ', e16.10, ' Umax: ',e16.10,' Smin: ',e16.10)
+9200  FORMAT('it:', i8, ' iter:', i4, ' r: ',d23.16, ' b: ',d23.16 )
+9300  FORMAT(' it :', i8, ' ssh2: ', d23.16, ' Umax: ',d23.16,' Smin: ',d23.16)
       !
    END SUBROUTINE stp_ctl
 

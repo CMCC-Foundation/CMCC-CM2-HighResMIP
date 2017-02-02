@@ -126,14 +126,26 @@ CONTAINS
       ENDIF
 
       ! trends computation initialisation
-      IF( l_trdtra )   THEN                    ! store now fields before applying the Asselin filter
+      IF( l_trdtra )   THEN                    
          CALL wrk_alloc( jpi, jpj, jpk, ztrdt, ztrds )
-         ztrdt(:,:,:) = tsn(:,:,:,jp_tem) 
-         ztrds(:,:,:) = tsn(:,:,:,jp_sal)
+         ztrdt(:,:,jk) = 0._wp
+         ztrds(:,:,jk) = 0._wp
          IF( ln_traldf_iso ) THEN              ! diagnose the "pure" Kz diffusive trend 
             CALL trd_tra( kt, 'TRA', jp_tem, jptra_zdfp, ztrdt )
             CALL trd_tra( kt, 'TRA', jp_sal, jptra_zdfp, ztrds )
          ENDIF
+         ! total trend for the non-time-filtered variables. 
+         DO jk = 1, jpkm1
+            zfact = 1.0 / rdttra(jk)
+            ztrdt(:,:,jk) = ( tsa(:,:,jk,jp_tem) - tsn(:,:,jk,jp_tem) ) * zfact 
+            ztrds(:,:,jk) = ( tsa(:,:,jk,jp_sal) - tsn(:,:,jk,jp_sal) ) * zfact 
+         END DO
+         CALL trd_tra( kt, 'TRA', jp_tem, jptra_tot, ztrdt )
+         CALL trd_tra( kt, 'TRA', jp_sal, jptra_tot, ztrds )
+         ! Store now fields before applying the Asselin filter 
+         ! in order to calculate Asselin filter trend later.
+         ztrdt(:,:,:) = tsn(:,:,:,jp_tem) 
+         ztrds(:,:,:) = tsn(:,:,:,jp_sal)
       ENDIF
 
       IF( neuler == 0 .AND. kt == nit000 ) THEN       ! Euler time-stepping at first time-step (only swap)

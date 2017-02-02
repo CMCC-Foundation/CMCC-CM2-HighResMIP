@@ -84,7 +84,7 @@ CONTAINS
         !
         CALL p4z_che                              ! initialize the chemical constants
         !
-        IF( .NOT. ln_rsttr ) THEN  ;   CALL p4z_ph_ini   !  set PH at kt=nit000 
+        IF( .NOT. ln_rsttr ) THEN  ;   CALL p4z_che_ahini( hi )   !  set PH at kt=nit000
         ELSE                       ;   CALL p4z_rst( nittrc000, 'READ' )  !* read or initialize all required fields 
         ENDIF
         !
@@ -309,34 +309,6 @@ CONTAINS
 
    END SUBROUTINE p4z_sms_init
 
-   SUBROUTINE p4z_ph_ini
-      !!---------------------------------------------------------------------
-      !!                   ***  ROUTINE p4z_ini_ph  ***
-      !!
-      !!  ** Purpose : Initialization of chemical variables of the carbon cycle
-      !!---------------------------------------------------------------------
-      INTEGER  ::  ji, jj, jk
-      REAL(wp) ::  zcaralk, zbicarb, zco3
-      REAL(wp) ::  ztmas, ztmas1
-      !!---------------------------------------------------------------------
-
-      ! Set PH from  total alkalinity, borat (???), akb3 (???) and ak23 (???)
-      ! --------------------------------------------------------
-      DO jk = 1, jpk
-         DO jj = 1, jpj
-            DO ji = 1, jpi
-               ztmas   = tmask(ji,jj,jk)
-               ztmas1  = 1. - tmask(ji,jj,jk)
-               zcaralk = trb(ji,jj,jk,jptal) - borat(ji,jj,jk) / (  1. + 1.E-8 / ( rtrn + akb3(ji,jj,jk) )  )
-               zco3    = ( zcaralk - trb(ji,jj,jk,jpdic) ) * ztmas + 0.5e-3 * ztmas1
-               zbicarb = ( 2. * trb(ji,jj,jk,jpdic) - zcaralk )
-               hi(ji,jj,jk) = ( ak23(ji,jj,jk) * zbicarb / zco3 ) * ztmas + 1.e-9 * ztmas1
-            END DO
-         END DO
-     END DO
-     !
-   END SUBROUTINE p4z_ph_ini
-
    SUBROUTINE p4z_rst( kt, cdrw )
       !!---------------------------------------------------------------------
       !!                   ***  ROUTINE p4z_rst  ***
@@ -349,10 +321,6 @@ CONTAINS
       !!---------------------------------------------------------------------
       INTEGER         , INTENT(in) ::   kt         ! ocean time-step
       CHARACTER(len=*), INTENT(in) ::   cdrw       ! "READ"/"WRITE" flag
-      !
-      INTEGER  ::  ji, jj, jk
-      REAL(wp) ::  zcaralk, zbicarb, zco3
-      REAL(wp) ::  ztmas, ztmas1
       !!---------------------------------------------------------------------
 
       IF( TRIM(cdrw) == 'READ' ) THEN
@@ -364,8 +332,7 @@ CONTAINS
          IF( iom_varid( numrtr, 'PH', ldstop = .FALSE. ) > 0 ) THEN
             CALL iom_get( numrtr, jpdom_autoglo, 'PH' , hi(:,:,:)  )
          ELSE
-!            hi(:,:,:) = 1.e-9 
-            CALL p4z_ph_ini
+            CALL p4z_che_ahini( hi )
          ENDIF
          CALL iom_get( numrtr, jpdom_autoglo, 'Silicalim', xksi(:,:) )
          IF( iom_varid( numrtr, 'Silicamax', ldstop = .FALSE. ) > 0 ) THEN

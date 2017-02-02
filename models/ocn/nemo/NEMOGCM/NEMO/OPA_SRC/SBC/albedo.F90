@@ -38,7 +38,7 @@ MODULE albedo
  
    !                             !!* namelist namsbc_alb
    INTEGER  ::   nn_ice_alb
-   REAL(wp) ::   rn_albice
+   REAL(wp) ::   rn_alb_sdry, rn_alb_smlt, rn_alb_idry, rn_alb_imlt
 
    !!----------------------------------------------------------------------
    !! NEMO/OPA 3.3 , NEMO Consortium (2010)
@@ -100,6 +100,10 @@ CONTAINS
 
       IF( albd_init == 0 )   CALL albedo_init      ! initialization 
 
+      ralb_sf = rn_alb_sdry ! dry snow
+      ralb_sm = rn_alb_smlt ! melting snow
+      ralb_if = rn_alb_idry ! bare frozen ice
+      ralb_im = rn_alb_imlt ! bare puddled ice 
       
       SELECT CASE ( nn_ice_alb )
 
@@ -108,11 +112,11 @@ CONTAINS
       !------------------------------------------
       CASE( 0 )
        
-         ralb_sf = 0.80       ! dry snow
-         ralb_sm = 0.65       ! melting snow
-         ralb_if = 0.72       ! bare frozen ice
-         ralb_im = rn_albice  ! bare puddled ice 
-         
+         !ralb_sf = 0.80       ! dry snow
+         !ralb_sm = 0.65       ! melting snow
+         !ralb_if = 0.72       ! bare frozen ice
+         !ralb_im = ...        ! bare puddled ice 
+
          !  Computation of ice albedo (free of snow)
          WHERE     ( ph_snw == 0._wp .AND. pt_ice >= rt0_ice )   ;   zalb(:,:,:) = ralb_im
          ELSE WHERE                                              ;   zalb(:,:,:) = ralb_if
@@ -162,11 +166,11 @@ CONTAINS
       !------------------------------------------
       CASE( 1 ) 
 
-         ralb_im = rn_albice  ! bare puddled ice
+!        ralb_im = ...        ! bare puddled ice
 ! compilation of values from literature
-         ralb_sf = 0.85      ! dry snow
-         ralb_sm = 0.75      ! melting snow
-         ralb_if = 0.60      ! bare frozen ice
+!        ralb_sf = 0.85      ! dry snow
+!        ralb_sm = 0.75      ! melting snow
+!        ralb_if = 0.60      ! bare frozen ice
 ! Perovich et al 2002 (Sheba) => the only dataset for which all types of ice/snow were retrieved
 !         ralb_sf = 0.85       ! dry snow
 !         ralb_sm = 0.72       ! melting snow
@@ -247,7 +251,7 @@ CONTAINS
       !! ** Method  :   Read the namelist namsbc_alb
       !!----------------------------------------------------------------------
       INTEGER  ::   ios                 ! Local integer output status for namelist read
-      NAMELIST/namsbc_alb/ nn_ice_alb, rn_albice 
+      NAMELIST/namsbc_alb/ nn_ice_alb, rn_alb_sdry, rn_alb_smlt, rn_alb_idry , rn_alb_imlt
       !!----------------------------------------------------------------------
       !
       albd_init = 1                     ! indicate that the initialization has been done
@@ -267,7 +271,10 @@ CONTAINS
          WRITE(numout,*) '~~~~~~~'
          WRITE(numout,*) '   Namelist namsbc_alb : albedo '
          WRITE(numout,*) '      choose the albedo parameterization                  nn_ice_alb = ', nn_ice_alb
-         WRITE(numout,*) '      albedo of bare puddled ice                          rn_albice  = ', rn_albice
+         WRITE(numout,*) '      albedo of dry snow                                  rn_alb_sdry = ', rn_alb_sdry
+         WRITE(numout,*) '      albedo of melting snow                              rn_alb_smlt = ', rn_alb_smlt
+         WRITE(numout,*) '      albedo of dry ice                                   rn_alb_idry = ', rn_alb_idry
+         WRITE(numout,*) '      albedo of bare puddled ice                          rn_alb_imlt = ', rn_alb_imlt
       ENDIF
       !
    END SUBROUTINE albedo_init

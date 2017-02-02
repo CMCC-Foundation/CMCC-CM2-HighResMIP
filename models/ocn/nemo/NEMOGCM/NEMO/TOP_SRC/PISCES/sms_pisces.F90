@@ -92,12 +92,9 @@ MODULE sms_pisces
    REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   prodcal    !: Calcite production
 
    !!* Variable for chemistry of the CO2 cycle
-   REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   akb3       !: ???
    REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   ak13       !: ???
    REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   ak23       !: ???
    REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   aksp       !: ???
-   REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   akw3       !: ???
-   REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   borat      !: ???
    REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   hi         !: ???
    REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   excess     !: ???
    REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:,:,:) ::   aphscale   !: 
@@ -152,9 +149,8 @@ CONTAINS
          &      xlimbacl(jpi,jpj,jpk), prodcal(jpi,jpj,jpk),     STAT=ierr(3) )
 
       !* Variable for chemistry of the CO2 cycle
-      ALLOCATE( akb3(jpi,jpj,jpk)    , ak13  (jpi,jpj,jpk) ,       &
+      ALLOCATE( ak13  (jpi,jpj,jpk) ,                              &
          &      ak23(jpi,jpj,jpk)    , aksp  (jpi,jpj,jpk) ,       &
-         &      akw3(jpi,jpj,jpk)    , borat (jpi,jpj,jpk) ,       &
          &      hi  (jpi,jpj,jpk)    , excess(jpi,jpj,jpk) ,       &
          &      aphscale(jpi,jpj,jpk),                           STAT=ierr(4) )
          !

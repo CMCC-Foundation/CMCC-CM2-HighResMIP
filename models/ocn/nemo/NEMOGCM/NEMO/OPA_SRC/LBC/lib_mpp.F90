@@ -4012,13 +4012,13 @@ CONTAINS
       !!----------------------------------------------------------------------
       INTEGER          , INTENT(inout) ::   kios      ! IO status after reading the namelist
       CHARACTER(len=*) , INTENT(in   ) ::   cdnam     ! group name of namelist for which error occurs
-      CHARACTER(len=4)                 ::   clios     ! string to convert iostat in character for print
+      CHARACTER(len=5)                 ::   clios     ! string to convert iostat in character for print
       LOGICAL          , INTENT(in   ) ::   ldwp      ! boolean term for print
       !!----------------------------------------------------------------------
 
       ! 
       ! ----------------
-      WRITE (clios, '(I4.0)') kios
+      WRITE (clios, '(I5.0)') kios
       IF( kios < 0 ) THEN         
          CALL ctl_warn( 'W A R N I N G:  end of record or file while reading namelist ' &
  &           // TRIM(cdnam) // ' iostat = ' // TRIM(clios) )

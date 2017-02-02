@@ -316,11 +316,11 @@
       icof(:,:) = icof(:,:) * tmask(:,:,1)
       DO jj = 1, jpjm1
          DO ji = 1, jpim1   ! NO vector opt.
-            zmsk = tmask(ji,jj+1,1) + tmask(ji+1,jj+1,1) + tmask(ji,jj,1) + tmask(ji,jj+1,1)
+            zmsk = tmask(ji,jj+1,1) + tmask(ji+1,jj+1,1) + tmask(ji,jj,1) + tmask(ji+1,jj,1)
             IF( zmsk == 0. ) THEN
                zcoff = 1.
             ELSE
-               zcoff = FLOAT( icof(ji,jj+1) + icof(ji+1,jj+1) + icof(ji,jj) + icof(ji,jj+1) )   &
+               zcoff = FLOAT( icof(ji,jj+1) + icof(ji+1,jj+1) + icof(ji,jj) + icof(ji+1,jj) )   &
                      / (zmsk * 100.)
             ENDIF
             ahm2(ji,jj,1) = zcoff * zahm0(ji,jj) + (1.-zcoff) * ahm2(ji,jj,1)

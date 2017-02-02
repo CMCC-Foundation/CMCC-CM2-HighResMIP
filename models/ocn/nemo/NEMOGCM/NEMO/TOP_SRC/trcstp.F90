@@ -31,7 +31,7 @@ MODULE trcstp
 
    REAL(wp), DIMENSION(:,:,:), SAVE, ALLOCATABLE ::   qsr_arr ! save qsr during TOP time-step
    REAL(wp) :: rdt_sampl
-   INTEGER  :: nb_rec_per_day
+   INTEGER  :: nb_rec_per_day, ktdcy
    REAL(wp) :: rsecfst, rseclast
    LOGICAL  :: llnew
 
@@ -130,7 +130,7 @@ CONTAINS
       !!----------------------------------------------------------------------
       INTEGER, INTENT(in) ::   kt
       INTEGER  :: jn
-      REAL(wp) :: zkt
+      REAL(wp) :: zkt, zrec
       CHARACTER(len=1)               ::   cl1                      ! 1 character
       CHARACTER(len=2)               ::   cl2                      ! 2 characters
 
@@ -152,22 +152,31 @@ CONTAINS
          ALLOCATE( qsr_arr(jpi,jpj,nb_rec_per_day ) )
          !
          !                                            !* Restart: read in restart file
-         IF( ln_rsttr .AND. iom_varid( numrtr, 'qsr_mean' , ldstop = .FALSE. ) > 0 .AND. &
-                            iom_varid( numrtr, 'qsr_arr_1', ldstop = .FALSE. ) > 0 .AND. &
-                            iom_varid( numrtr, 'ktdcy'    , ldstop = .FALSE. ) > 0 ) THEN 
-            CALL iom_get( numrtr, 'ktdcy', zkt )   !  A mean of qsr
+         IF(  ln_rsttr .AND. iom_varid( numrtr, 'qsr_mean' , ldstop = .FALSE. ) > 0  &
+           &           .AND. iom_varid( numrtr, 'qsr_arr_1', ldstop = .FALSE. ) > 0  &
+           &           .AND. iom_varid( numrtr, 'ktdcy'    , ldstop = .FALSE. ) > 0  &
+           &           .AND. iom_varid( numrtr, 'nrdcy'    , ldstop = .FALSE. ) > 0  ) THEN
+
+            CALL iom_get( numrtr, 'ktdcy', zkt )  
             rsecfst = INT( zkt ) * rdttrc(1)
             IF(lwp) WRITE(numout,*) 'trc_qsr_mean:   qsr_mean read in the restart file at time-step rsecfst =', rsecfst, ' s '
             CALL iom_get( numrtr, jpdom_autoglo, 'qsr_mean', qsr_mean )   !  A mean of qsr
-            DO jn = 1, nb_rec_per_day 
-             IF( jn <= 9 )  THEN
-               WRITE(cl1,'(i1)') jn
-               CALL iom_get( numrtr, jpdom_autoglo, 'qsr_arr_'//cl1, qsr_arr(:,:,jn) )   !  A mean of qsr
-             ELSE
-               WRITE(cl2,'(i2.2)') jn
-               CALL iom_get( numrtr, jpdom_autoglo, 'qsr_arr_'//cl2, qsr_arr(:,:,jn) )   !  A mean of qsr
-             ENDIF
-           ENDDO
+            CALL iom_get( numrtr, 'nrdcy', zrec )   !  Number of record per days
+            IF( INT( zrec ) == nb_rec_per_day ) THEN
+               DO jn = 1, nb_rec_per_day 
+                  IF( jn <= 9 )  THEN
+                    WRITE(cl1,'(i1)') jn
+                    CALL iom_get( numrtr, jpdom_autoglo, 'qsr_arr_'//cl1, qsr_arr(:,:,jn) )   !  A mean of qsr
+                  ELSE
+                    WRITE(cl2,'(i2.2)') jn
+                    CALL iom_get( numrtr, jpdom_autoglo, 'qsr_arr_'//cl2, qsr_arr(:,:,jn) )   !  A mean of qsr
+                  ENDIF
+              ENDDO
+            ELSE
+               DO jn = 1, nb_rec_per_day
+                  qsr_arr(:,:,jn) = qsr_mean(:,:)
+               ENDDO
+            ENDIF
          ELSE                                         !* no restart: set from nit000 values
             IF(lwp) WRITE(numout,*) 'trc_qsr_mean:   qsr_mean set to nit000 values'
             rsecfst  = kt * rdttrc(1)
@@ -184,7 +193,8 @@ CONTAINS
       !
       llnew   = ( rseclast - rsecfst ) .ge.  rdt_sampl    !   new shortwave to store
       IF( llnew ) THEN
-          IF( lwp ) WRITE(numout,*) ' New shortwave to sample for TOP at time kt = ', kt, &
+          ktdcy = kt
+          IF( lwp .AND. kt < nittrc000 + 100 ) WRITE(numout,*) ' New shortwave to sample for TOP at time kt = ', ktdcy, &
              &                      ' time = ', rseclast/3600.,'hours '
           rsecfst = rseclast
           DO jn = 1, nb_rec_per_day - 1
@@ -198,8 +208,10 @@ CONTAINS
          IF(lwp) WRITE(numout,*)
          IF(lwp) WRITE(numout,*) 'trc_mean_qsr : write qsr_mean in restart file  kt =', kt
          IF(lwp) WRITE(numout,*) '~~~~~~~'
-         zkt = REAL( kt, wp )
-         CALL iom_rstput( kt, nitrst, numrtw, 'ktdcy', zkt )
+         zkt  = REAL( ktdcy, wp )
+         zrec = REAL( nb_rec_per_day, wp )
+         CALL iom_rstput( kt, nitrst, numrtw, 'ktdcy', zkt  )
+         CALL iom_rstput( kt, nitrst, numrtw, 'nrdcy', zrec )
           DO jn = 1, nb_rec_per_day 
              IF( jn <= 9 )  THEN
                WRITE(cl1,'(i1)') jn

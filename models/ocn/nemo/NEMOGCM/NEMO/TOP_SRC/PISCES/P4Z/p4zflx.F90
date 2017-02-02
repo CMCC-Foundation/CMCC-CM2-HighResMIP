@@ -86,7 +86,7 @@ CONTAINS
       REAL(wp) ::   ztc, ztc2, ztc3, ztc4, zws, zkgwan
       REAL(wp) ::   zfld, zflu, zfld16, zflu16, zfact
       REAL(wp) ::   zvapsw, zsal, zfco2, zxc2, xCO2approx, ztkel, zfugcoeff
-      REAL(wp) ::   zph, zah2, zbot, zdic, zalk, zsch_o2, zalka, zsch_co2
+      REAL(wp) ::   zph, zdic, zsch_o2, zsch_co2
       REAL(wp) ::   zyr_dec, zdco2dt
       CHARACTER (len=25) :: charout
       REAL(wp), POINTER, DIMENSION(:,:) :: zkgco2, zkgo2, zh2co3, zoflx, zw2d, zpco2atm 
@@ -121,33 +121,16 @@ CONTAINS
       satmco2(:,:) = atm_co2(:,:)
 #endif
 
-      DO jm = 1, 10
-!CDIR NOVERRCHK
-         DO jj = 1, jpj
-!CDIR NOVERRCHK
-            DO ji = 1, jpi
-
-               ! DUMMY VARIABLES FOR DIC, H+, AND BORATE
-               zbot  = borat(ji,jj,1)
-               zfact = rhop(ji,jj,1) / 1000. + rtrn
-               zdic  = trb(ji,jj,1,jpdic) / zfact
-               zph   = MAX( hi(ji,jj,1), 1.e-10 ) / zfact
-               zalka = trb(ji,jj,1,jptal) / zfact
-
-               ! CALCULATE [ALK]([CO3--], [HCO3-])
-               zalk  = zalka - (  akw3(ji,jj,1) / zph - zph / aphscale(ji,jj,1)    &
-               &       + zbot / ( 1.+ zph / akb3(ji,jj,1) )  )
-
-               ! CALCULATE [H+] AND [H2CO3]
-               zah2   = SQRT(  (zdic-zalk)**2 + 4.* ( zalk * ak23(ji,jj,1)   &
-                  &                                        / ak13(ji,jj,1) ) * ( 2.* zdic - zalk )  )
-               zah2   = 0.5 * ak13(ji,jj,1) / zalk * ( ( zdic - zalk ) + zah2 )
-               zh2co3(ji,jj) = ( 2.* zdic - zalk ) / ( 2.+ ak13(ji,jj,1) / zah2 ) * zfact
-               hi(ji,jj,1)   = zah2 * zfact
-            END DO
+      DO jj = 1, jpj
+         DO ji = 1, jpi
+            ! DUMMY VARIABLES FOR DIC, H+, AND BORATE
+            zfact = rhop(ji,jj,1) / 1000. + rtrn
+            zdic  = trb(ji,jj,1,jpdic)
+            zph   = MAX( hi(ji,jj,1), 1.e-10 ) / zfact
+            ! CALCULATE [H2CO3]
+            zh2co3(ji,jj) = zdic/(1. + ak13(ji,jj,1)/zph + ak13(ji,jj,1)*ak23(ji,jj,1)/zph**2)
          END DO
       END DO
-
 
       ! --------------
       ! COMPUTE FLUXES
@@ -252,6 +235,11 @@ CONTAINS
             trc2d(:,:,jp_pcs0_2d + 3) = ( zpco2atm(:,:) - zh2co3(:,:) / ( chemc(:,:,1) + rtrn ) ) * tmask(:,:,1)
          ENDIF
       ENDIF
+      !
+#if defined key_cpl_carbon_cycle
+      ! change units for carbon cycle coupling
+      oce_co2(:,:) = oce_co2(:,:) / e1e2t(:,:) * rfact2r ! in molC/m2/s
+#endif
       !
       CALL wrk_dealloc( jpi, jpj, zkgco2, zkgo2, zh2co3, zoflx, zpco2atm )
       !

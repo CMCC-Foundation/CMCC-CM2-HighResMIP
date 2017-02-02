@@ -129,7 +129,7 @@ CONTAINS
             zwt(:,:, 1 ) = 0._wp   ;   zws(:,:, 1 ) = 0._wp            ! vertical diffusive fluxes
             zwt(:,:,jpk) = 0._wp   ;   zws(:,:,jpk) = 0._wp
             DO jk = 2, jpk
-               zwt(:,:,jk) = avt_k(:,:,jk) * ( tsa(:,:,jk-1,jp_tem) - tsa(:,:,jk,jp_tem) ) / fse3w(:,:,jk) * tmask(:,:,jk)
+               zwt(:,:,jk) = avt(:,:,jk) * ( tsa(:,:,jk-1,jp_tem) - tsa(:,:,jk,jp_tem) ) / fse3w(:,:,jk) * tmask(:,:,jk)
                zws(:,:,jk) = fsavs(:,:,jk) * ( tsa(:,:,jk-1,jp_sal) - tsa(:,:,jk,jp_sal) ) / fse3w(:,:,jk) * tmask(:,:,jk)
             END DO
             !

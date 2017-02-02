@@ -80,9 +80,8 @@ MODULE phycst
 
 #if defined key_lim3 || defined key_cice
    REAL(wp), PUBLIC ::   rhoic    =  917._wp         !: volumic mass of sea ice                               [kg/m3]
-   REAL(wp), PUBLIC ::   rcdic    =    2.034396_wp   !: thermal conductivity of fresh ice
-   REAL(wp), PUBLIC ::   rcdsn    =    0.31_wp       !: thermal conductivity of snow
-   REAL(wp), PUBLIC ::   cpic     = 2067.0_wp        !: specific heat for ice 
+   REAL(wp), PUBLIC ::   rcdic    =    2.034396_wp   !: thermal conductivity of fresh ice                     [W/m/K]
+   REAL(wp), PUBLIC ::   cpic     = 2067.0_wp        !: specific heat of fresh ice                            [J/kg/K]
    REAL(wp), PUBLIC ::   lsub     =    2.834e+6_wp   !: pure ice latent heat of sublimation                   [J/kg]
    REAL(wp), PUBLIC ::   lfus     =    0.334e+6_wp   !: latent heat of fusion of fresh ice                    [J/kg]
    REAL(wp), PUBLIC ::   tmut     =    0.054_wp      !: decrease of seawater meltpoint with salinity
@@ -102,6 +101,9 @@ MODULE phycst
    REAL(wp), PUBLIC ::   lfus                        !: = xlsn / rhosn   (latent heat of fusion of fresh ice) [J/Kg]
    REAL(wp), PUBLIC ::   xlic     =  300.33e+6_wp    !: volumetric latent heat fusion of ice                  [J/m3]
    REAL(wp), PUBLIC ::   xsn      =    2.8e+6_wp     !: volumetric latent heat of sublimation of snow         [J/m3]
+#endif
+#if defined key_cice
+   REAL(wp), PUBLIC ::   rcdsn    =    0.31_wp       !: thermal conductivity of snow                          [W/m/K], now namelist parameter for LIM3
 #endif
 #if defined key_lim3
    REAL(wp), PUBLIC ::   r1_rhoic                    !: 1 / rhoic
@@ -196,8 +198,10 @@ CONTAINS
 #endif
       IF(lwp) THEN
          WRITE(numout,*)
+#if defined key_cice
          WRITE(numout,*) '          thermal conductivity of the snow          = ', rcdsn   , ' J/s/m/K'
-         WRITE(numout,*) '          thermal conductivity of the ice           = ', rcdic   , ' J/s/m/K'
+#endif
+         WRITE(numout,*) '          thermal conductivity of pure ice          = ', rcdic   , ' J/s/m/K'
          WRITE(numout,*) '          fresh ice specific heat                   = ', cpic    , ' J/kg/K'
          WRITE(numout,*) '          latent heat of fusion of fresh ice / snow = ', lfus    , ' J/kg'
 #if defined key_lim3 || defined key_cice

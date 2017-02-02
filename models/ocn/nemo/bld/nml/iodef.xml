@@ -69,6 +69,9 @@
       <axis id="deptht300" axis_ref="deptht" >
          <zoom_axis begin="0" n="35" />
       </axis>
+      <axis id="deptht0" axis_ref="deptht" >
+         <zoom_axis begin="0" n="1" />
+      </axis>
       <axis id="depthu"  long_name="Vertical U levels"  unit="m" positive="down" />
       <axis id="depthv"  long_name="Vertical V levels"  unit="m" positive="down" />
       <axis id="depthw"  long_name="Vertical W levels"  unit="m" positive="down" />
@@ -77,9 +80,6 @@
       <axis id="ncatice" long_name="Ice category"       unit="1"                 />
       <axis id="iax_20C" long_name="20 degC isotherm"   unit="degC"              />
       <axis id="iax_28C" long_name="28 degC isotherm"   unit="degC"              />
-      <axis id="deptht_surface" axis_ref="deptht" >
-         <zoom_axis begin=" 0 " n=" 1 " />
-      </axis>
    </axis_definition> 
     
    <domain_definition src="./domain_def.xml"/>
@@ -197,9 +197,9 @@
          </scalar>
        </grid>
 
-       <grid id="grid_T_surface_extract">
+       <grid id="grid_T_SFC">
          <domain domain_ref="grid_T" />
-         <axis   axis_ref="deptht_surface" />
+         <axis   axis_ref="deptht0" />
        </grid>
 
     </grid_definition>

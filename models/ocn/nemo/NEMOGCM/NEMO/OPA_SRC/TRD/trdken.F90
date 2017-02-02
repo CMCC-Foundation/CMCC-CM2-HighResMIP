@@ -201,6 +201,7 @@ CONTAINS
             ! rho = reference density
             ! S = isoneutral slope.
             ! Most terms are on W grid so work on this grid
+#ifdef key_traldf_eiv
             CALL wrk_alloc( jpi, jpj, zke2d )
             zke2d(:,:) = 0._wp
             DO jk = 1,jpk
@@ -215,6 +216,7 @@ CONTAINS
             ENDDO
             CALL iom_put("ketrd_eiv", zke2d)
             CALL wrk_dealloc( jpi, jpj, zke2d )
+#endif
          !
       END SELECT
       !
