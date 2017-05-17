@@ -112,11 +112,6 @@ CONTAINS
       !------------------------------------------
       CASE( 0 )
        
-         !ralb_sf = 0.80       ! dry snow
-         !ralb_sm = 0.65       ! melting snow
-         !ralb_if = 0.72       ! bare frozen ice
-         !ralb_im = ...        ! bare puddled ice 
-
          !  Computation of ice albedo (free of snow)
          WHERE     ( ph_snw == 0._wp .AND. pt_ice >= rt0_ice )   ;   zalb(:,:,:) = ralb_im
          ELSE WHERE                                              ;   zalb(:,:,:) = ralb_if
@@ -166,7 +161,6 @@ CONTAINS
       !------------------------------------------
       CASE( 1 ) 
 
-!        ralb_im = ...        ! bare puddled ice
 ! compilation of values from literature
 !        ralb_sf = 0.85      ! dry snow
 !        ralb_sm = 0.75      ! melting snow

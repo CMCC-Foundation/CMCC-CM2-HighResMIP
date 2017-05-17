@@ -22,7 +22,7 @@ MODULE trc_oce
    PUBLIC   trc_oce_ext_lev    ! function called by traqsr.F90 at least
    PUBLIC   trc_oce_alloc      ! function called by nemogcm.F90
 
-   INTEGER , PUBLIC                                      ::   nn_dttrc      !: frequency of step on passive tracers
+   INTEGER , PUBLIC                                      ::   nn_dttrc = 1  !: frequency of step on passive tracers
    REAL(wp), PUBLIC                                      ::   r_si2         !: largest depth of extinction (blue & 0.01 mg.m-3)  (RGB)
    REAL(wp), PUBLIC, SAVE, ALLOCATABLE, DIMENSION(:,:,:) ::   etot3         !: light absortion coefficient
    REAL(wp), PUBLIC, SAVE, ALLOCATABLE, DIMENSION(:,:,:) ::   facvol        !: volume for degraded regions

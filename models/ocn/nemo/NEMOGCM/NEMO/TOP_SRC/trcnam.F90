@@ -119,34 +119,6 @@ CONTAINS
       ENDIF
 
 
-#if defined key_trdmxl_trc || defined key_trdtrc
-
-         REWIND( numnat_ref )              ! Namelist namtrc_trd in reference namelist : Passive tracer trends
-         READ  ( numnat_ref, namtrc_trd, IOSTAT = ios, ERR = 905)
-905      IF( ios /= 0 ) CALL ctl_nam ( ios , 'namtrc_trd in reference namelist', lwp )
-
-         REWIND( numnat_cfg )              ! Namelist namtrc_trd in configuration namelist : Passive tracer trends
-         READ  ( numnat_cfg, namtrc_trd, IOSTAT = ios, ERR = 906 )
-906      IF( ios /= 0 ) CALL ctl_nam ( ios , 'namtrc_trd in configuration namelist', lwp )
-         IF(lwm) WRITE ( numont, namtrc_trd )
-
-         IF(lwp) THEN
-            WRITE(numout,*)
-            WRITE(numout,*) ' trd_mxl_trc_init : read namelist namtrc_trd                    '
-            WRITE(numout,*) ' ~~~~~~~~~~~~~~~~                                               '
-            WRITE(numout,*) '   * frequency of trends diagnostics   nn_trd_trc             = ', nn_trd_trc
-            WRITE(numout,*) '   * control surface type              nn_ctls_trc            = ', nn_ctls_trc
-            WRITE(numout,*) '   * restart for ML diagnostics        ln_trdmxl_trc_restart  = ', ln_trdmxl_trc_restart
-            WRITE(numout,*) '   * flag to diagnose trends of                                 '
-            WRITE(numout,*) '     instantantaneous or mean ML T/S   ln_trdmxl_trc_instant  = ', ln_trdmxl_trc_instant
-            WRITE(numout,*) '   * unit conversion factor            rn_ucf_trc             = ', rn_ucf_trc
-            DO jn = 1, jptra
-               IF( ln_trdtrc(jn) ) WRITE(numout,*) '    compute ML trends for tracer number :', jn
-            END DO
-         ENDIF
-#endif
-
-
       ! Call the ice module for tracers
       ! -------------------------------
       CALL trc_nam_ice
@@ -332,6 +304,7 @@ CONTAINS
 #endif
       NAMELIST/namtrc_dia/ ln_diatrc, ln_diabio, nn_writedia, nn_writebio
 
+      INTEGER  ::   jn        
       INTEGER  ::   ios                 ! Local integer output status for namelist read
       !!---------------------------------------------------------------------
 
@@ -382,6 +355,33 @@ CONTAINS
          trbio(:,:,:,:) = 0._wp  ;   ctrbio(:) = ' '   ;   ctrbil(:) = ' '    ;    ctrbiu(:) = ' ' 
          !
       ENDIF
+
+#if defined key_trdmxl_trc || defined key_trdtrc
+
+         REWIND( numnat_ref )              ! Namelist namtrc_trd in reference namelist : Passive tracer trends
+         READ  ( numnat_ref, namtrc_trd, IOSTAT = ios, ERR = 905)
+905      IF( ios /= 0 ) CALL ctl_nam ( ios , 'namtrc_trd in reference namelist', lwp )
+
+         REWIND( numnat_cfg )              ! Namelist namtrc_trd in configuration namelist : Passive tracer trends
+         READ  ( numnat_cfg, namtrc_trd, IOSTAT = ios, ERR = 906 )
+906      IF( ios /= 0 ) CALL ctl_nam ( ios , 'namtrc_trd in configuration namelist', lwp )
+         IF(lwm) WRITE ( numont, namtrc_trd )
+
+         IF(lwp) THEN
+            WRITE(numout,*)
+            WRITE(numout,*) ' trd_mxl_trc_init : read namelist namtrc_trd                    '
+            WRITE(numout,*) ' ~~~~~~~~~~~~~~~~                                               '
+            WRITE(numout,*) '   * frequency of trends diagnostics   nn_trd_trc             = ', nn_trd_trc
+            WRITE(numout,*) '   * control surface type              nn_ctls_trc            = ', nn_ctls_trc
+            WRITE(numout,*) '   * restart for ML diagnostics        ln_trdmxl_trc_restart  = ', ln_trdmxl_trc_restart
+            WRITE(numout,*) '   * flag to diagnose trends of                                 '
+            WRITE(numout,*) '     instantantaneous or mean ML T/S   ln_trdmxl_trc_instant  = ', ln_trdmxl_trc_instant
+            WRITE(numout,*) '   * unit conversion factor            rn_ucf_trc             = ', rn_ucf_trc
+            DO jn = 1, jptra
+               IF( ln_trdtrc(jn) ) WRITE(numout,*) '    compute ML trends for tracer number :', jn
+            END DO
+         ENDIF
+#endif
       !
    END SUBROUTINE trc_nam_dia
 

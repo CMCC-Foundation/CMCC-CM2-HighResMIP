@@ -248,15 +248,6 @@ CONTAINS
                   &              + zfact * (risf_tsc_b(ji,jj,jp_sal) + risf_tsc(ji,jj,jp_sal)) * r1_hisf_tbl(ji,jj) * ralpha(ji,jj) 
             END DO
          END DO
-         IF( lrst_oce ) THEN
-            IF(lwp) WRITE(numout,*)
-            IF(lwp) WRITE(numout,*) 'sbc : isf surface tracer content forcing fields written in ocean restart file ',   &
-               &                    'at it= ', kt,' date= ', ndastp
-            IF(lwp) WRITE(numout,*) '~~~~'
-            CALL iom_rstput( kt, nitrst, numrow, 'fwf_isf_b', fwfisf(:,:)          )
-            CALL iom_rstput( kt, nitrst, numrow, 'isf_hc_b' , risf_tsc(:,:,jp_tem) )
-            CALL iom_rstput( kt, nitrst, numrow, 'isf_sc_b' , risf_tsc(:,:,jp_sal) )
-         ENDIF
       END IF
       !
       !----------------------------------------

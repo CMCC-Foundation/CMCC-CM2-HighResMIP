@@ -649,6 +649,7 @@ CONTAINS
    !!----------------------------------------------------------------------
 CONTAINS
    SUBROUTINE sbc_ice_lim ( kt, kblk )     ! Dummy routine
+      INTEGER, INTENT(in) ::   kt, kblk
       WRITE(*,*) 'sbc_ice_lim: You should not have seen this print! error?', kt, kblk
    END SUBROUTINE sbc_ice_lim
    SUBROUTINE sbc_lim_init                 ! Dummy routine

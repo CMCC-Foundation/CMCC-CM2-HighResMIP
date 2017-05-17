@@ -439,7 +439,6 @@ CONTAINS
       INTEGER, POINTER, DIMENSION(:)         ::   nblen, nblenrim  ! short cuts
       TYPE(OBC_DATA), POINTER                ::   dta           ! short cut
 #if defined key_lim3
-      INTEGER, DIMENSION(3) ::   zdimsz   ! number of elements in each of the 4 dimensions (i.e. i,j,t,ice-cat) for an array
       INTEGER               ::   zndims   ! number of dimensions in an array (i.e. 3 = wo ice cat; 4 = w ice cat)
       INTEGER               ::   inum,id1 ! local integer
 #endif
@@ -671,18 +670,18 @@ CONTAINS
             IF( nn_ice_lim_dta(ib_bdy) .eq. 1 ) THEN
                ! Test for types of ice input (lim2 or lim3)
                ! Build file name to find dimensions 
-               clname=TRIM(bn_a_i%clname)
+               clname=TRIM( cn_dir )//TRIM(bn_a_i%clname)
                IF( .NOT. bn_a_i%ln_clim ) THEN   
-                                                  WRITE(clname, '(a,"_y",i4.4)' ) TRIM( bn_a_i%clname ), nyear    ! add year
-                  IF( bn_a_i%cltype /= 'yearly' ) WRITE(clname, '(a,"m" ,i2.2)' ) TRIM( clname        ), nmonth   ! add month
+                                                  WRITE(clname, '(a,"_y",i4.4)' ) TRIM( clname ), nyear    ! add year
+                  IF( bn_a_i%cltype /= 'yearly' ) WRITE(clname, '(a,"m" ,i2.2)' ) TRIM( clname ), nmonth   ! add month
                ELSE
-                  IF( bn_a_i%cltype /= 'yearly' ) WRITE(clname, '(a,"_m",i2.2)' ) TRIM( bn_a_i%clname ), nmonth   ! add month
+                  IF( bn_a_i%cltype /= 'yearly' ) WRITE(clname, '(a,"_m",i2.2)' ) TRIM( clname ), nmonth   ! add month
                ENDIF
                IF( bn_a_i%cltype == 'daily' .OR. bn_a_i%cltype(1:4) == 'week' ) &
-               &                                  WRITE(clname, '(a,"d" ,i2.2)' ) TRIM( clname        ), nday     ! add day
+               &                                  WRITE(clname, '(a,"d" ,i2.2)' ) TRIM( clname ), nday     ! add day
                !
                CALL iom_open  ( clname, inum )
-               id1 = iom_varid( inum, bn_a_i%clvar, kdimsz=zdimsz, kndims=zndims, ldstop = .FALSE. )
+               id1 = iom_varid( inum, bn_a_i%clvar, kndims=zndims, ldstop = .FALSE. )
                CALL iom_close ( inum )
 
       	       IF ( zndims == 4 ) THEN

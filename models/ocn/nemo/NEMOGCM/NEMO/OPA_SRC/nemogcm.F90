@@ -727,9 +727,6 @@ CONTAINS
       !
       ! ilfax contains the set of allowed factors.
       ilfax(:) = (/(2**jl,jl=ntest,1,-1)/)
-      !!----------------------------------------------------------------------
-      ! ilfax contains the set of allowed factors.
-      ilfax(:) = (/(2**jl,jl=ntest,1,-1)/)
 
       ! Clear the error flag and initialise output vars
       kerr = 0

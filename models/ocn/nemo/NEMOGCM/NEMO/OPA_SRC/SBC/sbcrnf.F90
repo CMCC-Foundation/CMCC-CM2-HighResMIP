@@ -138,7 +138,8 @@ CONTAINS
          !                                                           ! use runoffs salinity data
          IF( ln_rnf_sal )   rnf_tsc(:,:,jp_sal) = ( sf_s_rnf(1)%fnow(:,:,1) ) * rnf(:,:) * r1_rau0
          !                                                           ! else use S=0 for runoffs (done one for all in the init)
-         CALL iom_put( "runoffs", rnf )         ! output runoffs arrays
+         IF( iom_use('runoffs') )        CALL iom_put( 'runoffs'     , rnf(:,:)                         )   ! output runoff mass flux
+         IF( iom_use('hflx_rnf_cea') )   CALL iom_put( 'hflx_rnf_cea', rnf_tsc(:,:,jp_tem) * rau0 * rcp )   ! output runoff sensible heat (W/m2)
       ENDIF
       !
       !                                                ! ---------------------------------------- !

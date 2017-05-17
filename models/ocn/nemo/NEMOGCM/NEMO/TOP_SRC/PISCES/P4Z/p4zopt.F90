@@ -37,7 +37,7 @@ MODULE p4zopt
    REAL(wp) :: xsi0r                 !:  1. /rn_si0
 
    TYPE(FLD), ALLOCATABLE, DIMENSION(:) ::   sf_par      ! structure of input par
-   INTEGER , PARAMETER :: nbtimes = 365  !: maximum number of times record in a file
+   INTEGER , PARAMETER :: nbtimes = 366  !: maximum number of times record in a file
    INTEGER  :: ntimes_par                ! number of time steps in a file
    REAL(wp), ALLOCATABLE, SAVE,   DIMENSION(:,:) :: par_varsw    !: PAR fraction of shortwave
 

@@ -152,10 +152,10 @@ CONTAINS
          ALLOCATE( qsr_arr(jpi,jpj,nb_rec_per_day ) )
          !
          !                                            !* Restart: read in restart file
-         IF(  ln_rsttr .AND. iom_varid( numrtr, 'qsr_mean' , ldstop = .FALSE. ) > 0  &
-           &           .AND. iom_varid( numrtr, 'qsr_arr_1', ldstop = .FALSE. ) > 0  &
-           &           .AND. iom_varid( numrtr, 'ktdcy'    , ldstop = .FALSE. ) > 0  &
-           &           .AND. iom_varid( numrtr, 'nrdcy'    , ldstop = .FALSE. ) > 0  ) THEN
+         IF( ln_rsttr .AND. nn_rsttr /= 0 .AND. iom_varid( numrtr, 'qsr_mean' , ldstop = .FALSE. ) > 0  &
+           &                              .AND. iom_varid( numrtr, 'qsr_arr_1', ldstop = .FALSE. ) > 0  &
+           &                              .AND. iom_varid( numrtr, 'ktdcy'    , ldstop = .FALSE. ) > 0  &
+           &                              .AND. iom_varid( numrtr, 'nrdcy'    , ldstop = .FALSE. ) > 0  ) THEN
 
             CALL iom_get( numrtr, 'ktdcy', zkt )  
             rsecfst = INT( zkt ) * rdttrc(1)

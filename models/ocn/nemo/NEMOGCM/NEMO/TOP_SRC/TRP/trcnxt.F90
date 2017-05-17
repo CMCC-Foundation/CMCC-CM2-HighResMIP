@@ -43,12 +43,17 @@ MODULE trcnxt
    PUBLIC   trc_nxt_alloc    ! routine called by nemogcm.F90
 
    REAL(wp), ALLOCATABLE, SAVE, DIMENSION(:) ::   r2dt
+   REAL(wp)  ::  rfact1, rfact2
 
+   !! * Substitutions
+#  include "domzgr_substitute.h90"
+#  include "vectopt_loop_substitute.h90"
    !!----------------------------------------------------------------------
    !! NEMO/TOP 3.3 , NEMO Consortium (2010)
    !! $Id$ 
    !! Software governed by the CeCILL licence     (NEMOGCM/NEMO_CeCILL.txt)
    !!----------------------------------------------------------------------
+
 CONTAINS
 
    INTEGER FUNCTION trc_nxt_alloc()
@@ -135,10 +140,13 @@ CONTAINS
          END DO
          !                                              
       ELSE
-         ! Leap-Frog + Asselin filter time stepping
-         IF( lk_vvl ) THEN   ;   CALL tra_nxt_vvl( kt, nittrc000, rdttrc, 'TRC', trb, trn, tra,      &
-           &                                                                sbc_trc, sbc_trc_b, jptra )      ! variable volume level (vvl) 
-         ELSE                ;   CALL tra_nxt_fix( kt, nittrc000,         'TRC', trb, trn, tra, jptra )      ! fixed    volume level 
+         IF( .NOT. lk_offline ) THEN ! Leap-Frog + Asselin filter time stepping
+            IF( lk_vvl ) THEN   ;   CALL tra_nxt_vvl( kt, nittrc000, rdttrc, 'TRC', trb, trn, tra,      &
+              &                                                                sbc_trc, sbc_trc_b, jptra )      ! variable volume level (vvl) 
+            ELSE                ;   CALL tra_nxt_fix( kt, nittrc000,         'TRC', trb, trn, tra, jptra )      ! fixed    volume level 
+            ENDIF
+         ELSE
+                                    CALL trc_nxt_off( kt )       ! offline 
          ENDIF
       ENDIF
 
@@ -164,6 +172,81 @@ CONTAINS
       !
    END SUBROUTINE trc_nxt
 
+   SUBROUTINE trc_nxt_off( kt )
+      !!----------------------------------------------------------------------
+      !!                   ***  ROUTINE tra_nxt_vvl  ***
+      !!
+      !! ** Purpose :   Time varying volume: apply the Asselin time filter  
+      !!                and swap the tracer fields.
+      !! 
+      !! ** Method  : - Apply a thickness weighted Asselin time filter on now fields.
+      !!              - save in (ta,sa) a thickness weighted average over the three 
+      !!             time levels which will be used to compute rdn and thus the semi-
+      !!             implicit hydrostatic pressure gradient (ln_dynhpg_imp = T)
+      !!              - swap tracer fields to prepare the next time_step.
+      !!                This can be summurized for tempearture as:
+      !!             ztm = ( e3t_n*tn + rbcp*[ e3t_b*tb - 2 e3t_n*tn + e3t_a*ta ] )   ln_dynhpg_imp = T
+      !!                  /( e3t_n    + rbcp*[ e3t_b    - 2 e3t_n    + e3t_a    ] )   
+      !!             ztm = 0                                                       otherwise
+      !!             tb  = ( e3t_n*tn + atfp*[ e3t_b*tb - 2 e3t_n*tn + e3t_a*ta ] )
+      !!                  /( e3t_n    + atfp*[ e3t_b    - 2 e3t_n    + e3t_a    ] )
+      !!             tn  = ta 
+      !!             ta  = zt        (NB: reset to 0 after eos_bn2 call)
+      !!
+      !! ** Action  : - (tb,sb) and (tn,sn) ready for the next time step
+      !!              - (ta,sa) time averaged (t,s)   (ln_dynhpg_imp = T)
+      !!----------------------------------------------------------------------
+      INTEGER         , INTENT(in   )                               ::  kt       ! ocean time-step index
+      !!     
+      INTEGER  ::   ji, jj, jk, jn              ! dummy loop indices
+      REAL(wp) ::   ztc_a , ztc_n , ztc_b , ztc_f , ztc_d    ! local scalar
+      REAL(wp) ::   ze3t_b, ze3t_n, ze3t_a, ze3t_f, ze3t_d   !   -      -
+      !!----------------------------------------------------------------------
+      !
+      IF( kt == nittrc000 )  THEN
+         IF(lwp) WRITE(numout,*)
+         IF(lwp) WRITE(numout,*) 'trc_nxt_off : time stepping'
+         IF(lwp) WRITE(numout,*) '~~~~~~~~~~~'
+         IF( lk_vvl ) THEN
+           rfact1 = atfp * rdttrc(1)
+           rfact2 = rfact1 / rau0
+         ENDIF
+      ENDIF
+      !
+      DO jn = 1, jptra      
+         DO jk = 1, jpkm1
+            DO jj = 1, jpj
+               DO ji = 1, jpi
+                  ze3t_b = fse3t_b(ji,jj,jk)
+                  ze3t_n = fse3t_n(ji,jj,jk)
+                  ze3t_a = fse3t_a(ji,jj,jk)
+                  !                                         ! tracer content at Before, now and after
+                  ztc_b  = trb(ji,jj,jk,jn) * ze3t_b
+                  ztc_n  = trn(ji,jj,jk,jn) * ze3t_n
+                  ztc_a  = tra(ji,jj,jk,jn) * ze3t_a
+                  !
+                  ze3t_d = ze3t_a - 2. * ze3t_n + ze3t_b
+                  ztc_d  = ztc_a  - 2. * ztc_n  + ztc_b
+                  !
+                  ze3t_f = ze3t_n + atfp * ze3t_d
+                  ztc_f  = ztc_n  + atfp * ztc_d
+                  !
+                  IF( lk_vvl .AND. jk == mikt(ji,jj) ) THEN           ! first level 
+                     ze3t_f = ze3t_f - rfact2 * ( emp_b(ji,jj)      - emp(ji,jj)   ) 
+                     ztc_f  = ztc_f  - rfact1 * ( sbc_trc(ji,jj,jn) - sbc_trc_b(ji,jj,jn) )
+                  ENDIF
+
+                  ze3t_f = 1.e0 / ze3t_f
+                  trb(ji,jj,jk,jn) = ztc_f * ze3t_f       ! ptb <-- ptn filtered
+                  trn(ji,jj,jk,jn) = tra(ji,jj,jk,jn)     ! ptn <-- pta
+                  !
+               END DO
+            END DO
+         END DO
+         ! 
+      END DO
+      !
+   END SUBROUTINE trc_nxt_off
 #else
    !!----------------------------------------------------------------------
    !!   Default option                                         Empty module

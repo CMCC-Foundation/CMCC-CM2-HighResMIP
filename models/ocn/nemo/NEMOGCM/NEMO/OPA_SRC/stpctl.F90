@@ -20,6 +20,7 @@ MODULE stpctl
    USE in_out_manager  ! I/O manager
    USE lbclnk          ! ocean lateral boundary conditions (or mpp link)
    USE lib_mpp         ! distributed memory computing
+   USE lib_fortran     ! Fortran routines library 
    USE dynspg_oce      ! pressure gradient schemes 
    USE c1d             ! 1D vertical configuration
 
@@ -56,7 +57,7 @@ CONTAINS
       CHARACTER(len = 32) ::        clfname ! time stepping output file name
       INTEGER  ::   ji, jj, jk              ! dummy loop indices
       INTEGER  ::   ii, ij, ik              ! temporary integers
-      REAL(wp) ::   zumax, zsmin, zssh2     ! temporary scalars
+      REAL(wp) ::   zumax, zsmin, zssh2, zsshmax     ! temporary scalars
       INTEGER, DIMENSION(3) ::   ilocu      ! 
       INTEGER, DIMENSION(2) ::   ilocs      ! 
 #if defined CCSMCOUPLED
@@ -233,13 +234,42 @@ CONTAINS
             CALL ctl_opn( numsol, 'solver.stat', 'REPLACE', 'FORMATTED', 'SEQUENTIAL', -1, numout, lwp, narea )
          ENDIF
          !
-         zssh2 = SUM( sshn(:,:) * sshn(:,:) * tmask_i(:,:) )
-         IF( lk_mpp )   CALL mpp_sum( zssh2 )      ! sum over the global domain
+         zsshmax = 0.e0
+         DO jj = 1, jpj
+            DO ji = 1, jpi
+               IF( tmask(ji,jj,1) == 1) zsshmax = MAX( zsshmax, ABS(sshn(ji,jj)) )
+            END DO
+         END DO
+         IF( lk_mpp )   CALL mpp_max( zsshmax )                ! min over the global domain
+         !
+         IF( MOD( kt, nwrite ) == 1 .AND. lwp )   WRITE(numout,*) ' ==>> time-step= ',kt,' ssh max:', zsshmax
+           !
+           IF( zsshmax > 10.e0 ) THEN 
+              IF (lk_mpp) THEN
+                CALL mpp_maxloc( ABS(sshn(:,:)),tmask(:,:,1),zsshmax,ii,ij)
+              ELSE
+                ilocs = MAXLOC( ABS(sshn(:,:)) )
+                ii = ilocs(1) + nimpp - 1
+                ij = ilocs(2) + njmpp - 1
+              ENDIF
+              !
+              IF(lwp) THEN
+                 WRITE(numout,cform_err)
+                 WRITE(numout,*) 'stp_ctl : the ssh is larger than 10m'
+                 WRITE(numout,*) '======= '
+                 WRITE(numout,9600) kt, zsshmax, ii, ij
+                 WRITE(numout,*)
+                 WRITE(numout,*) '          output of last fields in numwso'
+              ENDIF
+             kindic = -3
+         ENDIF
+9600     FORMAT (' kt=',i6,' max ssh: ',1pg11.4,', i j: ',2i5)
+
+         zssh2 = glob_sum( sshn(:,:) * sshn(:,:) )
          !
          IF(lwp) WRITE(numsol,9300) kt, zssh2, zumax, zsmin      ! ssh statistics
          !
       ENDIF
-
 9200  FORMAT('it:', i8, ' iter:', i4, ' r: ',d23.16, ' b: ',d23.16 )
 9300  FORMAT(' it :', i8, ' ssh2: ', d23.16, ' Umax: ',d23.16,' Smin: ',d23.16)
       !

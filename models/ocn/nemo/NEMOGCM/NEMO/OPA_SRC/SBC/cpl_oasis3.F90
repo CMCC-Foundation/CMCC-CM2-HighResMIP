@@ -1,3 +1,4 @@
+
 MODULE cpl_oasis3
    !!======================================================================
    !!                    ***  MODULE cpl_oasis  ***
@@ -195,7 +196,7 @@ CONTAINS
          WRITE(numout,*) ' multiexchg: nldj, nlej, njmpp =', nldj, nlej, njmpp
       ENDIF
       
-      CALL oasis_def_partition ( id_part, paral, nerror )
+      CALL oasis_def_partition ( id_part, paral, nerror, jpiglo*jpjglo )
       !
       ! ... Announce send variables. 
       !
@@ -513,10 +514,11 @@ CONTAINS
       WRITE(numout,*) 'oasis_get_localcomm: Error you sould not be there...'
    END SUBROUTINE oasis_get_localcomm
 
-   SUBROUTINE oasis_def_partition(k1,k2,k3)
+   SUBROUTINE oasis_def_partition(k1,k2,k3,k4)
       INTEGER     , INTENT(  out) ::  k1,k3
       INTEGER     , INTENT(in   ) ::  k2(5)
-      k1 = k2(1) ; k3 = k2(5)
+      INTEGER     , INTENT(in   ) ::  k4
+      k1 = k2(1) ; k3 = k2(5)+k4
       WRITE(numout,*) 'oasis_def_partition: Error you sould not be there...'
    END SUBROUTINE oasis_def_partition
 
