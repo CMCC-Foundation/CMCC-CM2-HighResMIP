@@ -322,7 +322,7 @@ if ("${CONTINUE_RUN}" == "TRUE" || "${RUN_TYPE}" != "startup") then
     # Looks for restart file (single restart file case)
     set flist = `ls -1rt ${EXPID}_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_restart.nc | tail -1`
     if (${?flist} == 1 && "x${flist}" != "x") then
-      set ocerstinp = `echo ${flist} | cut -d "." -f 1`
+      set ocerstinp = `echo ${flist} | sed -e "s;${EXPID}_;;" | cut -d "_" -f 1-2 | sed -e "s;^;${EXPID}_;" | sed -e "s;.nc;;"`
       set rest_file = "${ocerstinp}.nc"
     else
       # No restart file found
@@ -354,7 +354,7 @@ if ("${CONTINUE_RUN}" == "TRUE" || "${RUN_TYPE}" != "startup") then
       # Looks for restart file (single restart file case)
       set flist = `ls -1rt ${EXPID}_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_restart_bfm.nc | tail -1`
       if (${?flist} == 1 && "x${flist}" != "x") then
-        set trcrstinp = `echo ${flist} | cut -d "." -f 1`
+        set trcrstinp = `echo ${flist} | sed -e "s;${EXPID}_;;" | cut -d "_" -f 1-2 | sed -e "s;^;${EXPID}_;" | sed -e "s;.nc;;"`
       else
         # No restart file found
         if ("${CONTINUE_RUN}" == "TRUE") then
