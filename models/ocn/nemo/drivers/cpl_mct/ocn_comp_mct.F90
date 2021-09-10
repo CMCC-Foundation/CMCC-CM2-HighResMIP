@@ -487,7 +487,8 @@ contains
 !
 !----------------------------------------------------------------------------
 
-    if (runtype == 'initial' .and. .not. ln_rstart) then
+!EAB+    if (runtype == 'initial' .and. .not. ln_rstart) then
+    if (runtype == 'initial') then
        ! Number of model time step per coupling time step
        ! NOTE: if daily coupling nstp=0, no need to synchronize NEMO
        nstp = MOD(ocn_cpl_dt, INT(rday))/INT(rdt)

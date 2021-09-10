@@ -381,9 +381,11 @@ module shr_strdata_mod
      if (SDAT%domaps(n)) then
         if (trim(SDAT%mapread(n)) == trim(shr_strdata_unset)) then
            if (my_task == master_task) then
-             write(logunit,F00) ' calling shr_dmodel_mapSet for remap'
+!EB+             write(logunit,F00) ' calling shr_dmodel_mapSet for remap'
+      write(logunit,F00) ' calling shr_dmodel_mapSet for remap ', SDAT%mapalgo(n)
              call shr_sys_flush(logunit)
            endif
+!EB-
            call shr_dmodel_mapSet(SDAT%sMatPs(n), &
              SDAT%gridR(n),SDAT%gsmapR(n),SDAT%strnxg(n),SDAT%strnyg(n), &
              SDAT%grid ,SDAT%gsmap ,SDAT%nxg      ,SDAT%nyg, &

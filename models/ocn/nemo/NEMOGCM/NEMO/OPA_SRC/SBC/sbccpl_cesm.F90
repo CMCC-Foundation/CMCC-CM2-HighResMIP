@@ -120,7 +120,8 @@ CONTAINS
       co2_x2o    = 0.0_wp
 #endif
 
-      IF (.NOT. ln_rstart) THEN
+!AEB+soloprimomese      IF (.NOT. ln_rstart) THEN
+     IF (.NOT. ln_rstart) THEN
          utau(:,:) = 0.0_wp
          vtau(:,:) = 0.0_wp
          taum(:,:) = 0.0_wp
@@ -136,6 +137,7 @@ CONTAINS
          atm_co2(:,:) = 0.0_wp
 #endif
       END IF
+!AEB-soloprimomese      END IF
 
    END SUBROUTINE sbc_cpl_cesm_init
 
