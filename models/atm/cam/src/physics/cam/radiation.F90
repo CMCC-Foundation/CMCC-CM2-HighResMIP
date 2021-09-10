@@ -19,7 +19,9 @@ module radiation
 use shr_kind_mod,    only: r8=>shr_kind_r8
 use spmd_utils,      only: masterproc
 use ppgrid,          only: pcols, pver, pverp, begchunk, endchunk
+!EB+ use physics_types,   only: physics_state, physics_ptend
 use physics_types,   only: physics_state, physics_ptend
+!EB -
 use physconst,       only: cpair, cappa
 use time_manager,    only: get_nstep, is_first_restart_step
 use abortutils,      only: endrun
@@ -329,6 +331,9 @@ end function radiation_nextsw_cday
     use radiation_data, only: init_rad_data
     use phys_control,   only: phys_getopts
     use cospsimulator_intr, only: docosp, cospsimulator_intr_init
+!EB+
+!EB    use mo_simple_plumes, only: sp_setup
+!EB-
 
     integer :: nstep                       ! current timestep number
     logical :: history_amwg                ! output the variables used by the AMWG diag package
@@ -496,6 +501,9 @@ end function radiation_nextsw_cday
     pmxrgn_idx = pbuf_get_index('PMXRGN')
 
     call init_rad_data()
+!EB+
+!EB    call sp_setup()
+!EB-
 
   end subroutine radiation_init
 
@@ -529,15 +537,24 @@ end function radiation_nextsw_cday
     use physics_types,   only: physics_state, physics_ptend
     use cospsimulator_intr, only: docosp, cospsimulator_intr_run
     use cosp_share,      only: cosp_nradsteps
-    use time_manager,    only: get_curr_calday
+!EB+    use time_manager,    only: get_curr_calday
+    use time_manager,    only: get_curr_calday, set_time_float_from_datn, &
+                              get_curr_date 
+    use mo_simple_plumes, only: sp_aop_profile
+!EB-
     use camsrfexch,      only: cam_out_t, cam_in_t    
     use cam_history,     only: outfld
     use cam_history_support, only : fillvalue
     use radheat,         only: radheat_tend
     use ppgrid
     use pspect
-    use physconst,        only: cpair, stebol
-    use radconstants,     only: nlwbands, nswbands
+!EB+    use physconst,        only: cpair, stebol
+    use physconst,        only: cpair, stebol, gravit
+    use shr_const_mod, only: pi => shr_const_pi
+!EB-
+!EB+    use radconstants,     only: nlwbands, nswbands
+    use radconstants,     only: nlwbands, nswbands, get_sw_spectral_boundaries
+!EB-
     use radsw,            only: radcswmx
     use radlw,            only: radclwmx
     use rad_constituents, only: rad_cnst_get_gas, rad_cnst_out
@@ -681,8 +698,26 @@ end function radiation_nextsw_cday
     real(r8):: flnr(pcols)
     real(r8):: p_trop(pcols)
 
+!EB+ added variables for MPI AEROSOLS module
+    real(r8):: oro(pcols)
+    real(r8):: xre(pcols)
+    real(r8):: wavmin(nswbands)
+    real(r8):: wavmax(nswbands)
+    real(r8):: wavmid(nswbands)
+    real(r8):: year_fr
+    integer::  yr, mon, day, tod
+    integer:: nb
+!EB    real(r8), pointer :: z(:,:)
+    real(r8):: z(pcols,pver)
+    real(r8):: dz(pcols,pver) 
+    real(r8) :: sp_aer_tau    (pcols,0:pver,nswbands) ! MPI contr to aerosol extinction optical depth
+    real(r8) :: sp_aer_tau_w  (pcols,0:pver,nswbands) ! MPI contr aerosol single scattering albedo * tau
+    real(r8) :: sp_aer_tau_w_g(pcols,0:pver,nswbands) ! MPI contr aerosol assymetry parameter * w * tau
+    real(r8) :: sp_aer_tau_w_f(pcols,0:pver,nswbands) ! MPI contr aerosol forward scattered fraction * w * tau
+    real(r8) :: asm(pcols,0:pver) ! tmp var
 !----------------------------------------------------------------------
 
+!    write(iulog,*) "EB+ sono fuori 0"
     lchnk = state%lchnk
     ncol = state%ncol
 
@@ -774,7 +809,59 @@ end function radiation_nextsw_cday
           call aer_rad_props_sw(0, state, pbuf,  nnite, idxnite, &
                aer_tau, aer_tau_w, aer_tau_w_g, aer_tau_w_f)
           call t_stopf('aero_optics_sw')
-
+!EB +
+          oro(:) = state%phis(:) / gravit
+          z(:,:) = state%zm(:,:)
+          dz(:,:)=state%zi(:,:pver) - state%zi(:,2:)
+!EB 
+          call get_sw_spectral_boundaries(wavmin,wavmax,'nanometer')
+          wavmid(:) = 0.5_r8*(wavmin(:) + wavmax(:))
+          call get_curr_date(yr, mon, day, tod)
+          call set_time_float_from_datn(year_fr, yr, mon, day, tod)
+          if (masterproc) then
+!           write(iulog,*) "EB+ ", year_fr, yr, mon, day, tod
+          endif
+          sp_aer_tau(:,0,:)=0.0_r8
+          sp_aer_tau_w(:,0,:)=0.0_r8
+          sp_aer_tau_w_g(:,0,:)=0.0_r8
+          do nb = 1,nswbands
+           call sp_aop_profile(pver, ncol, wavmid(nb), oro, &
+             clon*180.0_r8/pi,clat*180.0_r8/pi, &
+               year_fr, z, dz, xre, sp_aer_tau(:,1:pver,nb), sp_aer_tau_w(:,1:pver,nb), sp_aer_tau_w_g(:,1:pver,nb))
+!EB          call sp_aop_profile(pver, ncol, LAMBDA, oro, LON, LAT, & 
+!EB               YEAR_FR, Z, DZ, XRE, AOD_PROF, SSA_PROF, ASY_PROF)
+           if (masterproc) then
+!           write(iulog,*) "EB+ sono fuori 1 banda ", nb
+           endif
+           sp_aer_tau_w(:,1:pver,nb)=sp_aer_tau_w(:,1:pver,nb) *  sp_aer_tau(:,1:pver,nb)
+           sp_aer_tau_w_g(:,1:pver,nb)=sp_aer_tau_w_g(:,1:pver,nb) * sp_aer_tau_w(:,1:pver,nb) * sp_aer_tau(:,1:pver,nb)
+           where (sp_aer_tau_w(:,:,nb) > 0.0_r8)
+            asm(:,:) = sp_aer_tau_w_g(:,:,nb) / sp_aer_tau_w(:,:,nb)
+           else where
+            asm(:,:) = 0.0_r8
+           end where
+           if (masterproc) then
+!           write(iulog,*) "EB+ sono fuori 2 banda ", nb
+           endif
+           sp_aer_tau_w_f(:,:,nb) = sp_aer_tau_w_g(:,:,nb) * asm(:,:)
+          end do
+           if (masterproc) then
+!           write(iulog,*) "EB+ sono fuori 3"
+           endif
+!           write(iulog,*) "EB max aer_tau =  ", maxval( aer_tau )
+!           write(iulog,*) "EB max aer_tau_w =  ", maxval( aer_tau_w )
+!           write(iulog,*) "EB max aer_tau_w_g =  ", maxval( aer_tau_w_g )
+!           write(iulog,*) "EB max aer_tau_w_f =  ", maxval( aer_tau_w_f )
+!           write(iulog,*) "EB max sp_aer_tau =  ", maxval( sp_aer_tau )
+!           write(iulog,*) "EB max sp_aer_tau_w =  ", maxval( sp_aer_tau_w )
+!           write(iulog,*) "EB max sp_aer_tau_w_g =  ", maxval( sp_aer_tau_w_g )
+!           write(iulog,*) "EB max sp_aer_tau_w_f =  ", maxval( sp_aer_tau_w_f )
+          aer_tau(:,:,:) = aer_tau(:,:,:) + sp_aer_tau(:,:,:)
+          aer_tau_w(:,:,:) = aer_tau_w(:,:,:) + sp_aer_tau_w(:,:,:)
+          aer_tau_w_g(:,:,:) = aer_tau_w_g(:,:,:) + sp_aer_tau_w_g(:,:,:)
+          aer_tau_w_f(:,:,:) = aer_tau_w_f(:,:,:) + sp_aer_tau_w_f(:,:,:)
+!           write(iulog,*) "EB+ sono fuori 4"
+!EB -
           call radcswmx(lchnk, &
                ncol,       pnm,        pbr,        sp_hum,     o3,         &
                o2_col,     cld,        cicewp,     cliqwp,     rel,        &
@@ -787,6 +874,7 @@ end function radiation_nextsw_cday
                Nday,       Nnite,      IdxDay,     IdxNite,    co2_col_mean, &
                aer_tau,    aer_tau_w,  aer_tau_w_g, aer_tau_w_f , liq_icld_vistau, ice_icld_vistau  ) 
 
+!          write(iulog,*) "EB+ sono fuori 5"
           call t_stopf('rad_sw')
 
           !  Output net fluxes at 200 mb
@@ -796,6 +884,7 @@ end function radiation_nextsw_cday
              call vertinterp(1, 1, pverp, state%pint(i,:), p_trop(i), fns(i,:), fsnr(i))
           enddo
 
+!          write(iulog,*) "EB+ sono fuori 6"
 
           !
           ! Convert units of shortwave fields needed by rest of model from CGS to MKS
@@ -820,6 +909,7 @@ end function radiation_nextsw_cday
              fsnr(i)= fsnr(i)*cgs2mks
              swcf(i)=fsntoa(i) - fsntoac(i)
           end do
+!          write(iulog,*) "EB+ sono fuori 7"
           ftem(:ncol,:pver) = qrs(:ncol,:pver)/cpair
 
 
@@ -851,6 +941,7 @@ end function radiation_nextsw_cday
           call outfld('SWCF    ',swcf  ,pcols,lchnk)
 
 
+!          write(iulog,*) "EB+ sono fuori 8"
 	  !! initialize tau_cld_vistau and tau_icld_vistau as fillvalue, they will stay fillvalue for night columns
           tot_icld_vistau(1:pcols,1:pver)=fillvalue
           tot_cld_vistau(1:pcols,1:pver)=fillvalue
@@ -878,6 +969,7 @@ end function radiation_nextsw_cday
           call outfld ('ICE_ICLD_VISTAU   ',ice_icld_vistau ,pcols,lchnk)
        end if   ! dosw
 
+!          write(iulog,*) "EB+ sono fuori 9"
        ! Longwave radiation computation
 
        if (dolw) then
@@ -1008,6 +1100,7 @@ end function radiation_nextsw_cday
     end do
     call outfld('HR      ',ftem    ,pcols   ,lchnk   )
 
+!       write(iulog,*) "EB+ sono fuori 10"
     ! convert radiative heating rates to Q*dp for energy conservation
     if (conserve_energy) then
 !DIR$ CONCURRENT
@@ -1021,6 +1114,7 @@ end function radiation_nextsw_cday
     end if
  
     cam_out%netsw(:ncol) = fsns(:ncol)
+!       write(iulog,*) "EB+ sono fuori 11"
 
  end subroutine radiation_tend
 

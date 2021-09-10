@@ -713,6 +713,9 @@ CONTAINS
     !
     ! Uses	
     !
+!EB+
+   use shr_assert_mod, only: shr_assert, shr_assert_in_domain
+!EB-
     use dust_intr,     only: dust_idx1
 #if (defined MODAL_AERO)
     use mo_chem_utls,  only: get_spc_ndx
@@ -919,6 +922,51 @@ CONTAINS
        end if
        first_time = .false.
     end if
+!EB+
+    do c=begchunk,endchunk
+       ncols = get_ncols_p(c)
+    call shr_assert_in_domain(cam_in(c)%wsx(:),         is_nan=.false., &
+         varname="wsx",         msg='vaffa')
+    call shr_assert_in_domain(cam_in(c)%wsy(:),         is_nan=.false., &
+         varname="wsy",         msg='vaffa')
+    call shr_assert_in_domain(cam_in(c)%lhf(:),         is_nan=.false., &
+         varname="lhf",         msg='vaffa')
+    call shr_assert_in_domain(cam_in(c)%shf(:),         is_nan=.false., &
+         varname="shf",         msg='vaffa')
+    call shr_assert_in_domain(cam_in(c)%lwup(:),         is_nan=.false., &
+         varname="lwup",         msg='vaffa')
+    call shr_assert_in_domain(cam_in(c)%cflx(:,:),         is_nan=.false., &
+         varname="cflx",         msg='vaffa')
+    call shr_assert_in_domain(cam_in(c)%asdir(:),         is_nan=.false., &
+         varname="asdir",         msg='vaffa')
+    call shr_assert_in_domain(cam_in(c)%aldir(:),         is_nan=.false., &
+         varname="aldir",         msg='vaffa')
+    call shr_assert_in_domain(cam_in(c)%asdif(:),         is_nan=.false., &
+         varname="asdif",         msg='vaffa')
+    call shr_assert_in_domain(cam_in(c)%aldif(:),         is_nan=.false., &
+         varname="aldif",         msg='vaffa')
+    call shr_assert_in_domain(cam_in(c)%ts(:),         is_nan=.false., &
+         varname="ts",         msg='vaffa')
+    call shr_assert_in_domain(cam_in(c)%sst(:),         is_nan=.false., &
+         varname="sst",         msg='vaffa')
+    call shr_assert_in_domain(cam_in(c)%snowhland(:),         is_nan=.false., &
+         varname="snowhland",         msg='vaffa')
+    call shr_assert_in_domain(cam_in(c)%snowhice(:),         is_nan=.false., &
+         varname="snowhice",         msg='vaffa')
+    call shr_assert_in_domain(cam_in(c)%tref(:),         is_nan=.false., &
+         varname="tref",         msg='vaffa')
+    call shr_assert_in_domain(cam_in(c)%qref(:),         is_nan=.false., &
+         varname="qref",         msg='vaffa')
+    call shr_assert_in_domain(cam_in(c)%u10(:),         is_nan=.false., &
+         varname="u10",         msg='vaffa')
+    call shr_assert_in_domain(cam_in(c)%icefrac(:),         is_nan=.false., &
+         varname="icefrac",         msg='vaffa')
+    call shr_assert_in_domain(cam_in(c)%ocnfrac(:),         is_nan=.false., &
+         varname="ocnfrac",         msg='vaffa')
+    call shr_assert_in_domain(cam_in(c)%landfrac(:),         is_nan=.false., &
+         varname="landfrac",         msg='vaffa')
+    end do
+!EB-
 
   end subroutine atm_import_mct
 

@@ -54,6 +54,7 @@ module time_manager
       timemgr_time_inc,         &! increment time instant by a given interval
       timemgr_set_date_time,    &! set the current date and time
       set_time_float_from_date, &! returns a float representation of time given  yr, mon, day, sec
+      set_time_float_from_datn, &! EB+ same as the previous but withour ref_date
       set_date_from_time_float   ! returns yr, mon, day, sec given time float
 
 ! interfaces
@@ -314,7 +315,39 @@ subroutine set_time_float_from_date( time, year, month, day, sec )
 endsubroutine set_time_float_from_date
 
 !=========================================================================================
+!EB+
+!=========================================================================================
+subroutine set_time_float_from_datn( time, year, month, day, sec )
+!
+! Set the time as a float given year, month, day, sec
+!
+  implicit none
 
+  real(r8),intent(out):: time
+  integer, intent(in) :: year
+  integer, intent(in) :: month
+  integer, intent(in) :: day
+  integer, intent(in) :: sec
+
+  real(r8), parameter :: dpm(12) = (/0._r8,31._r8, 59._r8,90._r8, 120._r8, 151._r8, 181._r8, 212._r8, 243._r8, 273._r8, 304._r8, 334._r8/) 
+  real(r8), parameter :: spd = 86400._r8
+  real(r8) :: frac
+  character(len=*), parameter :: sub = 'set_time_float_from_datn'
+  integer :: useday
+!     if ( ( month .eq. 2 ) .and. ( day .eq. 29 ) ) then ! assume the failure is because it is leap day
+!        useday = 28
+!     else  ! legitimate error, let the model quit
+        useday = day
+!     endif 
+   
+  frac = ( dpm(month) + real(useday,r8) )*( spd + real(sec,r8) )/(365._r8*spd)
+  time = real(year,r8) + frac 
+
+endsubroutine set_time_float_from_datn
+
+!=========================================================================================
+!EB-
+!=========================================================================================
 subroutine set_date_from_time_float( time, year, month, day, sec )
 !
 ! Set year, month, day, sec given the time as a float
