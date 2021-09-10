@@ -131,6 +131,9 @@ contains
    integer(kind=int_kind) :: nml_error ! namelist i/o error flag
    integer(kind=int_kind) :: n, nFile, ierr   
    character(len=8)       :: fillalgo
+!EB+
+   character(len=7)       :: mapalgo
+!EB-
    character(*),parameter :: subName = "('ice_prescribed_init2')"
    character(*),parameter :: F00 = "('(ice_prescribed_init2) ',4a)"
 
@@ -217,7 +220,9 @@ contains
    else
       fillalgo='none'
    endif
-
+!EB+
+      mapalgo='none'
+!EB-
    if (my_task == master_task) then
       write(nu_diag,*) ' '
       write(nu_diag,*) 'This is the prescribed ice coverage option.'
@@ -234,9 +239,9 @@ contains
       write(nu_diag,*) '  stream_domFileName = ',trim(stream_domFileName)
       write(nu_diag,*) '  stream_mapread     = ',trim(stream_mapread)
       write(nu_diag,*) '  stream_fillalgo    = ',trim(fillalgo)
-#ifdef NEMO_IN_CCSM
-      write(nu_diag,*) '  stream_mapalgo     = none (NEMO)'
-#endif
+!EB+
+      write(nu_diag,*) '  stream_mapalgo    = ',trim(mapalgo)
+!EB-
       write(nu_diag,*) ' '
    endif
 
@@ -262,9 +267,7 @@ contains
         pio_subsystem=shr_pio_getiosys(inst_name), &
         pio_iotype=shr_pio_getiotype(inst_name),   &
         fillalgo=trim(fillalgo),       &
-#ifdef NEMO_IN_CCSM
-        mapalgo=trim('none'),          &
-#endif
+        mapalgo=trim(mapalgo),       &
         calendar=trim(calendar_type),  &
         mapread=trim(stream_mapread))
 

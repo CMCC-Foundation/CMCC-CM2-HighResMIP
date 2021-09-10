@@ -1192,20 +1192,24 @@ contains
 
      enddo        !iblk
 
-#ifdef NEMO_IN_CCSM
-     ! NEMO halo always updated in either coupled of prescribed_ice mode
-     call t_startf ('cice_imp_halo')
-     call nemo_HaloUpdate(aflds, halo_info, field_loc_center, &
-                                           field_type_scalar)
-     call t_stopf ('cice_imp_halo')
-#else
      if (.not.prescribed_ice) then
         call t_startf ('cice_imp_halo')
+#ifdef NEMO_IN_CCSM
+        call nemo_HaloUpdate(aflds, halo_info, field_loc_center, &
+                                              field_type_scalar)                                                         
+#else
         call ice_HaloUpdate(aflds, halo_info, field_loc_center, &
                                               field_type_scalar)
-        call t_stopf ('cice_imp_halo')
-     endif
 #endif
+        call t_stopf ('cice_imp_halo')
+!EB+
+#ifdef NEMO_IN_CCSM
+     else 
+        call nemo_HaloUpdate(aflds, halo_info, field_loc_center, &
+                                              field_type_scalar)
+!EB-
+#endif
+     endif
  
      !$OMP PARALLEL DO PRIVATE(iblk,i,j)
      do iblk = 1, nblocks
@@ -1256,20 +1260,24 @@ contains
         enddo
      enddo
 
-#ifdef NEMO_IN_CCSM
-     ! NEMO halo always updated in either coupled of prescribed_ice mode
-     call t_startf ('cice_imp_halo')
-     call nemo_HaloUpdate(aflds, halo_info, field_loc_center, &
-                                          field_type_vector)
-     call t_stopf ('cice_imp_halo')
-#else
      if (.not.prescribed_ice) then
         call t_startf ('cice_imp_halo')
+#ifdef NEMO_IN_CCSM
+        call nemo_HaloUpdate(aflds, halo_info, field_loc_center, &
+                                             field_type_vector)
+#else
         call ice_HaloUpdate(aflds, halo_info, field_loc_center, &
                                              field_type_vector)
-        call t_stopf ('cice_imp_halo')
-     endif
 #endif
+        call t_stopf ('cice_imp_halo')
+!EB+
+#ifdef NEMO_IN_CCSM
+     else
+        call nemo_HaloUpdate(aflds, halo_info, field_loc_center, &
+                                             field_type_vector)
+#endif
+!EB+
+     endif
 
      !$OMP PARALLEL DO PRIVATE(iblk,i,j)
      do iblk = 1, nblocks
